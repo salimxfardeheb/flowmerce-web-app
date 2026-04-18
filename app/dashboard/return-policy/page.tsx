@@ -179,7 +179,6 @@ export default function ReturnPolicyPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const user = session?.user as any;
   const sessionReady = session !== undefined;
   const [vendorCheck, setVendorCheck] = useState<"loading" | "ok" | "redirect">("loading");
 
@@ -211,10 +210,6 @@ export default function ReturnPolicyPage() {
   }
 
   if (vendorCheck === "redirect") return null;
-
-  // Garde de sécurité finale pour les vendeurs non approuvés
-  const isAdmin = user?.role === "ADMIN";
-  if (!isAdmin && user?.vendorStatus !== "APPROVED") return null;
 
   const set = <K extends keyof Policy>(key: K, value: Policy[K]) =>
     setPolicy((p) => ({ ...p, [key]: value }));
