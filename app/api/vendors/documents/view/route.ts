@@ -50,12 +50,18 @@ export async function GET(req: NextRequest) {
   return proxyAndServe(storedUrl, doc.name, isPdf);
 }
 
+const CLOUDINARY_URL_RE = /^https:\/\/res\.cloudinary\.com\//;
+
 // ── Fetcher le fichier et le servir inline ────────────────────
 async function proxyAndServe(
   url: string,
   filename: string | null,
   isPdf: boolean
 ): Promise<NextResponse> {
+  if (!CLOUDINARY_URL_RE.test(url)) {
+    return htmlPage("Accès refusé", "URL de document invalide.", "");
+  }
+
   let res: Response;
   try {
     res = await fetch(url, {
@@ -95,9 +101,21 @@ async function proxyAndServe(
   });
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
 function htmlPage(title: string, line1: string, line2: string): NextResponse {
+  const t  = escapeHtml(title);
+  const l1 = escapeHtml(line1);
+  const l2 = escapeHtml(line2);
   return new NextResponse(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${t}</title>
     <style>
       body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;
            height:100vh;margin:0;background:#f9fafb}
@@ -109,9 +127,9 @@ function htmlPage(title: string, line1: string, line2: string): NextResponse {
     </style></head><body>
     <div class="box">
       <div class="icon">⚠️</div>
-      <h2>${title}</h2>
-      <p>${line1}</p>
-      ${line2 ? `<p>${line2}</p>` : ""}
+      <h2>${t}</h2>
+      <p>${l1}</p>
+      ${l2 ? `<p>${l2}</p>` : ""}
     </div></body></html>`,
     { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
   );

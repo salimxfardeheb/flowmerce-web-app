@@ -41,30 +41,37 @@ async function checkRateLimit(orderId: string, ip: string): Promise<boolean> {
   const now     = new Date();
   const resetAt = new Date(now.getTime() + 60 * 60 * 1000); // +1h
 
-  const existing = await prisma.returnRateLimit.findUnique({ where: { key } });
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.returnRateLimit.findUnique({ where: { key } });
 
-  if (!existing) {
-    await prisma.returnRateLimit.create({ data: { key, count: 1, resetAt } });
-    return true; // OK
+        if (!existing) {
+          await tx.returnRateLimit.create({ data: { key, count: 1, resetAt } });
+          return true;
+        }
+
+        if (existing.resetAt < now) {
+          await tx.returnRateLimit.update({
+            where: { key },
+            data: { count: 1, resetAt },
+          });
+          return true;
+        }
+
+        if (existing.count >= 3) return false;
+
+        await tx.returnRateLimit.update({
+          where: { key },
+          data: { count: { increment: 1 } },
+        });
+        return true;
+      },
+      { isolationLevel: "Serializable" }
+    );
+  } catch {
+    return false;
   }
-
-  // Fenêtre expirée → reset
-  if (existing.resetAt < now) {
-    await prisma.returnRateLimit.update({
-      where: { key },
-      data: { count: 1, resetAt },
-    });
-    return true;
-  }
-
-  // Trop de tentatives
-  if (existing.count >= 3) return false;
-
-  await prisma.returnRateLimit.update({
-    where: { key },
-    data: { count: { increment: 1 } },
-  });
-  return true;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -193,40 +200,49 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 6. Vérifier si une réclamation existe déjà pour cet orderId ──
-  const existing = await prisma.claim.findFirst({
-    where: { vendorId: keyRecord.vendorId, orderId },
-  });
-
-  if (existing) {
-    return NextResponse.json(
-      { error: "Une demande de retour existe déjà pour cette commande." },
-      { status: 409 }
-    );
-  }
-
   // ── 7. Calculer le score de risque ───────────────────────────
   const fraudScore = computeFraudScore(reason, description, ip, orderId);
-
-  // ── 8. Créer la réclamation ──────────────────────────────────
   const orderDateRaw = body.order_date ? new Date(String(body.order_date)) : null;
 
-  const claim = await prisma.claim.create({
-    data: {
-      vendorId:      keyRecord.vendorId,
-      orderId,
-      customerName:  String(body.customer_name).trim(),
-      customerEmail: String(body.customer_email).trim().toLowerCase(),
-      productName:   String(body.product_name).trim(),
-      orderDate:     orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null,
-      type:          reasonToClaimType(reason),
-      description,
-      source:        body.source === "hosted_page" ? "HOSTED_PAGE" : "API",
-      fraudScore,
-      ipAddress:     ip,
-      status:        "PENDING",
-    },
-  });
+  // ── 8. Vérifier unicité et créer atomiquement ─────────────── (CRIT-6)
+  let claim;
+  try {
+    claim = await prisma.$transaction(async (tx) => {
+      const dup = await tx.claim.findFirst({
+        where: { vendorId: keyRecord.vendorId, orderId },
+        select: { id: true },
+      });
+      if (dup) {
+        const e = new Error("DUPLICATE_CLAIM");
+        (e as any).code = "DUPLICATE_CLAIM";
+        throw e;
+      }
+      return tx.claim.create({
+        data: {
+          vendorId:      keyRecord.vendorId,
+          orderId,
+          customerName:  String(body.customer_name).trim(),
+          customerEmail: String(body.customer_email).trim().toLowerCase(),
+          productName:   String(body.product_name).trim(),
+          orderDate:     orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null,
+          type:          reasonToClaimType(reason),
+          description,
+          source:        body.source === "hosted_page" ? "HOSTED_PAGE" : "API",
+          fraudScore,
+          ipAddress:     ip,
+          status:        "PENDING",
+        },
+      });
+    });
+  } catch (err: any) {
+    if (err?.code === "DUPLICATE_CLAIM" || err?.code === "P2002") {
+      return NextResponse.json(
+        { error: "Une demande de retour existe déjà pour cette commande." },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 
   // ── 9. Mettre à jour lastUsedAt de la clé API ─────────────────
   await prisma.apiKey.update({

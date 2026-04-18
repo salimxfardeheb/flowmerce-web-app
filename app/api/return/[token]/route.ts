@@ -39,22 +39,31 @@ async function checkRateLimit(orderId: string, ip: string): Promise<boolean> {
   const now     = new Date()
   const resetAt = new Date(now.getTime() + 60 * 60 * 1000)
 
-  const existing = await prisma.returnRateLimit.findUnique({ where: { key } })
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.returnRateLimit.findUnique({ where: { key } })
 
-  if (!existing) {
-    await prisma.returnRateLimit.create({ data: { key, count: 1, resetAt } })
-    return true
+        if (!existing) {
+          await tx.returnRateLimit.create({ data: { key, count: 1, resetAt } })
+          return true
+        }
+        if (existing.resetAt < now) {
+          await tx.returnRateLimit.update({ where: { key }, data: { count: 1, resetAt } })
+          return true
+        }
+        if (existing.count >= 3) return false
+        await tx.returnRateLimit.update({
+          where: { key },
+          data:  { count: { increment: 1 } },
+        })
+        return true
+      },
+      { isolationLevel: 'Serializable' }
+    )
+  } catch {
+    return false
   }
-  if (existing.resetAt < now) {
-    await prisma.returnRateLimit.update({ where: { key }, data: { count: 1, resetAt } })
-    return true
-  }
-  if (existing.count >= 3) return false
-  await prisma.returnRateLimit.update({
-    where: { key },
-    data:  { count: { increment: 1 } },
-  })
-  return true
 }
 
 function computeFraudScore(reason: string, description: string): number {
@@ -160,19 +169,7 @@ export async function POST(
     )
   }
 
-  // ── 5. Unicité : un seul claim par (vendorId, orderId) ──────
-  const existing = await prisma.claim.findFirst({
-    where:  { vendorId: keyRecord.vendorId, orderId },
-    select: { id: true },
-  })
-  if (existing) {
-    return NextResponse.json(
-      { error: 'Une demande de retour existe déjà pour cette commande.' },
-      { status: 409 }
-    )
-  }
-
-  // ── 6. Création du claim ────────────────────────────────────
+  // ── 6. Création du claim (unicité + création atomiques) ──────
   const claimType   = TYPE_MAP[reason] ?? 'REFUND'
   const fraudScore  = computeFraudScore(reason, description)
   const parsedDate  = orderDateRaw ? new Date(orderDateRaw) : null
@@ -184,30 +181,52 @@ export async function POST(
     description ? `Détails : ${description}` : null,
   ].filter(Boolean).join(' — ')
 
-  const claim = await prisma.claim.create({
-    data: {
-      vendorId:      keyRecord.vendorId,
-      orderId,
-      customerName:  customerName || customerEmail,
-      customerEmail,
-      type:          claimType,
-      description:   fullDescription,
-      status:        'PENDING',
-      source:        'HOSTED_PAGE',
-      productName,
-      orderDate,
-      ipAddress:     ip,
-      fraudScore,
-      prediction: {
-        shopName:      shopName || null,
-        customerPhone: customerPhone || null,
-        productPrice,
-        productQuantity,
-        orderTotal,
-        orderAddress:  orderAddress || null,
-      },
-    },
-  })
+  let claim
+  try {
+    claim = await prisma.$transaction(async (tx) => {
+      const dup = await tx.claim.findFirst({
+        where:  { vendorId: keyRecord.vendorId, orderId },
+        select: { id: true },
+      })
+      if (dup) {
+        const e = new Error('DUPLICATE_CLAIM')
+        ;(e as any).code = 'DUPLICATE_CLAIM'
+        throw e
+      }
+      return tx.claim.create({
+        data: {
+          vendorId:      keyRecord.vendorId,
+          orderId,
+          customerName:  customerName || customerEmail,
+          customerEmail,
+          type:          claimType,
+          description:   fullDescription,
+          status:        'PENDING',
+          source:        'HOSTED_PAGE',
+          productName,
+          orderDate,
+          ipAddress:     ip,
+          fraudScore,
+          prediction: {
+            shopName:      shopName || null,
+            customerPhone: customerPhone || null,
+            productPrice,
+            productQuantity,
+            orderTotal,
+            orderAddress:  orderAddress || null,
+          },
+        },
+      })
+    })
+  } catch (err: any) {
+    if (err?.code === 'DUPLICATE_CLAIM' || err?.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'Une demande de retour existe déjà pour cette commande.' },
+        { status: 409 }
+      )
+    }
+    throw err
+  }
 
   await prisma.apiKey.update({
     where: { id: keyRecord.id },

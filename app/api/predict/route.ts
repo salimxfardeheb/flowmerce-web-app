@@ -102,11 +102,11 @@ function applyVendorPolicy(
     acceptedReturnReasons?: string[];
     acceptedTypes?: string[];
   } | null
-): { input: ReturnRequest; policyWarnings: string[] } {
+): { input: ReturnRequest; policyWarnings: string[]; policyRejected: boolean; rejectionReason?: string } {
   const warnings: string[] = [];
   const enriched = { ...input } as ReturnRequest;
 
-  if (!policy) return { input: enriched, policyWarnings: warnings };
+  if (!policy) return { input: enriched, policyWarnings: warnings, policyRejected: false };
 
   // Injecter la fenêtre de retour du vendeur
   enriched.Shop_Return_Window_Days = policy.maxClaimDays;
@@ -124,23 +124,29 @@ function applyVendorPolicy(
     );
   }
 
-  // Vérifier si la catégorie est dans les non-remboursables
+  // Catégorie non remboursable → rejet bloquant (CRIT-7)
   const nonRefundable = policy.nonRefundableCategories ?? [];
   if (nonRefundable.includes(enriched.Product_Category)) {
-    warnings.push(
-      `Catégorie "${enriched.Product_Category}" non remboursable selon la politique vendeur`
-    );
+    return {
+      input: enriched,
+      policyWarnings: warnings,
+      policyRejected: true,
+      rejectionReason: `Catégorie "${enriched.Product_Category}" non remboursable selon la politique vendeur`,
+    };
   }
 
-  // Vérifier si la raison de retour est acceptée
+  // Raison non acceptée → rejet bloquant (CRIT-7)
   const acceptedReasons = policy.acceptedReturnReasons ?? [];
   if (acceptedReasons.length > 0 && !acceptedReasons.includes(enriched.Return_Reason)) {
-    warnings.push(
-      `Raison "${enriched.Return_Reason}" non acceptée par la politique vendeur`
-    );
+    return {
+      input: enriched,
+      policyWarnings: warnings,
+      policyRejected: true,
+      rejectionReason: `Raison "${enriched.Return_Reason}" non acceptée par la politique vendeur`,
+    };
   }
 
-  return { input: enriched, policyWarnings: warnings };
+  return { input: enriched, policyWarnings: warnings, policyRejected: false };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -222,10 +228,27 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Appliquer la politique du vendeur
-  const { input: mlInput, policyWarnings } = applyVendorPolicy(
+  const { input: mlInput, policyWarnings, policyRejected, rejectionReason } = applyVendorPolicy(
     rawBody,
     keyRecord.vendor.returnPolicy as any
   );
+
+  if (policyRejected) {
+    return NextResponse.json(
+      {
+        resolution: { prediction: "Reject", probabilities: {} },
+        shipping_paid_by: { prediction: "Client", probabilities: {} },
+        vendor_policy_applied: {
+          return_window_days: keyRecord.vendor.returnPolicy?.maxClaimDays ?? 14,
+          within_policy: false,
+          warnings: policyWarnings,
+          rejected_by_policy: true,
+          rejection_reason: rejectionReason,
+        },
+      },
+      { status: 422 }
+    );
+  }
 
   // 6. Appeler le FastAPI Python
   const mlApiUrl = process.env.ML_API_URL ?? "http://localhost:8000";
