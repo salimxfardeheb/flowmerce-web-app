@@ -1,15 +1,20 @@
 import { getSessionServer } from "@/lib/getSession";
-
-
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { SignOutButton } from "@/components/layout/SignOutButton";
+import {
+  LayoutDashboard,
+  FileText,
+  Key,
+  Inbox,
+  Settings,
+} from "lucide-react";
 
 const navLinks = [
-  { href: "/dashboard", label: "Tableau de bord", icon: "🏠" },
-  { href: "/dashboard/return-policy", label: "Politique retours", icon: "📋" },
-  { href: "/dashboard/api-keys", label: "Clés API", icon: "🔑" },
-  { href: "/dashboard/claims", label: "Réclamations", icon: "📩" },
+  { href: "/dashboard",               label: "Tableau de bord",    Icon: LayoutDashboard },
+  { href: "/dashboard/return-policy", label: "Politique retours",  Icon: FileText },
+  { href: "/dashboard/api-keys",      label: "Clés API",           Icon: Key },
+  { href: "/dashboard/claims",        label: "Réclamations",       Icon: Inbox },
 ];
 
 export default async function DashboardLayout({
@@ -35,26 +40,26 @@ export default async function DashboardLayout({
         </div>
 
         <nav className="flex-1 p-4 space-y-1">
-          {navLinks.map((link) => (
+          {navLinks.map(({ href, label, Icon }) => (
             <Link
-              key={link.href}
-              href={link.href}
+              key={href}
+              href={href}
               className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
             >
-              <span>{link.icon}</span>
-              {link.label}
+              <Icon size={14} className="shrink-0 text-gray-400" />
+              {label}
             </Link>
           ))}
 
           {user?.role === "ADMIN" && (
             <>
-              <hr className="my-2" />
+              <hr className="my-2 border-gray-100" />
               <Link
                 href="/admin/vendors"
                 className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition-colors"
               >
-                <span>⚙️</span>
-                Admin - Vendeurs
+                <Settings size={14} className="shrink-0 text-gray-400" />
+                Admin — Vendeurs
               </Link>
             </>
           )}

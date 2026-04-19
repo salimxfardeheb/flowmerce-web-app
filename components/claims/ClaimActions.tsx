@@ -2,25 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Brain, X } from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────
 type Resolution = "Refund" | "Exchange" | "Repair" | "Reject";
 type Shipping   = "Client" | "Vendeur" | "Shared";
 
 type Props = {
   claimId:          string;
-  // Données ML existantes passées depuis la page
   aiDecision?:      string | null;
   aiScore?:         number | null;
   prediction?:      Record<string, unknown> | null;
   currentStatus?:   string;
 };
 
-const RESOLUTION_OPTIONS: { value: Resolution; label: string; emoji: string; cls: string }[] = [
-  { value: "Refund",   label: "Remboursement", emoji: "💰", cls: "border-green-300 bg-green-50 text-green-800"  },
-  { value: "Exchange", label: "Échange",        emoji: "🔄", cls: "border-blue-300 bg-blue-50 text-blue-800"    },
-  { value: "Repair",   label: "Réparation",     emoji: "🔧", cls: "border-orange-300 bg-orange-50 text-orange-800" },
-  { value: "Reject",   label: "Refus",           emoji: "❌", cls: "border-red-300 bg-red-50 text-red-800"      },
+const RESOLUTION_OPTIONS: { value: Resolution; label: string; dot: string; cls: string }[] = [
+  { value: "Refund",   label: "Remboursement", dot: "bg-green-500",  cls: "border-green-300 bg-green-50 text-green-800"     },
+  { value: "Exchange", label: "Échange",        dot: "bg-blue-500",   cls: "border-blue-300 bg-blue-50 text-blue-800"       },
+  { value: "Repair",   label: "Réparation",     dot: "bg-amber-400",  cls: "border-amber-300 bg-amber-50 text-amber-800"   },
+  { value: "Reject",   label: "Refus",           dot: "bg-red-500",    cls: "border-red-300 bg-red-50 text-red-800"         },
 ];
 
 const SHIPPING_OPTIONS: { value: Shipping; label: string }[] = [
@@ -103,13 +102,13 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
         ))}
       </div>
 
-      {/* Override ML button — seulement si une décision ML existe */}
       {mlResolution && (
         <button
           onClick={() => setOpen(true)}
-          className="text-xs px-2.5 py-1.5 rounded-lg font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors border border-purple-200"
+          className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-200"
         >
-          🤖 Modifier décision ML
+          <Brain className="w-3 h-3" />
+          Modifier la décision
         </button>
       )}
 
@@ -124,7 +123,7 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
                 <h3 className="font-semibold text-gray-800">Révision de la décision ML</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
                   Décision actuelle :{" "}
-                  <span className="font-medium text-purple-700">{mlResolution}</span>
+                  <span className="font-medium text-indigo-700">{mlResolution}</span>
                   {confidence !== null && (
                     <span className="ml-1 text-gray-400">({confidence}% conf.)</span>
                   )}
@@ -132,9 +131,9 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
               </div>
               <button
                 onClick={() => setOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -163,7 +162,7 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
                         onChange={() => setResolution(opt.value)}
                         className="sr-only"
                       />
-                      <span className="text-base">{opt.emoji}</span>
+                      <span className={`w-2 h-2 rounded-full ${opt.dot}`} />
                       <span className="text-xs font-medium">{opt.label}</span>
                     </label>
                   ))}
@@ -183,7 +182,7 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
                 <select
                   value={shipping}
                   onChange={e => setShipping(e.target.value as Shipping)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">— Garder la décision ML —</option>
                   {SHIPPING_OPTIONS.map(o => (
@@ -202,7 +201,7 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
                   value={overrideNote}
                   onChange={e => setOverrideNote(e.target.value)}
                   placeholder="Expliquez pourquoi vous modifiez la décision..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
               </div>
             </div>
@@ -218,7 +217,7 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
               <button
                 onClick={handleSave}
                 disabled={loading || !resolution}
-                className="flex-1 bg-purple-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-purple-700 transition-colors disabled:opacity-50"
+                className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
               >
                 {loading ? "Enregistrement..." : "Confirmer la modification"}
               </button>
