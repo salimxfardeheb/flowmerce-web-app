@@ -60,8 +60,8 @@ export function DocumentUploadSection({ requestedDocuments, uploadedDocuments }:
 
   if (!requestedDocuments || requestedDocuments.length === 0) {
     return (
-      <div className="bg-orange-50 border border-orange-200 rounded-xl p-5 mb-8">
-        <p className="text-sm text-orange-700">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-8">
+        <p className="text-sm text-amber-700">
           Aucun document spécifique n&apos;a été précisé. Contactez le support pour plus d&apos;informations.
         </p>
       </div>
@@ -139,7 +139,7 @@ export function DocumentUploadSection({ requestedDocuments, uploadedDocuments }:
   };
 
   return (
-    <div className="bg-white border border-orange-200 rounded-xl p-6 mb-8 shadow-sm">
+    <div className="bg-white border border-gray-200 rounded-xl p-6 mb-8 shadow-sm">
       <h2 className="font-semibold text-gray-800 text-lg mb-1">
         📂 Documents requis
       </h2>
@@ -159,7 +159,7 @@ export function DocumentUploadSection({ requestedDocuments, uploadedDocuments }:
           </div>
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
-              className="h-full bg-orange-500 rounded-full transition-all duration-500"
+              className="h-full bg-indigo-500 rounded-full transition-all duration-500"
               style={{
                 width: `${Math.round(
                   (Object.keys(uploaded).filter((t) => requestedDocuments.includes(t)).length /
@@ -195,12 +195,12 @@ export function DocumentUploadSection({ requestedDocuments, uploadedDocuments }:
                   : state.status === "error"
                   ? "border-red-200 bg-red-50"
                   : isUploading
-                  ? "border-orange-200 bg-orange-50"
+                  ? "border-amber-200 bg-amber-50"
                   : "border-gray-200 bg-white"
               }`}
             >
               <div className="flex items-start gap-3">
-                <span className="text-2xl flex-shrink-0 mt-0.5">{icon}</span>
+                <span className="text-2xl shrink-0 mt-0.5">{icon}</span>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
@@ -218,7 +218,7 @@ export function DocumentUploadSection({ requestedDocuments, uploadedDocuments }:
                       </span>
                     )}
                     {isUploading && (
-                      <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200 font-medium">
+                      <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 font-medium">
                         ⬆ Envoi en cours…
                       </span>
                     )}
@@ -239,7 +239,7 @@ export function DocumentUploadSection({ requestedDocuments, uploadedDocuments }:
                   {/* Barre de progression individuelle */}
                   {isUploading && (
                     <div className="mb-2">
-                      <div className="flex justify-between text-xs text-orange-600 mb-1">
+                      <div className="flex justify-between text-xs text-amber-600 mb-1">
                         <span>
                           {state.progress < 90
                             ? "Envoi vers le serveur…"
@@ -247,9 +247,9 @@ export function DocumentUploadSection({ requestedDocuments, uploadedDocuments }:
                         </span>
                         <span>{state.progress}%</span>
                       </div>
-                      <div className="h-1.5 bg-orange-100 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-orange-500 rounded-full transition-all duration-200"
+                          className="h-full bg-amber-500 rounded-full transition-all duration-200"
                           style={{ width: `${state.progress}%` }}
                         />
                       </div>
@@ -268,7 +268,7 @@ export function DocumentUploadSection({ requestedDocuments, uploadedDocuments }:
                         ? "opacity-50 cursor-not-allowed bg-gray-100 text-gray-400 border-gray-200"
                         : isUploaded
                         ? "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-                        : "bg-orange-600 text-white border-transparent hover:bg-orange-700"
+                        : "bg-indigo-600 text-white border-transparent hover:bg-indigo-700"
                     }`}
                   >
                     <input

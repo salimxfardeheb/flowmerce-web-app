@@ -49,7 +49,7 @@ export default async function ClaimsPage({
   const resolutionConfig: Record<string, { label: string; cls: string; dot: string }> = {
     Refund:   { label: "Remboursement", cls: "text-green-700 bg-green-50 ring-1 ring-green-200",    dot: "bg-green-500"  },
     Exchange: { label: "Échange",       cls: "text-blue-700 bg-blue-50 ring-1 ring-blue-200",       dot: "bg-blue-500"   },
-    Repair:   { label: "Réparation",    cls: "text-orange-700 bg-orange-50 ring-1 ring-orange-200", dot: "bg-orange-400" },
+    Repair:   { label: "Réparation",    cls: "text-amber-700 bg-amber-50 ring-1 ring-amber-200",   dot: "bg-amber-400"  },
     Reject:   { label: "Refus",         cls: "text-red-700 bg-red-50 ring-1 ring-red-200",          dot: "bg-red-500"    },
   };
 
