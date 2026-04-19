@@ -15,7 +15,7 @@ export default async function ClaimsPage({
   const session = await getSessionServer();
   if (!session) redirect("/auth/login");
 
-  const user   = session.user as any;
+  const user   = session.user;
   const params = await searchParams;
 
   const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } });
@@ -37,7 +37,7 @@ export default async function ClaimsPage({
   const total    = allVendorClaims.length;
   const pending  = allVendorClaims.filter((c) => c.status === "PENDING").length;
   const withML   = allVendorClaims.filter((c) => c.aiDecision !== null).length;
-  const highRisk = allVendorClaims.filter((c) => ((c as any).fraudScore ?? 0) >= 60).length;
+  const highRisk = allVendorClaims.filter((c) => (c.fraudScore ?? 0) >= 60).length;
 
   const statusConfig: Record<string, { label: string; cls: string }> = {
     PENDING:     { label: "En attente", cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200"   },
@@ -201,9 +201,9 @@ export default async function ClaimsPage({
             </thead>
             <tbody className="divide-y divide-gray-100">
               {claims.map((claim) => {
-                const fraudScore  = (claim as any).fraudScore  as number | null;
-                const source      = (claim as any).source      as string;
-                const productName = (claim as any).productName as string | null;
+                const fraudScore  = claim.fraudScore;
+                const source      = claim.source;
+                const productName = claim.productName;
                 const prediction  = claim.prediction as Record<string, unknown> | null;
 
                 const overrideData    = (prediction as any)?.override;

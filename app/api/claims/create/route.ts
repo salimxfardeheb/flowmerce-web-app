@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { hashApiKey } from "@/lib/utils";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { validateApiKey } from "@/lib/api-key-auth";
 
 // ─────────────────────────────────────────────────────────────
 // Score de risque basé sur la raison — préparation ML
@@ -12,67 +13,14 @@ const REASON_RISK: Record<string, number> = {
   CHANGE_MIND:  70,   // changement d'avis   → risque élevé   (abus possible)
 };
 
-function computeFraudScore(
-  reason: string,
-  description: string,
-  ip: string | null,
-  orderId: string
-): number {
+function computeFraudScore(reason: string, description: string): number {
   let score = REASON_RISK[reason] ?? 50;
-
-  // Description trop courte = suspicious
-  if (description.trim().length < 20) score += 15;
-
-  // Description très courte = très suspicious
-  if (description.trim().length < 10) score += 15;
-
-  // Même orderId soumis plusieurs fois = déjà géré par rate limit,
-  // mais on augmente le score si detecté ici aussi
-  // (la vérification DB est dans le rate limiter ci-dessous)
-
+  const len = description.trim().length;
+  if (len < 20) score += 15;
+  if (len < 10) score += 15;
   return Math.min(100, score);
 }
 
-// ─────────────────────────────────────────────────────────────
-// Rate limiting : max 3 soumissions par orderId par heure
-// ─────────────────────────────────────────────────────────────
-async function checkRateLimit(orderId: string, ip: string): Promise<boolean> {
-  const key     = `${ip}:${orderId}`;
-  const now     = new Date();
-  const resetAt = new Date(now.getTime() + 60 * 60 * 1000); // +1h
-
-  try {
-    return await prisma.$transaction(
-      async (tx) => {
-        const existing = await tx.returnRateLimit.findUnique({ where: { key } });
-
-        if (!existing) {
-          await tx.returnRateLimit.create({ data: { key, count: 1, resetAt } });
-          return true;
-        }
-
-        if (existing.resetAt < now) {
-          await tx.returnRateLimit.update({
-            where: { key },
-            data: { count: 1, resetAt },
-          });
-          return true;
-        }
-
-        if (existing.count >= 3) return false;
-
-        await tx.returnRateLimit.update({
-          where: { key },
-          data: { count: { increment: 1 } },
-        });
-        return true;
-      },
-      { isolationLevel: "Serializable" }
-    );
-  } catch {
-    return false;
-  }
-}
 
 // ─────────────────────────────────────────────────────────────
 // Validation stricte des champs
@@ -140,38 +88,14 @@ export async function POST(req: NextRequest) {
     ?? req.headers.get("x-real-ip")
     ?? "unknown";
 
-  // ── 1. Vérifier la clé API (header ou query param) ──────────
-  const apiKey =
+  // ── 1. Valider la clé API ────────────────────────────────────
+  const rawKey =
     req.headers.get("x-api-key") ??
     req.nextUrl.searchParams.get("api_key");
 
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Clé API manquante (header x-api-key ou param api_key)" },
-      { status: 401 }
-    );
-  }
-
-  // ── 2. Valider la clé API (lookup par hash, raw jamais stocké) ─
-  const keyRecord = await prisma.apiKey.findUnique({
-    where: { key: hashApiKey(apiKey) },
-    include: {
-      vendor: {
-        include: { returnPolicy: true },
-      },
-    },
-  });
-
-  if (!keyRecord || !keyRecord.isActive) {
-    return NextResponse.json({ error: "Clé API invalide ou révoquée" }, { status: 401 });
-  }
-
-  if (keyRecord.vendor.status !== "APPROVED") {
-    return NextResponse.json(
-      { error: "Compte vendeur non approuvé" },
-      { status: 403 }
-    );
-  }
+  const auth = await validateApiKey(rawKey);
+  if (!auth.ok) return auth.response;
+  const { keyRecord } = auth;
 
   // ── 3. Parser le body ────────────────────────────────────────
   let body: Record<string, unknown>;
@@ -201,7 +125,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 7. Calculer le score de risque ───────────────────────────
-  const fraudScore = computeFraudScore(reason, description, ip, orderId);
+  const fraudScore = computeFraudScore(reason, description);
   const orderDateRaw = body.order_date ? new Date(String(body.order_date)) : null;
 
   // ── 8. Vérifier unicité et créer atomiquement ─────────────── (CRIT-6)

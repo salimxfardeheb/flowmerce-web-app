@@ -29,7 +29,7 @@ export default async function DashboardPage() {
   const session = await getSessionServer();
   if (!session) redirect("/auth/login");
 
-  const user = session.user as any;
+  const user = session.user;
 
   const vendor = await prisma.vendor.findUnique({
     where: { userId: user.id },
@@ -102,7 +102,7 @@ export default async function DashboardPage() {
   const approvedClaims  = allClaims.filter((c) => c.status === "APPROVED").length;
   const rejectedClaims  = allClaims.filter((c) => c.status === "REJECTED").length;
   const inProgressClaims = allClaims.filter((c) => c.status === "IN_PROGRESS").length;
-  const highRiskClaims  = allClaims.filter((c) => ((c as any).fraudScore ?? 0) >= 60).length;
+  const highRiskClaims  = allClaims.filter((c) => (c.fraudScore ?? 0) >= 60).length;
   const aiDecisions     = allClaims.filter((c) => c.aiDecision !== null).length;
   const approvalRate    = totalClaims > 0 ? Math.round((approvedClaims / totalClaims) * 100) : null;
   const recentClaims    = allClaims.slice(0, 5);
@@ -429,7 +429,7 @@ export default async function DashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {recentClaims.map((claim) => {
-                      const fraudScore = (claim as any).fraudScore as number | null;
+                      const fraudScore = claim.fraudScore;
                       const riskLevel =
                         fraudScore === null
                           ? null

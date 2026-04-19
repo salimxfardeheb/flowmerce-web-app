@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+const PatchDocumentSchema = z.object({
+  status:          z.enum(["ACCEPTED", "REJECTED"]),
+  rejectionReason: z.string().max(500).nullable().optional(),
+});
 
 /**
  * PATCH /api/vendors/documents/[documentId]
@@ -15,15 +21,16 @@ export async function PATCH(
   if (!session)
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
   if (user?.role !== "ADMIN")
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
 
   const { documentId } = await params;
-  const { status, rejectionReason } = await req.json();
+  const parsed = PatchDocumentSchema.safeParse(await req.json());
+  if (!parsed.success)
+    return NextResponse.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
 
-  if (!["ACCEPTED", "REJECTED"].includes(status))
-    return NextResponse.json({ error: "Statut invalide" }, { status: 400 });
+  const { status, rejectionReason } = parsed.data;
 
   // Mettre à jour le document
   const document = await prisma.document.update({

@@ -20,30 +20,27 @@ export async function GET(
 
   if (!keyRecord) {
     return NextResponse.json(
-      { valid: false, companyName: '', acceptedReasons: [], error: 'Clé API introuvable.' },
+      { valid: false, companyName: '', error: 'Clé API introuvable.' },
       { status: 403 }
     )
   }
   if (!keyRecord.isActive) {
     return NextResponse.json(
-      { valid: false, companyName: '', acceptedReasons: [], error: 'Cette clé API est désactivée.' },
+      { valid: false, companyName: '', error: 'Cette clé API est désactivée.' },
       { status: 403 }
     )
   }
   if (keyRecord.vendor.status !== 'APPROVED') {
     return NextResponse.json(
-      { valid: false, companyName: '', acceptedReasons: [], error: "Ce compte vendeur n'est pas encore approuvé." },
+      { valid: false, companyName: '', error: "Ce compte vendeur n'est pas encore approuvé." },
       { status: 403 }
     )
   }
 
-  const acceptedReasons = keyRecord.vendor.returnPolicy?.acceptedReturnReasons ?? []
-
   return NextResponse.json(
     {
-      valid:           true,
-      companyName:     keyRecord.vendor.companyName,
-      acceptedReasons,
+      valid:       true,
+      companyName: keyRecord.vendor.companyName,
     },
     { status: 200 }
   )

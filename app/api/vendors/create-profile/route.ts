@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (!session)
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
 
   if (user?.role !== "ADMIN")
     return NextResponse.json({ error: "Réservé aux administrateurs" }, { status: 403 });

@@ -26,7 +26,7 @@ export default async function DashboardLayout({
 
   if (!session) redirect("/auth/login");
 
-  const user = session.user as any;
+  const user = session.user;
 
   return (
     <div className="min-h-screen flex bg-gray-50">

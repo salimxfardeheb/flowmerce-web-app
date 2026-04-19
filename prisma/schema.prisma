@@ -111,12 +111,6 @@ model ReturnPolicy {
   acceptedTypes          ClaimType[]
   validationMode         ValidationMode @default(MANUAL)
   fraudScoreThreshold    Int            @default(70)
-  nonRefundableCategories  String[]     @default([])
-  exchangeOnlyCategories   String[]     @default([])
-  partialRefundEnabled     Boolean      @default(false)
-  partialRefundAfter50pct  Int          @default(50)
-  partialRefundUsedPenalty Int          @default(20)
-  acceptedReturnReasons    String[]     @default([])
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 
@@ -173,6 +167,7 @@ model Claim {
   vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([vendorId, orderId])
+  @@index([vendorId, createdAt(sort: Desc)])
   @@index([vendorId])
   @@index([status])
   @@index([orderId])

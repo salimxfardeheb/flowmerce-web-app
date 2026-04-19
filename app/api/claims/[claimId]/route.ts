@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+const PatchClaimSchema = z.object({
+  status:          z.enum(["APPROVED", "REJECTED", "IN_PROGRESS"]).optional(),
+  aiDecision:      z.enum(["Refund", "Exchange", "Repair", "Reject"]).optional(),
+  overrideShipping: z.string().max(200).nullable().optional(),
+  overrideNote:    z.string().max(500).nullable().optional(),
+});
 
 export async function PATCH(
   req: NextRequest,
@@ -9,14 +17,17 @@ export async function PATCH(
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
   const { claimId } = await params;
 
   const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } });
   if (!vendor) return NextResponse.json({ error: "Vendeur introuvable" }, { status: 404 });
 
-  const body = await req.json();
-  const { status, aiDecision, overrideShipping, overrideNote } = body;
+  const parsed = PatchClaimSchema.safeParse(await req.json());
+  if (!parsed.success)
+    return NextResponse.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
+
+  const { status, aiDecision, overrideShipping, overrideNote } = parsed.data;
 
   // Vérifier que la réclamation appartient bien à ce vendeur
   const claim = await prisma.claim.findFirst({
@@ -29,18 +40,12 @@ export async function PATCH(
 
   // ── Mise à jour du statut ────────────────────────────────────
   if (status) {
-    const validStatuses = ["APPROVED", "REJECTED", "IN_PROGRESS"];
-    if (!validStatuses.includes(status))
-      return NextResponse.json({ error: "Statut invalide" }, { status: 400 });
     updateData.status      = status;
     updateData.processedAt = new Date();
   }
 
   // ── Override décision ML ──────────────────────────────────────
   if (aiDecision) {
-    const validResolutions = ["Refund", "Exchange", "Repair", "Reject"];
-    if (!validResolutions.includes(aiDecision))
-      return NextResponse.json({ error: "Résolution invalide" }, { status: 400 });
 
     updateData.aiDecision = aiDecision;
 

@@ -45,32 +45,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as any).role;
-        token.vendorId = (user as any).vendorId;
-        token.vendorStatus = (user as any).vendorStatus;
+        const u = user as { role: string; vendorId: string | null; vendorStatus: string | null };
+        token.role = u.role;
+        token.vendorId = u.vendorId;
+        token.vendorStatus = u.vendorStatus;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).id = token.sub;
-        (session.user as any).role = token.role;
-        (session.user as any).vendorId = token.vendorId;
-        (session.user as any).vendorStatus = token.vendorStatus;
+        session.user.id = token.sub ?? '';
+        session.user.role = token.role;
+        session.user.vendorId = token.vendorId;
+        session.user.vendorStatus = token.vendorStatus;
       }
       return session;
     },
   },
 });
 
-// Type helper exporté pour tout le projet
-export type AppSession = {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
-    vendorId: string | null;
-    vendorStatus: string | null;
-  };
-} | null;

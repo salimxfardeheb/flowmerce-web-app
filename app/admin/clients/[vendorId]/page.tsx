@@ -19,7 +19,7 @@ export default async function AdminVendorDetailPage({
   const session = await getSessionServer();
   if (!session) redirect("/auth/login");
 
-  const user = session.user as any;
+  const user = session.user;
   if (user?.role !== "ADMIN") redirect("/dashboard");
 
   const { vendorId } = await params;
@@ -252,76 +252,6 @@ export default async function AdminVendorDetailPage({
           )}
         </div>
       </div>
-
-      {/* ── Détails politique ── */}
-      {policy && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-          <h2 className="font-semibold text-gray-800 mb-5">Détails de la politique</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                🚫 Catégories non remboursables
-              </p>
-              {policy.nonRefundableCategories.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {policy.nonRefundableCategories.map((cat) => (
-                    <span key={cat} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-700 border border-red-100">{cat}</span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400">Toutes les catégories sont remboursables</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                ↔️ Échange seulement
-              </p>
-              {policy.exchangeOnlyCategories.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {policy.exchangeOnlyCategories.map((cat) => (
-                    <span key={cat} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">{cat}</span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400">Aucune restriction</p>
-              )}
-            </div>
-            <div className="md:col-span-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                📝 Raisons de retour acceptées
-              </p>
-              {policy.acceptedReturnReasons.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {policy.acceptedReturnReasons.map((reason) => (
-                    <span key={reason} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">{reason}</span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400">Toutes les raisons sont acceptées</p>
-              )}
-            </div>
-            <div className="md:col-span-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                💳 Remboursement partiel
-              </p>
-              {policy.partialRefundEnabled ? (
-                <div className="flex gap-4">
-                  <div className="flex-1 p-3 rounded-lg bg-purple-50 border border-purple-100 text-center">
-                    <p className="text-xl font-bold text-purple-700">{policy.partialRefundAfter50pct}%</p>
-                    <p className="text-xs text-purple-600 mt-0.5">remboursé si retour après 50% du délai</p>
-                  </div>
-                  <div className="flex-1 p-3 rounded-lg bg-red-50 border border-red-100 text-center">
-                    <p className="text-xl font-bold text-red-700">-{policy.partialRefundUsedPenalty}%</p>
-                    <p className="text-xs text-red-600 mt-0.5">pénalité si produit utilisé</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400">Désactivé — remboursement intégral</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Révision documents ── */}
       <DocumentReviewSection

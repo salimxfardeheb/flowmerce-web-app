@@ -2,12 +2,17 @@ import { getSessionFromRequest } from "@/lib/getSession";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateApiKey, hashApiKey, apiKeyPrefix } from "@/lib/utils";
+import { z } from "zod";
+
+const CreateApiKeySchema = z.object({
+  name: z.string().min(1, "Nom requis").max(50).trim(),
+});
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
 
   const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } });
   if (!vendor) return NextResponse.json({ error: "Vendeur introuvable" }, { status: 404 });
@@ -34,7 +39,7 @@ export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
 
   const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } });
   if (!vendor) return NextResponse.json({ error: "Vendeur introuvable" }, { status: 404 });
@@ -44,10 +49,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Compte non approuvé" }, { status: 403 });
   }
 
-  const { name } = await req.json();
-  if (!name?.trim()) {
-    return NextResponse.json({ error: "Nom requis" }, { status: 400 });
-  }
+  const parsed = CreateApiKeySchema.safeParse(await req.json());
+  if (!parsed.success)
+    return NextResponse.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
+
+  const { name } = parsed.data;
 
   const count = await prisma.apiKey.count({
     where: { vendorId: vendor.id, isActive: true },

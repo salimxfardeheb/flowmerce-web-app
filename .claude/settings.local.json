@@ -10,7 +10,8 @@
       "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\({deps: p.dependencies, devDeps: p.devDependencies}, null, 2\\)\\)\")",
       "Bash(node_modules/.bin/prisma --version)",
       "Bash(npm show *)",
-      "Bash(node_modules/.bin/prisma version *)"
+      "Bash(node_modules/.bin/prisma version *)",
+      "Bash(node -e \"require\\('zod'\\); console.log\\('ok'\\)\")"
     ]
   }
 }

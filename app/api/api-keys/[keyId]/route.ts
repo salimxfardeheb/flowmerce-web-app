@@ -9,7 +9,7 @@ export async function DELETE(
   const session = await getSessionFromRequest();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
   const { keyId } = await params;
 
   const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } });

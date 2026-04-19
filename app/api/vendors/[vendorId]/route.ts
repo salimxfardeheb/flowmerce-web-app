@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+const PatchVendorSchema = z.object({
+  status:             z.enum(["APPROVED", "REJECTED", "DOCUMENTS_REQUESTED"]),
+  rejectionReason:    z.string().max(500).nullable().optional(),
+  requestedDocuments: z.array(z.enum([
+    "ID_CARD", "BUSINESS_REGISTRATION", "ADDRESS_PROOF",
+    "TAX_CERTIFICATE", "BANK_DETAILS", "OTHER",
+  ])).optional(),
+});
 
 export async function PATCH(
   req: NextRequest,
@@ -10,16 +20,16 @@ export async function PATCH(
   if (!session)
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
   if (user?.role !== "ADMIN")
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
 
   const { vendorId } = await params;
-  const { status, rejectionReason, requestedDocuments } = await req.json();
+  const parsed = PatchVendorSchema.safeParse(await req.json());
+  if (!parsed.success)
+    return NextResponse.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
 
-  const validStatuses = ["APPROVED", "REJECTED", "DOCUMENTS_REQUESTED"];
-  if (!validStatuses.includes(status))
-    return NextResponse.json({ error: "Statut invalide" }, { status: 400 });
+  const { status, rejectionReason, requestedDocuments } = parsed.data;
 
   // Récupérer l'état actuel du vendeur
   const currentVendor = await prisma.vendor.findUnique({

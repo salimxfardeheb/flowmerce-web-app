@@ -1,7 +1,8 @@
 // src/app/api/return/[token]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { hashApiKey } from '@/lib/utils'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { validateApiKey } from '@/lib/api-key-auth'
 
 // ─────────────────────────────────────────────────────────────
 // Constantes : motifs en français → mapping risque + ClaimType
@@ -31,40 +32,6 @@ const TYPE_MAP: Record<string, 'EXCHANGE' | 'REFUND' | 'REPAIR'> = {
 const HTML_RE  = /<[^>]*>/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-// ─────────────────────────────────────────────────────────────
-// Rate limit : 3 soumissions max / heure / (IP + orderId)
-// ─────────────────────────────────────────────────────────────
-async function checkRateLimit(orderId: string, ip: string): Promise<boolean> {
-  const key     = `${ip}:${orderId}`
-  const now     = new Date()
-  const resetAt = new Date(now.getTime() + 60 * 60 * 1000)
-
-  try {
-    return await prisma.$transaction(
-      async (tx) => {
-        const existing = await tx.returnRateLimit.findUnique({ where: { key } })
-
-        if (!existing) {
-          await tx.returnRateLimit.create({ data: { key, count: 1, resetAt } })
-          return true
-        }
-        if (existing.resetAt < now) {
-          await tx.returnRateLimit.update({ where: { key }, data: { count: 1, resetAt } })
-          return true
-        }
-        if (existing.count >= 3) return false
-        await tx.returnRateLimit.update({
-          where: { key },
-          data:  { count: { increment: 1 } },
-        })
-        return true
-      },
-      { isolationLevel: 'Serializable' }
-    )
-  } catch {
-    return false
-  }
-}
 
 function computeFraudScore(reason: string, description: string): number {
   let score = REASON_RISK[reason] ?? 50
@@ -85,18 +52,10 @@ export async function POST(
 ) {
   const { token } = await params
 
-  // ── 1. Valider la clé API (lookup par hash) ─────────────────
-  const keyRecord = await prisma.apiKey.findUnique({
-    where:   { key: hashApiKey(token) },
-    include: { vendor: true },
-  }).catch(() => null)
-
-  if (!keyRecord || !keyRecord.isActive) {
-    return NextResponse.json({ error: 'Clé API invalide ou révoquée' }, { status: 401 })
-  }
-  if (keyRecord.vendor.status !== 'APPROVED') {
-    return NextResponse.json({ error: 'Compte vendeur non approuvé' }, { status: 403 })
-  }
+  // ── 1. Valider la clé API ────────────────────────────────────
+  const auth = await validateApiKey(token)
+  if (!auth.ok) return auth.response
+  const { keyRecord } = auth
 
   // ── 2. Lire les paramètres uniquement depuis le body JSON ───
   //     (les query params sont ignorés : pas de PII dans l'URL)

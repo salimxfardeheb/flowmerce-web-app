@@ -11,7 +11,7 @@ export default async function AdminVendorsPage() {
   const session = await getSessionServer();
   if (!session) redirect("/auth/login");
 
-  const user = session.user as any;
+  const user = session.user;
   if (user?.role !== "ADMIN") redirect("/dashboard");
 
   const vendors = await prisma.vendor.findMany({

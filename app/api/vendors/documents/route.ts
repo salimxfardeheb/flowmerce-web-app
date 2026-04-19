@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   if (!session)
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
 
   const vendor = await prisma.vendor.findUnique({
     where: { userId: user.id },

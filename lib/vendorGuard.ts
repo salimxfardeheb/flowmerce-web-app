@@ -15,7 +15,7 @@ export async function checkVendorAccess() {
   const session = await getSessionServer();
   if (!session) redirect("/auth/login");
 
-  const user = session.user as any;
+  const user = session.user;
 
   const vendor = await prisma.vendor.findUnique({
     where: { userId: user.id },

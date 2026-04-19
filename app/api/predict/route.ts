@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { hashApiKey } from "@/lib/utils";
+import { validateApiKey } from "@/lib/api-key-auth";
 
 // ─────────────────────────────────────────────────────────────
 // Types (miroir du schéma Pydantic FastAPI)
@@ -97,53 +97,24 @@ function applyVendorPolicy(
   policy: {
     maxClaimDays: number;
     fraudScoreThreshold?: number | null;
-    nonRefundableCategories?: string[];
-    exchangeOnlyCategories?: string[];
-    acceptedReturnReasons?: string[];
     acceptedTypes?: string[];
   } | null
-): { input: ReturnRequest; policyWarnings: string[]; policyRejected: boolean; rejectionReason?: string } {
+): { input: ReturnRequest; policyWarnings: string[]; policyRejected: boolean } {
   const warnings: string[] = [];
   const enriched = { ...input } as ReturnRequest;
 
   if (!policy) return { input: enriched, policyWarnings: warnings, policyRejected: false };
 
-  // Injecter la fenêtre de retour du vendeur
   enriched.Shop_Return_Window_Days = policy.maxClaimDays;
-
-  // Calculer Within_Return_Policy automatiquement
   enriched.Within_Return_Policy =
     enriched.Days_to_Return <= policy.maxClaimDays ? 1 : 0;
 
-  // Vérifier le seuil de fraude du vendeur
   const fraudThreshold = policy.fraudScoreThreshold ?? 70;
   if (enriched.Fraud_Score >= fraudThreshold) {
     enriched.Is_Suspicious = 1;
     warnings.push(
       `Fraud_Score (${enriched.Fraud_Score}) dépasse le seuil vendeur (${fraudThreshold}) — marqué comme suspect`
     );
-  }
-
-  // Catégorie non remboursable → rejet bloquant (CRIT-7)
-  const nonRefundable = policy.nonRefundableCategories ?? [];
-  if (nonRefundable.includes(enriched.Product_Category)) {
-    return {
-      input: enriched,
-      policyWarnings: warnings,
-      policyRejected: true,
-      rejectionReason: `Catégorie "${enriched.Product_Category}" non remboursable selon la politique vendeur`,
-    };
-  }
-
-  // Raison non acceptée → rejet bloquant (CRIT-7)
-  const acceptedReasons = policy.acceptedReturnReasons ?? [];
-  if (acceptedReasons.length > 0 && !acceptedReasons.includes(enriched.Return_Reason)) {
-    return {
-      input: enriched,
-      policyWarnings: warnings,
-      policyRejected: true,
-      rejectionReason: `Raison "${enriched.Return_Reason}" non acceptée par la politique vendeur`,
-    };
   }
 
   return { input: enriched, policyWarnings: warnings, policyRejected: false };
@@ -159,56 +130,10 @@ export async function POST(req: NextRequest) {
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
     null;
 
-  if (!rawKey) {
-    return NextResponse.json(
-      {
-        error: "Clé API manquante",
-        hint: "Ajoutez le header : x-api-key: votre_cle",
-      },
-      { status: 401 }
-    );
-  }
-
-  // 2. Valider la clé dans la base de données
-  let keyRecord;
-  try {
-    keyRecord = await prisma.apiKey.findUnique({
-      where: { key: hashApiKey(rawKey) },
-      include: {
-        vendor: {
-          include: {
-            returnPolicy: true,
-          },
-        },
-      },
-    });
-  } catch {
-    return NextResponse.json(
-      { error: "Erreur de base de données" },
-      { status: 500 }
-    );
-  }
-
-  if (!keyRecord) {
-    return NextResponse.json({ error: "Clé API introuvable" }, { status: 403 });
-  }
-
-  if (!keyRecord.isActive) {
-    return NextResponse.json(
-      { error: "Clé API désactivée", hint: "Générez une nouvelle clé dans votre dashboard" },
-      { status: 403 }
-    );
-  }
-
-  if (keyRecord.vendor.status !== "APPROVED") {
-    return NextResponse.json(
-      {
-        error: "Compte vendeur non approuvé",
-        status: keyRecord.vendor.status,
-      },
-      { status: 403 }
-    );
-  }
+  // 2. Valider la clé API
+  const auth = await validateApiKey(rawKey);
+  if (!auth.ok) return auth.response;
+  const { keyRecord } = auth;
 
   // 3. Parser le body
   let rawBody: Partial<ReturnRequest>;
@@ -228,7 +153,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Appliquer la politique du vendeur
-  const { input: mlInput, policyWarnings, policyRejected, rejectionReason } = applyVendorPolicy(
+  const { input: mlInput, policyWarnings, policyRejected } = applyVendorPolicy(
     rawBody,
     keyRecord.vendor.returnPolicy as any
   );
@@ -242,8 +167,6 @@ export async function POST(req: NextRequest) {
           return_window_days: keyRecord.vendor.returnPolicy?.maxClaimDays ?? 14,
           within_policy: false,
           warnings: policyWarnings,
-          rejected_by_policy: true,
-          rejection_reason: rejectionReason,
         },
       },
       { status: 422 }
@@ -254,20 +177,23 @@ export async function POST(req: NextRequest) {
   const mlApiUrl = process.env.ML_API_URL ?? "http://localhost:8000";
   let prediction: MLPrediction;
 
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 10_000);
+
   try {
     const mlRes = await fetch(`${mlApiUrl}/predict`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // Clé interne entre Next.js et FastAPI (optionnel mais recommandé)
         ...(process.env.ML_INTERNAL_SECRET
           ? { "X-Internal-Key": process.env.ML_INTERNAL_SECRET }
           : {}),
       },
       body: JSON.stringify(mlInput),
-      // Timeout 10s
-      signal: AbortSignal.timeout(10_000),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!mlRes.ok) {
       const errBody = await mlRes.json().catch(() => ({}));
@@ -280,15 +206,25 @@ export async function POST(req: NextRequest) {
 
     prediction = await mlRes.json();
   } catch (err: any) {
-    if (err?.name === "TimeoutError") {
+    clearTimeout(timeoutId);
+
+    const isTimeout = err?.name === "AbortError" || err?.name === "TimeoutError";
+    if (isTimeout) {
       return NextResponse.json(
-        { error: "Le modèle ML n'a pas répondu dans les délais (10s)" },
+        {
+          error:       "Le serveur ML n'a pas répondu dans les délais (10 s)",
+          mlServerDown: true,
+        },
         { status: 504 }
       );
     }
-    console.error("[predict] Network error:", err);
+
+    console.error("[predict] Network error:", err?.code ?? err?.message);
     return NextResponse.json(
-      { error: "Impossible de joindre le service ML", detail: err?.message },
+      {
+        error:       "Le serveur de prédiction est inaccessible. Vérifiez que le service ML est bien démarré sur " + mlApiUrl + ".",
+        mlServerDown: true,
+      },
       { status: 503 }
     );
   }

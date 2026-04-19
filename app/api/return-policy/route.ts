@@ -2,12 +2,21 @@
 import { getSessionFromRequest } from "@/lib/getSession";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+const ReturnPolicySchema = z.object({
+  allowRefusalOnDelivery: z.boolean().optional(),
+  maxClaimDays:           z.number().int().min(1).max(365).optional(),
+  acceptedTypes:          z.array(z.enum(["EXCHANGE", "REFUND", "REPAIR"])).optional(),
+  validationMode:         z.enum(["MANUAL", "AI_AUTO"]).optional(),
+  fraudScoreThreshold:    z.number().int().min(0).max(100).optional(),
+});
 
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
 
   const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } });
   if (!vendor) return NextResponse.json({ error: "Vendeur introuvable" }, { status: 404 });
@@ -25,7 +34,7 @@ export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest();
   if (!session) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
 
-  const user = session.user as any;
+  const user = session.user;
 
   const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } });
   if (!vendor) return NextResponse.json({ error: "Vendeur introuvable" }, { status: 404 });
@@ -35,32 +44,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Compte non approuvé" }, { status: 403 });
   }
 
-  const {
-    allowRefusalOnDelivery,
-    maxClaimDays,
-    acceptedTypes,
-    validationMode,
-    fraudScoreThreshold,
-    nonRefundableCategories,
-    exchangeOnlyCategories,
-    partialRefundEnabled,
-    partialRefundAfter50pct,
-    partialRefundUsedPenalty,
-    acceptedReturnReasons,
-  } = await req.json();
+  const parsed = ReturnPolicySchema.safeParse(await req.json());
+  if (!parsed.success)
+    return NextResponse.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
 
+  const { allowRefusalOnDelivery, maxClaimDays, acceptedTypes, validationMode, fraudScoreThreshold } = parsed.data;
   const policyData = {
     allowRefusalOnDelivery,
     maxClaimDays,
     acceptedTypes,
     validationMode,
-    fraudScoreThreshold:      fraudScoreThreshold      ?? 70,
-    nonRefundableCategories:  nonRefundableCategories  ?? [],
-    exchangeOnlyCategories:   exchangeOnlyCategories   ?? [],
-    partialRefundEnabled:     partialRefundEnabled      ?? false,
-    partialRefundAfter50pct:  partialRefundAfter50pct  ?? 50,
-    partialRefundUsedPenalty: partialRefundUsedPenalty ?? 20,
-    acceptedReturnReasons:    acceptedReturnReasons    ?? [],
+    fraudScoreThreshold: fraudScoreThreshold ?? 70,
   };
 
   const policy = await prisma.returnPolicy.upsert({
