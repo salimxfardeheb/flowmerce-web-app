@@ -30,13 +30,23 @@ export default function ReturnPage() {
   const searchParams = useSearchParams()
   const token        = params.token as string
 
-  const customerName  = searchParams.get('customer_name')  ?? ''
-  const customerEmail = searchParams.get('customer_email') ?? ''
+  const customerName      = searchParams.get('customer_name')      ?? ''
+  const customerEmail     = searchParams.get('customer_email')     ?? ''
   const customerTelephone = searchParams.get('customer_telephone') ?? ''
-  const productName   = searchParams.get('product_name')   ?? ''
-  const orderId       = searchParams.get('order_id')       ?? ''
-  const shopName      = searchParams.get('shop_name')      ?? ''
-  const orderDate     = searchParams.get('order_date')     ?? ''
+  const customerGender    = searchParams.get('customer_gender')    ?? ''
+  const customerAge       = searchParams.get('customer_age')       ?? ''
+  const customerWilaya    = searchParams.get('customer_wilaya')    ?? ''
+  const productName       = searchParams.get('product_name')       ?? ''
+  const productCategory   = searchParams.get('product_category')   ?? ''
+  const productPrice      = searchParams.get('product_price')      ?? ''
+  const orderId           = searchParams.get('order_id')           ?? ''
+  const orderQuantity     = searchParams.get('order_quantity')     ?? ''
+  const orderTotal        = searchParams.get('order_total')        ?? ''
+  const shopName          = searchParams.get('shop_name')          ?? ''
+  const orderDate         = searchParams.get('order_date')         ?? ''
+  const paymentMethod     = searchParams.get('payment_method')     ?? ''
+  const shippingMethod    = searchParams.get('shipping_method')    ?? ''
+  const shippingCost      = searchParams.get('shipping_cost')      ?? ''
 
   const [vendor, setVendor]               = useState<VendorInfo | null>(null)
   const [loadingVendor, setLoadingVendor] = useState(true)
@@ -71,10 +81,20 @@ export default function ReturnPage() {
           customer_name:      customerName,
           customer_email:     customerEmail,
           customer_telephone: customerTelephone,
+          customer_gender:    customerGender,
+          customer_age:       customerAge,
+          customer_wilaya:    customerWilaya,
           product_name:       productName,
+          product_category:   productCategory,
+          product_price:      productPrice,
           order_id:           orderId,
+          order_quantity:     orderQuantity,
+          order_total:        orderTotal,
           shop_name:          shopName,
           order_date:         orderDate,
+          payment_method:     paymentMethod,
+          shipping_method:    shippingMethod,
+          shipping_cost:      shippingCost,
           reason,
           description:        description.trim(),
         }),

@@ -66,25 +66,31 @@ export async function POST(
     return NextResponse.json({ error: 'Body JSON invalide' }, { status: 400 })
   }
 
-  const str = (k: string) => String(body[k] ?? '').trim()
-  const num = (k: string) => {
-    const n = Number(body[k])
-    return Number.isFinite(n) && n > 0 ? n : null
-  }
+  const str    = (k: string) => String(body[k] ?? '').trim()
+  const numPos = (k: string) => { const n = Number(body[k]); return Number.isFinite(n) && n > 0  ? n : null }
+  const numGe0 = (k: string) => { const n = Number(body[k]); return Number.isFinite(n) && n >= 0 ? n : null }
+  const intPos = (k: string) => { const n = parseInt(String(body[k]), 10); return Number.isFinite(n) && n > 0 ? n : null }
 
-  const customerName    = str('customer_name')
-  const customerEmail   = str('customer_email').toLowerCase()
-  const customerPhone   = str('customer_telephone')
-  const productName     = str('product_name')
-  const orderId         = str('order_id')
-  const orderAddress    = str('order_address')
-  const shopName        = str('shop_name')
-  const orderDateRaw    = str('order_date')
-  const reason          = str('reason')
-  const description     = str('description')
-  const productPrice    = num('product_price')
-  const productQuantity = num('product_quantity') ?? 1
-  const orderTotal      = num('order_total')
+  const customerName     = str('customer_name')
+  const customerEmail    = str('customer_email').toLowerCase()
+  const customerPhone    = str('customer_telephone')
+  const customerGender   = str('customer_gender')  || 'Unknown'
+  const customerAge      = intPos('customer_age')   ?? 30
+  const customerWilaya   = str('customer_wilaya')   || 'Alger'
+  const productName      = str('product_name')
+  const productCategory  = str('product_category')
+  const orderId          = str('order_id')
+  const orderAddress     = str('order_address')
+  const shopName         = str('shop_name')
+  const orderDateRaw     = str('order_date')
+  const reason           = str('reason')
+  const description      = str('description')
+  const productPrice     = numPos('product_price')
+  const productQuantity  = intPos('order_quantity') ?? numPos('product_quantity') ?? 1
+  const orderTotal       = numPos('order_total')
+  const paymentMethod    = str('payment_method')  || 'Unknown'
+  const shippingMethod   = str('shipping_method') || 'Standard'
+  const shippingCost     = numGe0('shipping_cost') ?? 0
 
   // ── 3. Validation stricte ───────────────────────────────────
   if (!customerEmail || !orderId || !productName || !reason) {
@@ -167,12 +173,19 @@ export async function POST(
           ipAddress:     ip,
           fraudScore,
           prediction: {
-            shopName:      shopName || null,
-            customerPhone: customerPhone || null,
+            shopName:        shopName        || null,
+            customerPhone:   customerPhone   || null,
+            customerGender,
+            customerAge,
+            customerWilaya,
+            productCategory: productCategory || null,
             productPrice,
             productQuantity,
             orderTotal,
-            orderAddress:  orderAddress || null,
+            paymentMethod,
+            shippingMethod,
+            shippingCost,
+            orderAddress:    orderAddress    || null,
           },
         },
       })
@@ -187,6 +200,90 @@ export async function POST(
     throw err
   }
 
+  // ── 7. Appel ML pour prédiction automatique ─────────────────
+  const mlApiUrl         = process.env.ML_API_URL ?? 'http://localhost:8000'
+  const returnWindowDays = keyRecord.vendor.returnPolicy?.maxClaimDays ?? 14
+  const fraudThreshold   = keyRecord.vendor.returnPolicy?.fraudScoreThreshold ?? 70
+  const daysToReturn     = orderDate
+    ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
+    : 0
+
+  const pastReturns = await prisma.claim.count({
+    where: { vendorId: keyRecord.vendorId, customerEmail },
+  }).catch(() => 0)
+
+  const mlInput = {
+    Customer_Gender:         customerGender,
+    Customer_Age:            customerAge,
+    Customer_Wilaya:         customerWilaya,
+    Customer_Past_Returns:   pastReturns,
+    Shop_Name:               shopName || keyRecord.vendor.companyName,
+    Product_Category:        productCategory || keyRecord.vendor.vendorCategories?.[0] || 'Unknown',
+    Product_Price_DA:        productPrice ?? 1,
+    Order_Quantity:          productQuantity,
+    Total_Amount_DA:         orderTotal ?? productPrice ?? 1,
+    Payment_Method:          paymentMethod,
+    Shipping_Method:         shippingMethod,
+    Shipping_Cost_DA:        shippingCost,
+    Return_Reason:           reason,
+    Days_to_Return:          daysToReturn,
+    Shop_Return_Window_Days: returnWindowDays,
+    Within_Return_Policy:    daysToReturn <= returnWindowDays ? 1 : 0,
+    Fraud_Score:             fraudScore,
+    Customer_Satisfaction:   3,
+    Is_Suspicious:           fraudScore >= fraudThreshold ? 1 : 0,
+    Refund_Amount_DA:        productPrice ?? orderTotal ?? 0,
+  }
+
+  const mlController = new AbortController()
+  const mlTimeoutId  = setTimeout(() => mlController.abort(), 8_000)
+
+  try {
+    const mlRes = await fetch(`${mlApiUrl}/predict`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(mlInput),
+      signal:  mlController.signal,
+    })
+    clearTimeout(mlTimeoutId)
+
+    if (mlRes.ok) {
+      const mlPrediction = await mlRes.json()
+      const resolution   = mlPrediction?.resolution?.prediction ?? null
+      const confidence   = resolution
+        ? (mlPrediction?.resolution?.probabilities?.[resolution] ?? null)
+        : null
+
+      await prisma.claim.update({
+        where: { id: claim.id },
+        data: {
+          aiDecision: resolution,
+          aiScore:    confidence,
+          prediction: {
+            shopName:        shopName        || null,
+            customerPhone:   customerPhone   || null,
+            customerGender,
+            customerAge,
+            customerWilaya,
+            productCategory: productCategory || null,
+            productPrice,
+            productQuantity,
+            orderTotal,
+            paymentMethod,
+            shippingMethod,
+            shippingCost,
+            orderAddress:    orderAddress    || null,
+            ...mlPrediction,
+          },
+        },
+      }).catch(e => console.error('[return] ML claim update error:', e))
+    }
+  } catch (err: any) {
+    clearTimeout(mlTimeoutId)
+    console.warn('[return] ML server unreachable:', err?.code ?? err?.message)
+  }
+
+  // ── 8. Mettre à jour lastUsedAt de la clé API ─────────────────
   await prisma.apiKey.update({
     where: { id: keyRecord.id },
     data:  { lastUsedAt: new Date() },
