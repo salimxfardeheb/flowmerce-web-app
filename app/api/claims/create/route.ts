@@ -3,22 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { validateApiKey } from "@/lib/api-key-auth";
 
-// ─────────────────────────────────────────────────────────────
-// Score de risque basé sur la raison — préparation ML
-// ─────────────────────────────────────────────────────────────
-const REASON_RISK: Record<string, number> = {
-  DEFECTIVE:    15,   // produit défectueux  → risque faible  (légitime)
-  WRONG_ITEM:   25,   // erreur vendeur      → risque faible
-  DESCRIPTION:  40,   // ne correspond pas   → risque moyen
-  CHANGE_MIND:  70,   // changement d'avis   → risque élevé   (abus possible)
-};
-
-function computeFraudScore(reason: string, description: string): number {
-  let score = REASON_RISK[reason] ?? 50;
-  const len = description.trim().length;
-  if (len < 20) score += 15;
-  if (len < 10) score += 15;
-  return Math.min(100, score);
+async function getCustomerPastReturns(customerEmail: string, vendorId: string): Promise<number> {
+  return prisma.claim.count({ where: { customerEmail, vendorId } });
 }
 
 
@@ -124,8 +110,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 7. Calculer le score de risque ───────────────────────────
-  const fraudScore = computeFraudScore(reason, description);
+  // ── 7. Calculer Customer_Past_Returns depuis la DB ───────────
+  const pastReturns = await getCustomerPastReturns(
+    String(body.customer_email).trim().toLowerCase(),
+    keyRecord.vendorId
+  );
   const orderDateRaw = body.order_date ? new Date(String(body.order_date)) : null;
 
   // ── 8. Vérifier unicité et créer atomiquement ─────────────── (CRIT-6)
@@ -152,7 +141,7 @@ export async function POST(req: NextRequest) {
           type:          reasonToClaimType(reason),
           description,
           source:        body.source === "hosted_page" ? "HOSTED_PAGE" : "API",
-          fraudScore,
+          fraudScore:    pastReturns,
           ipAddress:     ip,
           status:        "PENDING",
         },
@@ -176,13 +165,13 @@ export async function POST(req: NextRequest) {
 
   // ── 10. Log console structuré ─────────────────────────────────
   console.log(JSON.stringify({
-    event:       "return_submitted",
-    claimId:     claim.id,
-    vendorId:    keyRecord.vendorId,
+    event:            "return_submitted",
+    claimId:          claim.id,
+    vendorId:         keyRecord.vendorId,
     orderId,
     reason,
-    fraudScore,
-    source:      claim.source,
+    customerPastReturns: pastReturns,
+    source:           claim.source,
     ip,
     timestamp:   new Date().toISOString(),
   }));
@@ -192,7 +181,7 @@ export async function POST(req: NextRequest) {
       success:    true,
       claim_id:   claim.id,
       status:     "PENDING",
-      fraud_score: fraudScore,
+      customer_past_returns: pastReturns,
       message:    "Votre demande de retour a été enregistrée.",
     },
     { status: 201 }

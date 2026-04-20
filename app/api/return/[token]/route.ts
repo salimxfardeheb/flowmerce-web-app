@@ -5,20 +5,20 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { validateApiKey } from '@/lib/api-key-auth'
 
 // ─────────────────────────────────────────────────────────────
-// Constantes : motifs en français → mapping risque + ClaimType
+// Motifs valides → ClaimType
 // ─────────────────────────────────────────────────────────────
-const REASON_RISK: Record<string, number> = {
-  'Produit défectueux':           15,
-  'Produit contrefait':           60,
-  'Produit endommagé livraison':  20,
-  "Changement d'avis":            70,
-  'Panne après utilisation':      25,
-  'Mauvaise taille':              40,
-  'Allergie/Réaction':            30,
-  'Ne correspond pas':            40,
-  'Erreur de commande vendeur':   20,
-  'Pièces manquantes':            25,
-}
+const VALID_REASONS = new Set([
+  'Produit défectueux',
+  'Produit contrefait',
+  'Produit endommagé livraison',
+  "Changement d'avis",
+  'Panne après utilisation',
+  'Mauvaise taille',
+  'Allergie/Réaction',
+  'Ne correspond pas',
+  'Erreur de commande vendeur',
+  'Pièces manquantes',
+])
 
 const TYPE_MAP: Record<string, 'EXCHANGE' | 'REFUND' | 'REPAIR'> = {
   'Produit défectueux':           'REPAIR',
@@ -33,13 +33,6 @@ const HTML_RE  = /<[^>]*>/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 
-function computeFraudScore(reason: string, description: string): number {
-  let score = REASON_RISK[reason] ?? 50
-  const len = description.trim().length
-  if (len < 20) score += 15
-  if (len < 10) score += 15
-  return Math.min(100, score)
-}
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/return/[token]
@@ -117,7 +110,7 @@ export async function POST(
   ) {
     return NextResponse.json({ error: 'Contenu HTML non autorisé' }, { status: 400 })
   }
-  if (!REASON_RISK[reason]) {
+  if (!VALID_REASONS.has(reason)) {
     return NextResponse.json({ error: 'Motif de retour non reconnu' }, { status: 400 })
   }
 
@@ -136,7 +129,10 @@ export async function POST(
 
   // ── 6. Création du claim (unicité + création atomiques) ──────
   const claimType   = TYPE_MAP[reason] ?? 'REFUND'
-  const fraudScore  = computeFraudScore(reason, description)
+  const pastReturns = await prisma.claim.count({
+    where: { vendorId: keyRecord.vendorId, customerEmail },
+  }).catch(() => 0)
+  const fraudScore  = pastReturns
   const parsedDate  = orderDateRaw ? new Date(orderDateRaw) : null
   const orderDate   = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null
 
@@ -207,10 +203,6 @@ export async function POST(
   const daysToReturn     = orderDate
     ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
     : 0
-
-  const pastReturns = await prisma.claim.count({
-    where: { vendorId: keyRecord.vendorId, customerEmail },
-  }).catch(() => 0)
 
   const mlInput = {
     Customer_Gender:         customerGender,
