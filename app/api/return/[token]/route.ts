@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { findOrCreateFraudRecord } from '@/lib/fraud-score'
+import { findOrCreateFraudRecord, computeFraudScore } from '@/lib/fraud-score'
 
 // ─────────────────────────────────────────────────────────────
 // Motifs valides → ClaimType
@@ -144,11 +144,9 @@ export async function POST(
   }
 
   // ── 5. Création du claim ─────────────────────────────────────
-  const claimType   = desiredResolution as 'EXCHANGE' | 'REFUND' | 'REPAIR'
-  const pastReturns = await prisma.claim.count({
-    where: { vendorId: apiKey.vendorId, customerEmail },
-  }).catch(() => 0)
-  const fraudScore  = pastReturns
+  const claimType = desiredResolution as 'EXCHANGE' | 'REFUND' | 'REPAIR'
+  const { record: fraudRecord } = await findOrCreateFraudRecord(customerEmail, customerPhone || undefined)
+  const fraudScore = computeFraudScore(fraudRecord)
   const parsedDate  = orderDateRaw ? new Date(orderDateRaw) : null
   const orderDate   = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null
 

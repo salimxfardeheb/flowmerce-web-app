@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { validateApiKey } from "@/lib/api-key-auth";
-import { findOrCreateFraudRecord } from "@/lib/fraud-score";
-
-async function getCustomerPastReturns(customerEmail: string, vendorId: string): Promise<number> {
-  return prisma.claim.count({ where: { customerEmail, vendorId } });
-}
+import { findOrCreateFraudRecord, computeFraudScore } from "@/lib/fraud-score";
 
 
 // ─────────────────────────────────────────────────────────────
@@ -111,11 +107,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 7. Calculer Customer_Past_Returns depuis la DB ───────────
-  const pastReturns = await getCustomerPastReturns(
-    String(body.customer_email).trim().toLowerCase(),
-    keyRecord.vendorId
-  );
+  // ── 7. Calculer le fraud score ───────────────────────────────
+  const customerEmailNorm = String(body.customer_email).trim().toLowerCase();
+  const customerPhoneNorm = body.customer_phone ? String(body.customer_phone).trim() : undefined;
+  const { record: fraudRecord } = await findOrCreateFraudRecord(customerEmailNorm, customerPhoneNorm);
+  const fraudScore = computeFraudScore(fraudRecord);
   const orderDateRaw = body.order_date ? new Date(String(body.order_date)) : null;
 
   // ── 8. Vérifier unicité et créer atomiquement ─────────────── (CRIT-6)
@@ -142,7 +138,7 @@ export async function POST(req: NextRequest) {
           type:          reasonToClaimType(reason),
           description,
           source:        body.source === "hosted_page" ? "HOSTED_PAGE" : "API",
-          fraudScore:    pastReturns,
+          fraudScore,
           ipAddress:     ip,
           status:        "PENDING",
         },
@@ -159,15 +155,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 9. Incrémenter le compteur cross-boutique (best-effort) ──────
-  findOrCreateFraudRecord(
-    String(body.customer_email).trim().toLowerCase(),
-    body.customer_phone ? String(body.customer_phone).trim() : undefined,
-  ).then(({ record }) =>
-    prisma.customerFraudRecord.update({
-      where: { id: record.id },
-      data: { totalClaims: { increment: 1 }, lastClaimAt: new Date() },
-    })
-  ).catch((e) => console.error('[claims/create] fraud record update error:', e))
+  prisma.customerFraudRecord.update({
+    where: { id: fraudRecord.id },
+    data: { totalClaims: { increment: 1 }, lastClaimAt: new Date() },
+  }).catch((e) => console.error('[claims/create] fraud record update error:', e))
 
   // ── 10. Mettre à jour lastUsedAt de la clé API ─────────────────
   await prisma.apiKey.update({
