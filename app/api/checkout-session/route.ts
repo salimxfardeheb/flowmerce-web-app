@@ -38,6 +38,13 @@ export async function POST(req: NextRequest) {
   const orderDate     = str("orderDate")
   const shopName      = str("shopName")
 
+  if (!orderId || !customerEmail || !productName) {
+    return NextResponse.json(
+      { error: "orderId, customerEmail et productName sont requis" },
+      { status: 400 }
+    )
+  }
+
   const token     = crypto.randomBytes(32).toString("hex")
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
 
@@ -45,13 +52,13 @@ export async function POST(req: NextRequest) {
     data: {
       token,
       vendorId:      apiKey.id,
-      orderId:       orderId       || "",
-      customerEmail: customerEmail || "",
-      productName:   productName   || "",
-      customerName:  customerName  || "",
-      customerPhone: customerPhone || "",
-      orderDate:     orderDate     || "",
-      shopName:      shopName      || "",
+      orderId,
+      customerEmail,
+      productName,
+      customerName,
+      customerPhone,
+      orderDate,
+      shopName,
       expiresAt,
     },
   })
