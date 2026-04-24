@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { findOrCreateFraudRecord } from '@/lib/fraud-score'
 
 // ─────────────────────────────────────────────────────────────
 // Motifs valides → ClaimType
@@ -211,6 +212,16 @@ export async function POST(
     throw err
   }
 
+  // ── 5b. Incrémenter le compteur cross-boutique (best-effort) ────
+  findOrCreateFraudRecord(customerEmail, customerPhone || undefined)
+    .then(({ record }) =>
+      prisma.customerFraudRecord.update({
+        where: { id: record.id },
+        data: { totalClaims: { increment: 1 }, lastClaimAt: new Date() },
+      })
+    )
+    .catch((e) => console.error('[return] fraud record update error:', e))
+
   // ── 6. Appel ML pour prédiction automatique ─────────────────
   const mlApiUrl             = process.env.ML_API_URL ?? 'http://localhost:8000'
   const returnWindowDays     = apiKey.vendor.returnPolicy?.maxClaimDays ?? 14
@@ -239,7 +250,6 @@ export async function POST(
     Fraud_Score:             fraudScore,
     Customer_Satisfaction:   3,
     Is_Suspicious:           pastReturns >= fraudReturnThreshold ? 1 : 0,
-    Refund_Amount_DA:        productPrice ?? orderTotal ?? 0,
   }
 
   const mlController = new AbortController()

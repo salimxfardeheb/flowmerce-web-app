@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateApiKey } from "@/lib/api-key-auth";
+import { findOrCreateFraudRecord, computeFraudScore } from "@/lib/fraud-score";
 
 // ─────────────────────────────────────────────────────────────
 // Types (miroir du schéma Pydantic FastAPI)
@@ -35,7 +36,6 @@ interface ReturnRequest {
   Fraud_Score: number;
   Customer_Satisfaction: number;
   Is_Suspicious: 0 | 1;
-  Refund_Amount_DA: number;
 }
 
 interface MLPrediction {
@@ -70,7 +70,6 @@ const REQUIRED_FIELDS: (keyof ReturnRequest)[] = [
   "Fraud_Score",
   "Customer_Satisfaction",
   "Is_Suspicious",
-  "Refund_Amount_DA",
 ];
 
 function validateInput(body: Partial<ReturnRequest>): string | null {
@@ -86,6 +85,16 @@ function validateInput(body: Partial<ReturnRequest>): string | null {
   if (body.Is_Suspicious !== 0 && body.Is_Suspicious !== 1)
     return "Is_Suspicious doit être 0 ou 1";
   return null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Return_Reason → ClaimType (pour vérification acceptedTypes)
+// ─────────────────────────────────────────────────────────────
+function mapReasonToType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
+  const r = reason.toLowerCase()
+  if (r.includes('defect') || r.includes('broken') || r.includes('repair') || r.includes('panne')) return 'REPAIR'
+  if (r.includes('exchange') || r.includes('wrong') || r.includes('size') || r.includes('taille')) return 'EXCHANGE'
+  return 'REFUND'
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -152,6 +161,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 422 });
   }
 
+  // 4b. Filtre politique bloquant (avant tout appel ML)
+  const policy = keyRecord.vendor.returnPolicy
+  if (policy) {
+    if (rawBody.Days_to_Return! > policy.maxClaimDays) {
+      return NextResponse.json({
+        refused: true,
+        reason:  'OUT_OF_RETURN_WINDOW',
+        message: `Délai de réclamation dépassé (${rawBody.Days_to_Return}j > ${policy.maxClaimDays}j autorisés)`,
+      }, { status: 200 })
+    }
+
+    if (policy.acceptedTypes.length > 0) {
+      const claimType = mapReasonToType(rawBody.Return_Reason!)
+      if (!policy.acceptedTypes.includes(claimType as any)) {
+        return NextResponse.json({
+          refused: true,
+          reason:  'CLAIM_TYPE_NOT_ACCEPTED',
+          message: `La boutique n'accepte pas les réclamations de type ${claimType}`,
+        }, { status: 200 })
+      }
+    }
+  }
+
+  // 4c. Fraud score cross-boutique (remplace body.Fraud_Score)
+  // NE PAS incrémenter totalClaims ici — fait uniquement à la création du claim (étape 5)
+  const rawBodyAny = rawBody as Record<string, unknown>
+  const { record: fraudRecord } = await findOrCreateFraudRecord(
+    rawBodyAny.customer_email as string | undefined,
+    rawBodyAny.customer_phone as string | undefined,
+  )
+  rawBody.Fraud_Score = computeFraudScore(fraudRecord)
+
   // 5. Appliquer la politique du vendeur
   const { input: mlInput, policyWarnings, policyRejected } = applyVendorPolicy(
     rawBody,
@@ -172,6 +213,9 @@ export async function POST(req: NextRequest) {
       { status: 422 }
     );
   }
+
+  // Supprimer Refund_Amount_DA du payload ML (retiré côté ML)
+  delete (mlInput as any).Refund_Amount_DA
 
   // 6. Appeler le FastAPI Python
   const mlApiUrl = process.env.ML_API_URL;
@@ -290,7 +334,6 @@ export async function GET() {
       Fraud_Score: 12,
       Customer_Satisfaction: 4,
       Is_Suspicious: 0,
-      Refund_Amount_DA: 15000,
     },
     example_response: {
       resolution: {
