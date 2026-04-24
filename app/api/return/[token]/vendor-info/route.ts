@@ -46,7 +46,7 @@ export async function GET(
       valid:         true,
       companyName:   apiKey.vendor.companyName,
       acceptedTypes: apiKey.vendor.returnPolicy?.acceptedTypes ?? ['EXCHANGE', 'REFUND', 'REPAIR'],
-      acceptedReasons: [],
+      acceptedReasons: apiKey.vendor.returnPolicy?.acceptedReasons ?? [],
       // session pre-fill data
       orderId:       session.orderId,
       customerEmail: session.customerEmail,

@@ -109,6 +109,7 @@ model ReturnPolicy {
   allowRefusalOnDelivery Boolean        @default(false)
   maxClaimDays           Int            @default(14)
   acceptedTypes          ClaimType[]
+  acceptedReasons        String[]       @default([])
   validationMode         ValidationMode @default(MANUAL)
   fraudScoreThreshold    Int            @default(70)
   fraudReturnThreshold   Int            @default(4)
