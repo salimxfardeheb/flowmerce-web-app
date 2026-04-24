@@ -54,7 +54,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.sub ?? '';
+        if (!token.sub) throw new Error('token.sub missing');
+        session.user.id = token.sub;
         session.user.role = token.role;
         session.user.vendorId = token.vendorId;
         session.user.vendorStatus = token.vendorStatus;
