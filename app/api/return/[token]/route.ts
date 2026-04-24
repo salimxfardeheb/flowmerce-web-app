@@ -227,6 +227,7 @@ export async function POST(
   const daysToReturn = orderDate
     ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
     : 0
+  const pastReturns = fraudRecord.totalClaims
 
   const mlInput = {
     Customer_Gender:         customerGender,
@@ -256,7 +257,12 @@ export async function POST(
   try {
     const mlRes = await fetch(`${mlApiUrl}/predict`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.ML_INTERNAL_SECRET
+          ? { 'X-Internal-Key': process.env.ML_INTERNAL_SECRET }
+          : {}),
+      },
       body:    JSON.stringify(mlInput),
       signal:  mlController.signal,
     })
