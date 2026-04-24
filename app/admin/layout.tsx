@@ -1,8 +1,9 @@
 import { getSessionServer } from "@/lib/getSession";
-
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { SignOutButton } from "@/components/layout/SignOutButton";
+import { AdminNav } from "@/components/admin/AdminNav";
+import { ShieldCheck } from "lucide-react";
 
 export default async function AdminLayout({
   children,
@@ -17,43 +18,44 @@ export default async function AdminLayout({
 
   return (
     <div className="min-h-screen flex bg-gray-50">
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-6 border-b border-gray-200">
-          <Link href="/" className="text-xl font-bold text-indigo-700">
-            Flomerce
+      <aside className="w-60 bg-white border-r border-gray-200 flex flex-col shrink-0">
+
+        {/* Logo */}
+        <div className="px-5 pt-5 pb-4 border-b border-gray-100">
+          <Link href="/" className="text-base font-bold text-indigo-700 tracking-tight">
+            Flowmerce
           </Link>
-          <p className="text-xs text-orange-600 font-semibold mt-1">Administration</p>
+          <div className="flex items-center gap-1.5 mt-2">
+            <div className="flex items-center gap-1 bg-orange-50 border border-orange-100 rounded px-1.5 py-0.5">
+              <ShieldCheck size={10} className="text-orange-500 shrink-0" />
+              <span className="text-xs font-bold text-orange-600 uppercase tracking-wider">
+                Admin
+              </span>
+            </div>
+          </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
-          <Link
-            href="/admin/vendors"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition-colors"
-          >
-            <span>📋</span>
-            Inscriptions
-          </Link>
-          <Link
-            href="/admin/clients"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-orange-50 hover:text-orange-700 transition-colors"
-          >
-            <span>🏪</span>
-            Boutiques
-          </Link>
-          <hr className="my-2" />
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-          >
-            <span>🏠</span>
-            Mon compte
-          </Link>
-        </nav>
+        {/* Nav */}
+        <AdminNav />
 
-        <div className="p-4 border-t border-gray-200">
-          <p className="text-xs text-gray-500 mb-2">{user?.name}</p>
+        {/* User */}
+        <div className="px-4 py-3 border-t border-gray-100">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="w-7 h-7 bg-orange-100 rounded-full flex items-center justify-center text-xs font-bold text-orange-700 shrink-0">
+              {user?.name?.[0]?.toUpperCase() ?? "A"}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-800 truncate leading-none">
+                {user?.name}
+              </p>
+              <p className="text-xs text-gray-400 truncate mt-0.5 leading-none">
+                {user?.email}
+              </p>
+            </div>
+          </div>
           <SignOutButton />
         </div>
+
       </aside>
 
       <main className="flex-1 overflow-auto">{children}</main>

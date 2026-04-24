@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 6. Appeler le FastAPI Python
-  const mlApiUrl = process.env.ML_API_URL ?? "http://localhost:8000";
+  const mlApiUrl = process.env.ML_API_URL;
   let prediction: MLPrediction;
 
   const controller = new AbortController();

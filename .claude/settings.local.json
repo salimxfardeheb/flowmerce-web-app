@@ -11,7 +11,16 @@
       "Bash(node_modules/.bin/prisma --version)",
       "Bash(npm show *)",
       "Bash(node_modules/.bin/prisma version *)",
-      "Bash(node -e \"require\\('zod'\\); console.log\\('ok'\\)\")"
+      "Bash(node -e \"require\\('zod'\\); console.log\\('ok'\\)\")",
+      "Bash(node_modules/.bin/prisma db *)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_t8gi1ROPApTm@ep-weathered-band-am71v4un-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require\" node_modules/.bin/prisma db push)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts', {}\\), indent=2\\)\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\); const {execSync} = require\\('child_process'\\); execSync\\('node_modules/.bin/prisma db push', {env: {...process.env}, stdio: 'inherit'}\\)\")",
+      "Bash(npm run *)",
+      "Bash(where npm *)",
+      "Bash(\"/c/Program Files/nodejs/npm\" run db:push)",
+      "PowerShell(cd \"c:\\\\Users\\\\simou\\\\Bureau\\\\work\\\\Github\\\\FLOWMERCE\\\\flowmerce-web-app\"; $env:DATABASE_URL=\"postgresql://neondb_owner:npg_t8gi1ROPApTm@ep-weathered-band-am71v4un-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require\"; npx prisma db push)",
+      "Bash(export PATH=\"$PATH:/usr/local/bin:/usr/bin\")"
     ]
   }
 }

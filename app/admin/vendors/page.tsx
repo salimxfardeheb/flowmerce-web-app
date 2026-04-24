@@ -1,11 +1,19 @@
 import { getSessionServer } from "@/lib/getSession";
-
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { formatDate, VENDOR_STATUS_LABELS, DOCUMENT_TYPE_LABELS } from "@/lib/utils";
 import { VendorActions } from "@/components/admin/VendorActions";
 import { DocumentReviewSection } from "@/components/admin/DocumentReviewSection";
 import Link from "next/link";
+import {
+  Clock,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  Bell,
+  ClipboardList,
+  AlertTriangle,
+} from "lucide-react";
 
 export default async function AdminVendorsPage() {
   const session = await getSessionServer();
@@ -16,213 +24,248 @@ export default async function AdminVendorsPage() {
 
   const vendors = await prisma.vendor.findMany({
     include: {
-      user: { select: { email: true, name: true } },
+      user:      { select: { email: true, name: true } },
       documents: { orderBy: { createdAt: "desc" } },
     },
     orderBy: { createdAt: "desc" },
   });
 
   const statusColors: Record<string, string> = {
-    PENDING: "bg-yellow-100 text-yellow-800",
-    APPROVED: "bg-green-100 text-green-800",
-    REJECTED: "bg-red-100 text-red-800",
-    DOCUMENTS_REQUESTED: "bg-orange-100 text-orange-800",
+    PENDING:             "bg-amber-50 text-amber-700 border-amber-200",
+    APPROVED:            "bg-green-50 text-green-700 border-green-200",
+    REJECTED:            "bg-red-50 text-red-700 border-red-200",
+    DOCUMENTS_REQUESTED: "bg-amber-50 text-amber-700 border-amber-200",
   };
 
-  const statusIcon: Record<string, string> = {
-    PENDING: "⏳",
-    APPROVED: "✅",
-    REJECTED: "❌",
-    DOCUMENTS_REQUESTED: "📄",
+  const StatusIcon: Record<string, React.ElementType> = {
+    PENDING:             Clock,
+    APPROVED:            CheckCircle2,
+    REJECTED:            XCircle,
+    DOCUMENTS_REQUESTED: FileText,
   };
 
   const counts = {
-    PENDING: vendors.filter((v) => v.status === "PENDING").length,
-    APPROVED: vendors.filter((v) => v.status === "APPROVED").length,
-    REJECTED: vendors.filter((v) => v.status === "REJECTED").length,
+    PENDING:             vendors.filter((v) => v.status === "PENDING").length,
+    APPROVED:            vendors.filter((v) => v.status === "APPROVED").length,
+    REJECTED:            vendors.filter((v) => v.status === "REJECTED").length,
     DOCUMENTS_REQUESTED: vendors.filter((v) => v.status === "DOCUMENTS_REQUESTED").length,
   };
 
+  const pendingTotal = counts.PENDING + counts.DOCUMENTS_REQUESTED;
+
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-800">Gestion des vendeurs</h1>
-        <p className="text-gray-500 mt-1">Vérifiez les inscriptions et les documents soumis</p>
+    <>
+      {/* ── En-tête ── */}
+      <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-sm font-semibold text-gray-900">Inscriptions vendeurs</h1>
+              {pendingTotal > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                  <Bell size={10} />
+                  {pendingTotal} en attente
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Vérifiez les demandes d&apos;inscription et les documents soumis.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <ClipboardList size={12} />
+            <span>{vendors.length} vendeur{vendors.length !== 1 ? "s" : ""} au total</span>
+          </div>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-100">
-          <p className="text-sm text-yellow-600">En attente</p>
-          <p className="text-2xl font-bold text-yellow-800">{counts.PENDING}</p>
-        </div>
-        <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
-          <p className="text-sm text-orange-600">Docs demandés</p>
-          <p className="text-2xl font-bold text-orange-800">{counts.DOCUMENTS_REQUESTED}</p>
-        </div>
-        <div className="bg-green-50 rounded-xl p-4 border border-green-100">
-          <p className="text-sm text-green-600">Approuvés</p>
-          <p className="text-2xl font-bold text-green-800">{counts.APPROVED}</p>
-        </div>
-        <div className="bg-red-50 rounded-xl p-4 border border-red-100">
-          <p className="text-sm text-red-600">Rejetés / Suspendus</p>
-          <p className="text-2xl font-bold text-red-800">{counts.REJECTED}</p>
-        </div>
-      </div>
+      {/* ── Contenu ── */}
+      <div className="px-8 py-6 space-y-5">
 
-      {vendors.length === 0 ? (
-        <div className="bg-white rounded-xl p-12 text-center border border-dashed border-gray-300">
-          <p className="text-gray-500">Aucun vendeur inscrit</p>
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: "En attente",    value: counts.PENDING,             color: "text-amber-600",  Icon: Clock          },
+            { label: "Docs à fournir", value: counts.DOCUMENTS_REQUESTED, color: "text-amber-600",  Icon: FileText       },
+            { label: "Approuvés",     value: counts.APPROVED,            color: "text-green-600",  Icon: CheckCircle2   },
+            { label: "Rejetés",       value: counts.REJECTED,            color: "text-red-500",    Icon: XCircle        },
+          ].map(({ label, value, color, Icon }) => (
+            <div key={label} className="bg-white border border-gray-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-gray-500">{label}</p>
+                <p className={`text-xl font-semibold mt-0.5 tabular-nums ${color}`}>{value}</p>
+              </div>
+              <Icon size={16} className={`${color} opacity-40 shrink-0`} />
+            </div>
+          ))}
         </div>
-      ) : (
-        <div className="space-y-5">
-          {vendors.map((vendor) => {
-            const isSuspended =
-              vendor.status === "REJECTED" &&
-              (vendor.rejectionReason?.startsWith("[SUSPENDU]") ?? false);
 
-            const requestedTypes = vendor.requestedDocuments as string[];
-            const hasDocuments = vendor.documents.length > 0;
-            const pendingDocs = vendor.documents.filter((d) => d.status === "PENDING").length;
-            const hasDocsToReview =
-              vendor.status === "DOCUMENTS_REQUESTED" && hasDocuments;
+        {/* Liste des vendeurs */}
+        {vendors.length === 0 ? (
+          <div className="bg-white rounded-lg border border-dashed border-gray-200 py-16 text-center">
+            <ClipboardList size={24} className="mx-auto text-gray-300 mb-2" />
+            <p className="text-sm font-medium text-gray-500">Aucun vendeur inscrit</p>
+            <p className="text-xs text-gray-400 mt-1">Les nouvelles inscriptions apparaîtront ici.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {vendors.map((vendor) => {
+              const isSuspended =
+                vendor.status === "REJECTED" &&
+                (vendor.rejectionReason?.startsWith("[SUSPENDU]") ?? false);
 
-            return (
-              <div
-                key={vendor.id}
-                className={`bg-white rounded-xl shadow-sm border overflow-hidden ${
-                  hasDocsToReview && pendingDocs > 0
-                    ? "border-orange-200"
-                    : "border-gray-100"
-                }`}
-              >
-                {/* ── Header vendeur ── */}
-                <div className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Infos */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <h3 className="font-semibold text-gray-800 text-lg">
-                          {vendor.companyName}
-                        </h3>
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                            isSuspended
-                              ? "bg-red-100 text-red-700"
-                              : statusColors[vendor.status]
-                          }`}
-                        >
-                          {statusIcon[isSuspended ? "REJECTED" : vendor.status]}
-                          {isSuspended ? "Suspendu" : VENDOR_STATUS_LABELS[vendor.status]}
+              const requestedTypes = vendor.requestedDocuments as string[];
+              const hasDocuments   = vendor.documents.length > 0;
+              const pendingDocs    = vendor.documents.filter((d) => d.status === "PENDING").length;
+              const hasDocsToReview = vendor.status === "DOCUMENTS_REQUESTED" && hasDocuments;
+
+              const StatusIconComp = StatusIcon[isSuspended ? "REJECTED" : vendor.status];
+              const statusClass    = isSuspended
+                ? "bg-red-50 text-red-700 border-red-200"
+                : statusColors[vendor.status];
+              const statusLabel    = isSuspended ? "Suspendu" : VENDOR_STATUS_LABELS[vendor.status];
+
+              const infoRows = [
+                { label: "Contact",     value: vendor.user.name },
+                { label: "Email",       value: vendor.user.email },
+                { label: "Téléphone",   value: vendor.phone },
+                ...(vendor.siret ? [{ label: "SIRET", value: vendor.siret }] : []),
+                { label: "Adresse",     value: vendor.address },
+                { label: "Inscrit le",  value: formatDate(vendor.createdAt) },
+              ];
+
+              return (
+                <div
+                  key={vendor.id}
+                  className={`bg-white rounded-lg border overflow-hidden ${
+                    hasDocsToReview && pendingDocs > 0
+                      ? "border-amber-200"
+                      : "border-gray-200"
+                  }`}
+                >
+                  {/* ── Ligne titre ── */}
+                  <div className="px-5 py-4 flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">{vendor.companyName}</p>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${statusClass}`}>
+                        <StatusIconComp size={10} />
+                        {statusLabel}
+                      </span>
+                      {hasDocsToReview && pendingDocs > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-500 text-white border border-amber-400">
+                          <Bell size={10} />
+                          {pendingDocs} doc{pendingDocs > 1 ? "s" : ""} à réviser
                         </span>
-
-                        {/* Badge docs à réviser */}
-                        {hasDocsToReview && pendingDocs > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-500 text-white">
-                            🔔 {pendingDocs} doc{pendingDocs > 1 ? "s" : ""} à réviser
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm text-gray-600">
-                        <p><span className="font-medium">Contact :</span> {vendor.user.name}</p>
-                        <p><span className="font-medium">Email :</span> {vendor.user.email}</p>
-                        <p><span className="font-medium">Téléphone :</span> {vendor.phone}</p>
-                        {vendor.siret && (
-                          <p><span className="font-medium">SIRET :</span> {vendor.siret}</p>
-                        )}
-                        <p><span className="font-medium">Adresse :</span> {vendor.address}</p>
-                        <p><span className="font-medium">Inscrit le :</span> {formatDate(vendor.createdAt)}</p>
-                      </div>
-
-                      {/* Note rejection/suspension */}
-                      {vendor.rejectionReason && !isSuspended && (
-                        <p className="text-sm text-red-600 mt-2">
-                          <span className="font-medium">Note :</span>{" "}
-                          {vendor.rejectionReason}
-                        </p>
-                      )}
-                      {isSuspended && (
-                        <p className="text-sm text-red-600 mt-2">
-                          <span className="font-medium">Motif suspension :</span>{" "}
-                          {vendor.rejectionReason?.replace("[SUSPENDU] ", "")}
-                        </p>
-                      )}
-
-                      {/* Docs demandés — résumé rapide */}
-                      {requestedTypes.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-3">
-                          {requestedTypes.map((docType) => {
-                            const submitted = vendor.documents.find((d) => d.type === docType);
-                            const accepted = submitted?.status === "ACCEPTED";
-                            const rejected = submitted?.status === "REJECTED";
-                            return (
-                              <span
-                                key={docType}
-                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                                  accepted
-                                    ? "bg-green-50 text-green-700 border-green-200"
-                                    : rejected
-                                    ? "bg-red-50 text-red-700 border-red-200"
-                                    : submitted
-                                    ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-                                    : "bg-gray-50 text-gray-500 border-gray-200"
-                                }`}
-                              >
-                                {accepted ? "✓" : rejected ? "✗" : submitted ? "⏳" : "○"}{" "}
-                                {DOCUMENT_TYPE_LABELS[docType] ?? docType}
-                              </span>
-                            );
-                          })}
-                        </div>
                       )}
                     </div>
-
-                    {/* Actions */}
-                    <div className="flex flex-col gap-2 items-end flex-shrink-0">
+                    <div className="shrink-0">
                       <VendorActions
                         vendorId={vendor.id}
                         vendorStatus={vendor.status}
                         isSuspended={isSuspended}
                         submittedDocTypes={vendor.documents.map((d) => d.type as string)}
                       />
+                    </div>
+                  </div>
+
+                  {/* ── Informations ── */}
+                  <div className="px-5 pb-4 border-t border-gray-100 pt-4">
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                      {infoRows.map(({ label, value }) => (
+                        <div key={label}>
+                          <p className="text-xs text-gray-400">{label}</p>
+                          <p className="text-xs font-medium text-gray-800 mt-0.5 break-all">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Note rejet ou suspension */}
+                    {(vendor.rejectionReason && !isSuspended) && (
+                      <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
+                        <AlertTriangle size={12} className="text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700">
+                          <span className="font-semibold">Motif de rejet : </span>
+                          {vendor.rejectionReason}
+                        </p>
+                      </div>
+                    )}
+                    {isSuspended && (
+                      <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
+                        <AlertTriangle size={12} className="text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-700">
+                          <span className="font-semibold">Motif de suspension : </span>
+                          {vendor.rejectionReason?.replace("[SUSPENDU] ", "")}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Badges documents demandés */}
+                    {requestedTypes.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {requestedTypes.map((docType) => {
+                          const submitted = vendor.documents.find((d) => d.type === docType);
+                          const accepted  = submitted?.status === "ACCEPTED";
+                          const rejected  = submitted?.status === "REJECTED";
+                          return (
+                            <span
+                              key={docType}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${
+                                accepted  ? "bg-green-50 text-green-700 border-green-200"
+                              : rejected  ? "bg-red-50 text-red-700 border-red-200"
+                              : submitted ? "bg-amber-50 text-amber-700 border-amber-200"
+                              :             "bg-gray-50 text-gray-500 border-gray-200"
+                              }`}
+                            >
+                              {accepted  ? <CheckCircle2 size={10} />
+                             : rejected  ? <XCircle size={10} />
+                             : submitted ? <Clock size={10} />
+                             :             <div className="w-2 h-2 rounded-full border border-gray-300" />}
+                              {DOCUMENT_TYPE_LABELS[docType] ?? docType}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Lien profil */}
+                    <div className="mt-3 flex justify-end">
                       <Link
                         href={`/admin/clients/${vendor.id}`}
-                        className="text-xs text-indigo-500 hover:text-indigo-700 underline underline-offset-2"
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
                       >
-                        Voir le profil complet →
+                        Voir le profil complet
                       </Link>
                     </div>
                   </div>
-                </div>
 
-                {/* ── Section révision documents (expandée si docs soumis) ── */}
-                {hasDocsToReview && (
-                  <div className="border-t border-orange-100 bg-orange-50/40 px-6 py-5">
-                    <DocumentReviewSection
-                      vendorId={vendor.id}
-                      vendorStatus={vendor.status}
-                      requestedDocuments={requestedTypes}
-                      documents={vendor.documents.map((d) => ({
-                        id: d.id,
-                        type: d.type as string,
-                        name: d.name,
-                        url: d.url,
-                        status: d.status as "PENDING" | "ACCEPTED" | "REJECTED",
-                        rejectionReason: d.rejectionReason,
-                        createdAt: d.createdAt.toISOString(),
-                      }))}
-                      alreadySubmittedTypes={vendor.documents
-                        .map((d) => d.type as string)
-                        .filter((t) => !requestedTypes.includes(t))}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+                  {/* ── Section révision documents ── */}
+                  {hasDocsToReview && (
+                    <div className="border-t border-amber-100 bg-amber-50/30 px-5 py-5">
+                      <DocumentReviewSection
+                        vendorId={vendor.id}
+                        vendorStatus={vendor.status}
+                        requestedDocuments={requestedTypes}
+                        documents={vendor.documents.map((d) => ({
+                          id:              d.id,
+                          type:            d.type as string,
+                          name:            d.name,
+                          url:             d.url,
+                          status:          d.status as "PENDING" | "ACCEPTED" | "REJECTED",
+                          rejectionReason: d.rejectionReason,
+                          createdAt:       d.createdAt.toISOString(),
+                        }))}
+                        alreadySubmittedTypes={vendor.documents
+                          .map((d) => d.type as string)
+                          .filter((t) => !requestedTypes.includes(t))}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

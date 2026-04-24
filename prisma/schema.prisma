@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -110,6 +111,7 @@ model ReturnPolicy {
   acceptedTypes          ClaimType[]
   validationMode         ValidationMode @default(MANUAL)
   fraudScoreThreshold    Int            @default(70)
+  fraudReturnThreshold   Int            @default(4)
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 
@@ -129,10 +131,29 @@ model ApiKey {
   lastUsedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  vendor         Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  returnSessions ReturnSession[]
 
   @@index([vendorId])
   @@index([key])
+}
+
+model ReturnSession {
+  id            String    @id @default(cuid())
+  token         String    @unique
+  vendorId      String
+  orderId       String
+  customerEmail String
+  productName   String
+  customerName  String
+  customerPhone String    @default("")
+  orderDate     String    @default("")
+  shopName      String    @default("")
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  vendor        ApiKey    @relation(fields: [vendorId], references: [id])
 }
 
 model Claim {
@@ -193,6 +214,27 @@ model ReturnRateLimit {
 
   @@index([key])
   @@index([resetAt])
+}
+
+// ── Tracking cross-boutique des clients à risque ──────────────
+model CustomerFraudRecord {
+  id            String    @id @default(cuid())
+  // Matching OR : correspond si email OU phone correspond
+  customerEmail String?
+  customerPhone String?
+  // Compteurs cross-boutique
+  totalClaims   Int       @default(0)   // nb de réclamations toutes boutiques
+  totalRefusals Int       @default(0)   // nb de refus à la livraison signalés
+  // Dernière activité
+  lastClaimAt   DateTime?
+  lastRefusalAt DateTime?
+  // Audit
+  matchedBy     String?                 // "email" | "phone" | "both"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([customerEmail])
+  @@index([customerPhone])
 }
 
 enum Role {

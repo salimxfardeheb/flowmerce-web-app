@@ -10,6 +10,7 @@ const ReturnPolicySchema = z.object({
   acceptedTypes:          z.array(z.enum(["EXCHANGE", "REFUND", "REPAIR"])).optional(),
   validationMode:         z.enum(["MANUAL", "AI_AUTO"]).optional(),
   fraudScoreThreshold:    z.number().int().min(0).max(100).optional(),
+  fraudReturnThreshold:   z.number().int().min(1).max(100).optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -48,13 +49,14 @@ export async function POST(req: NextRequest) {
   if (!parsed.success)
     return NextResponse.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
 
-  const { allowRefusalOnDelivery, maxClaimDays, acceptedTypes, validationMode, fraudScoreThreshold } = parsed.data;
+  const { allowRefusalOnDelivery, maxClaimDays, acceptedTypes, validationMode, fraudScoreThreshold, fraudReturnThreshold } = parsed.data;
   const policyData = {
     allowRefusalOnDelivery,
     maxClaimDays,
     acceptedTypes,
     validationMode,
-    fraudScoreThreshold: fraudScoreThreshold ?? 70,
+    fraudScoreThreshold:  fraudScoreThreshold  ?? 70,
+    fraudReturnThreshold: fraudReturnThreshold ?? 4,
   };
 
   const policy = await prisma.returnPolicy.upsert({

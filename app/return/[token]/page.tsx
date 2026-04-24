@@ -1,17 +1,30 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 
-// Ce type est retourné par /api/return/[token]/vendor-info
 type VendorInfo = {
-  valid:             boolean
-  companyName:       string
-  acceptedReasons:   string[]   // motifs configurés par le vendeur (vide = tous)
-  error?:            string
+  valid:           boolean
+  companyName:     string
+  acceptedReasons: string[]
+  acceptedTypes:   string[]
+  error?:          string
+  // session pre-fill data
+  orderId:         string
+  customerEmail:   string
+  customerName:    string
+  customerPhone:   string
+  productName:     string
+  orderDate:       string
+  shopName:        string
 }
 
-// Tous les motifs par défaut (affichés si le vendeur n'en a pas configuré)
+const RESOLUTION_OPTIONS = [
+  { value: 'REFUND',   label: 'Remboursement',  desc: 'Je souhaite être remboursé(e)' },
+  { value: 'EXCHANGE', label: 'Échange',         desc: 'Je souhaite un produit de remplacement' },
+  { value: 'REPAIR',   label: 'Réparation',      desc: 'Je souhaite que le produit soit réparé' },
+]
+
 const DEFAULT_REASONS = [
   { value: "Produit défectueux",            desc: "Le produit est endommagé ou ne fonctionne pas" },
   { value: "Produit contrefait",            desc: "Le produit semble être une contrefaçon" },
@@ -26,31 +39,13 @@ const DEFAULT_REASONS = [
 ]
 
 export default function ReturnPage() {
-  const params       = useParams()
-  const searchParams = useSearchParams()
-  const token        = params.token as string
-
-  const customerName      = searchParams.get('customer_name')      ?? ''
-  const customerEmail     = searchParams.get('customer_email')     ?? ''
-  const customerTelephone = searchParams.get('customer_telephone') ?? ''
-  const customerGender    = searchParams.get('customer_gender')    ?? ''
-  const customerAge       = searchParams.get('customer_age')       ?? ''
-  const customerWilaya    = searchParams.get('customer_wilaya')    ?? ''
-  const productName       = searchParams.get('product_name')       ?? ''
-  const productCategory   = searchParams.get('product_category')   ?? ''
-  const productPrice      = searchParams.get('product_price')      ?? ''
-  const orderId           = searchParams.get('order_id')           ?? ''
-  const orderQuantity     = searchParams.get('order_quantity')     ?? ''
-  const orderTotal        = searchParams.get('order_total')        ?? ''
-  const shopName          = searchParams.get('shop_name')          ?? ''
-  const orderDate         = searchParams.get('order_date')         ?? ''
-  const paymentMethod     = searchParams.get('payment_method')     ?? ''
-  const shippingMethod    = searchParams.get('shipping_method')    ?? ''
-  const shippingCost      = searchParams.get('shipping_cost')      ?? ''
+  const params = useParams()
+  const token  = params.token as string
 
   const [vendor, setVendor]               = useState<VendorInfo | null>(null)
   const [loadingVendor, setLoadingVendor] = useState(true)
   const [reason, setReason]               = useState('')
+  const [desiredResolution, setResolution] = useState('')
   const [description, setDescription]     = useState('')
   const [submitting, setSubmitting]       = useState(false)
   const [result, setResult]               = useState<{ success: boolean; claimId?: string; message: string } | null>(null)
@@ -60,15 +55,18 @@ export default function ReturnPage() {
       .then(r => r.json())
       .then(data => { setVendor(data); setLoadingVendor(false) })
       .catch(() => {
-        setVendor({ valid: false, companyName: '', acceptedReasons: [], error: 'Impossible de vérifier la clé API.' })
+        setVendor({ valid: false, companyName: '', acceptedReasons: [], acceptedTypes: [], error: 'Impossible de vérifier le lien.', orderId: '', customerEmail: '', customerName: '', customerPhone: '', productName: '', orderDate: '', shopName: '' })
         setLoadingVendor(false)
       })
   }, [token])
 
-  // Motifs à afficher : ceux configurés par le vendeur, ou tous par défaut
   const displayedReasons = (vendor?.acceptedReasons?.length ?? 0) > 0
     ? DEFAULT_REASONS.filter(r => vendor!.acceptedReasons.includes(r.value))
     : DEFAULT_REASONS
+
+  const displayedResolutions = RESOLUTION_OPTIONS.filter(
+    r => (vendor?.acceptedTypes?.length ?? 0) === 0 || vendor!.acceptedTypes.includes(r.value)
+  )
 
   const handleSubmit = async () => {
     if (!reason) return
@@ -78,24 +76,8 @@ export default function ReturnPage() {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer_name:      customerName,
-          customer_email:     customerEmail,
-          customer_telephone: customerTelephone,
-          customer_gender:    customerGender,
-          customer_age:       customerAge,
-          customer_wilaya:    customerWilaya,
-          product_name:       productName,
-          product_category:   productCategory,
-          product_price:      productPrice,
-          order_id:           orderId,
-          order_quantity:     orderQuantity,
-          order_total:        orderTotal,
-          shop_name:          shopName,
-          order_date:         orderDate,
-          payment_method:     paymentMethod,
-          shipping_method:    shippingMethod,
-          shipping_cost:      shippingCost,
           reason,
+          desired_resolution: desiredResolution,
           description:        description.trim(),
         }),
       })
@@ -123,7 +105,7 @@ export default function ReturnPage() {
     </div>
   )
 
-  // ── Clé invalide ─────────────────────────────────────────────
+  // ── Lien invalide / expiré ────────────────────────────────────
   if (!vendor?.valid) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-8 max-w-md w-full text-center">
@@ -153,7 +135,7 @@ export default function ReturnPage() {
         )}
         <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
           <p className="text-xs text-indigo-700">
-            📧 Un email de confirmation sera envoyé à <strong>{customerEmail}</strong>
+            📧 Un email de confirmation sera envoyé à <strong>{vendor.customerEmail}</strong>
           </p>
         </div>
         <p className="text-xs text-gray-400 mt-6">Vous pouvez fermer cet onglet.</p>
@@ -200,13 +182,13 @@ export default function ReturnPage() {
           </div>
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
-              { label: "🛍️ Boutique",  value: vendor.companyName },
-              { label: "📦 Produit",   value: productName },
-              { label: "🔖 Commande",  value: `#${orderId.slice(-10).toUpperCase()}` },
-              { label: "📅 Date",      value: orderDate ? new Date(orderDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
-              { label: "👤 Client",    value: customerName || '—' },
-              { label: "📧 Email",     value: customerEmail },
-              { label: "📧 Telephone",     value: customerTelephone },
+              { label: "🛍️ Boutique",   value: vendor.companyName },
+              { label: "📦 Produit",    value: vendor.productName },
+              { label: "🔖 Commande",   value: vendor.orderId ? `#${vendor.orderId.slice(-10).toUpperCase()}` : '—' },
+              { label: "📅 Date",       value: vendor.orderDate ? new Date(vendor.orderDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
+              { label: "👤 Client",     value: vendor.customerName || '—' },
+              { label: "📧 Email",      value: vendor.customerEmail },
+              { label: "📞 Téléphone",  value: vendor.customerPhone || '—' },
             ].map(({ label, value }) => (
               <div key={label}>
                 <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -216,7 +198,7 @@ export default function ReturnPage() {
           </div>
         </div>
 
-        {/* Motifs du retour — filtrés selon la politique du vendeur */}
+        {/* Motifs du retour */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="bg-gray-50 px-5 py-3 border-b border-gray-200">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -236,6 +218,33 @@ export default function ReturnPage() {
               >
                 <p className={`text-sm font-semibold ${reason === opt.value ? 'text-indigo-700' : 'text-gray-700'}`}>
                   {opt.value}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Résolution souhaitée */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-gray-50 px-5 py-3 border-b border-gray-200">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              Résolution souhaitée <span className="text-red-500">*</span>
+            </p>
+          </div>
+          <div className="p-5 space-y-3">
+            {displayedResolutions.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setResolution(opt.value)}
+                className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all ${
+                  desiredResolution === opt.value
+                    ? 'border-indigo-500 bg-indigo-50'
+                    : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+                }`}
+              >
+                <p className={`text-sm font-semibold ${desiredResolution === opt.value ? 'text-indigo-700' : 'text-gray-700'}`}>
+                  {opt.label}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
               </button>
@@ -278,7 +287,7 @@ export default function ReturnPage() {
         {/* Bouton soumettre */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !reason}
+          disabled={submitting || !reason || !desiredResolution}
           className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-4 rounded-xl transition-all text-sm shadow-sm"
         >
           {submitting ? (

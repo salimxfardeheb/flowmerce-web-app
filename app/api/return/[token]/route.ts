@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { validateApiKey } from '@/lib/api-key-auth'
 
 // ─────────────────────────────────────────────────────────────
 // Motifs valides → ClaimType
@@ -20,24 +19,14 @@ const VALID_REASONS = new Set([
   'Pièces manquantes',
 ])
 
-const TYPE_MAP: Record<string, 'EXCHANGE' | 'REFUND' | 'REPAIR'> = {
-  'Produit défectueux':           'REPAIR',
-  'Panne après utilisation':      'REPAIR',
-  'Ne correspond pas':            'EXCHANGE',
-  'Mauvaise taille':              'EXCHANGE',
-  'Erreur de commande vendeur':   'EXCHANGE',
-  "Changement d'avis":            'REFUND',
-}
+const VALID_RESOLUTIONS = new Set(['EXCHANGE', 'REFUND', 'REPAIR'])
 
 const HTML_RE  = /<[^>]*>/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-
-
 // ─────────────────────────────────────────────────────────────
 // POST /api/return/[token]
 // Endpoint consommé uniquement par la page hébergée /return/[token]
-// (même origine → pas de CORS ouvert).
 // ─────────────────────────────────────────────────────────────
 export async function POST(
   req: NextRequest,
@@ -45,13 +34,28 @@ export async function POST(
 ) {
   const { token } = await params
 
-  // ── 1. Valider la clé API ────────────────────────────────────
-  const auth = await validateApiKey(token)
-  if (!auth.ok) return auth.response
-  const { keyRecord } = auth
+  // ── 1. Valider la session ────────────────────────────────────
+  const session = await prisma.returnSession.findUnique({
+    where:   { token },
+    include: { vendor: { include: { vendor: { include: { returnPolicy: true } } } } },
+  }).catch(() => null)
 
-  // ── 2. Lire les paramètres uniquement depuis le body JSON ───
-  //     (les query params sont ignorés : pas de PII dans l'URL)
+  if (!session) {
+    return NextResponse.json({ error: 'Lien de retour introuvable.' }, { status: 401 })
+  }
+  if (session.expiresAt < new Date()) {
+    return NextResponse.json({ error: 'Ce lien de retour a expiré.' }, { status: 401 })
+  }
+  if (session.usedAt) {
+    return NextResponse.json({ error: 'Ce lien de retour a déjà été utilisé.' }, { status: 409 })
+  }
+
+  const apiKey = session.vendor
+  if (!apiKey.isActive || apiKey.vendor.status !== 'APPROVED') {
+    return NextResponse.json({ error: 'Clé API invalide ou compte non approuvé.' }, { status: 403 })
+  }
+
+  // ── 2. Lire les paramètres depuis le body JSON ───────────────
   let body: Record<string, unknown>
   try {
     body = await req.json()
@@ -64,31 +68,35 @@ export async function POST(
   const numGe0 = (k: string) => { const n = Number(body[k]); return Number.isFinite(n) && n >= 0 ? n : null }
   const intPos = (k: string) => { const n = parseInt(String(body[k]), 10); return Number.isFinite(n) && n > 0 ? n : null }
 
-  const customerName     = str('customer_name')
-  const customerEmail    = str('customer_email').toLowerCase()
-  const customerPhone    = str('customer_telephone')
-  const customerGender   = str('customer_gender')  || 'Unknown'
-  const customerAge      = intPos('customer_age')   ?? 30
-  const customerWilaya   = str('customer_wilaya')   || 'Alger'
-  const productName      = str('product_name')
-  const productCategory  = str('product_category')
-  const orderId          = str('order_id')
-  const orderAddress     = str('order_address')
-  const shopName         = str('shop_name')
-  const orderDateRaw     = str('order_date')
-  const reason           = str('reason')
-  const description      = str('description')
-  const productPrice     = numPos('product_price')
-  const productQuantity  = intPos('order_quantity') ?? numPos('product_quantity') ?? 1
-  const orderTotal       = numPos('order_total')
-  const paymentMethod    = str('payment_method')  || 'Unknown'
-  const shippingMethod   = str('shipping_method') || 'Standard'
-  const shippingCost     = numGe0('shipping_cost') ?? 0
+  // Customer & order data come from the session (trusted source)
+  const customerName    = session.customerName  || str('customer_name')
+  const customerEmail   = (session.customerEmail || str('customer_email')).toLowerCase()
+  const customerPhone   = session.customerPhone  || str('customer_telephone')
+  const productName     = session.productName    || str('product_name')
+  const orderId         = session.orderId        || str('order_id')
+  const shopName        = session.shopName       || str('shop_name')
+  const orderDateRaw    = session.orderDate      || str('order_date')
+
+  // ML-enrichment fields (optional, provided by client)
+  const customerGender  = str('customer_gender')  || 'Unknown'
+  const customerAge     = intPos('customer_age')   ?? 30
+  const customerWilaya  = str('customer_wilaya')   || 'Alger'
+  const productCategory = str('product_category')
+  const orderAddress    = str('order_address')
+  const reason            = str('reason')
+  const desiredResolution = str('desired_resolution').toUpperCase()
+  const description       = str('description')
+  const productPrice    = numPos('product_price')
+  const productQuantity = intPos('order_quantity') ?? numPos('product_quantity') ?? 1
+  const orderTotal      = numPos('order_total')
+  const paymentMethod   = str('payment_method')  || 'Unknown'
+  const shippingMethod  = str('shipping_method') || 'Standard'
+  const shippingCost    = numGe0('shipping_cost') ?? 0
 
   // ── 3. Validation stricte ───────────────────────────────────
-  if (!customerEmail || !orderId || !productName || !reason) {
+  if (!customerEmail || !orderId || !productName || !reason || !desiredResolution) {
     return NextResponse.json(
-      { error: 'Champs requis : customer_email, order_id, product_name, reason' },
+      { error: 'Champs requis : customer_email, order_id, product_name, reason, desired_resolution' },
       { status: 400 }
     )
   }
@@ -113,6 +121,13 @@ export async function POST(
   if (!VALID_REASONS.has(reason)) {
     return NextResponse.json({ error: 'Motif de retour non reconnu' }, { status: 400 })
   }
+  if (!VALID_RESOLUTIONS.has(desiredResolution)) {
+    return NextResponse.json({ error: 'Résolution invalide (EXCHANGE, REFUND ou REPAIR)' }, { status: 400 })
+  }
+  const acceptedTypes = apiKey.vendor.returnPolicy?.acceptedTypes ?? ['EXCHANGE', 'REFUND', 'REPAIR']
+  if (acceptedTypes.length > 0 && !acceptedTypes.includes(desiredResolution as any)) {
+    return NextResponse.json({ error: "Cette résolution n'est pas acceptée par ce vendeur" }, { status: 400 })
+  }
 
   // ── 4. Rate limit (3/h par IP+orderId) ──────────────────────
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
@@ -127,10 +142,10 @@ export async function POST(
     )
   }
 
-  // ── 6. Création du claim (unicité + création atomiques) ──────
-  const claimType   = TYPE_MAP[reason] ?? 'REFUND'
+  // ── 5. Création du claim ─────────────────────────────────────
+  const claimType   = desiredResolution as 'EXCHANGE' | 'REFUND' | 'REPAIR'
   const pastReturns = await prisma.claim.count({
-    where: { vendorId: keyRecord.vendorId, customerEmail },
+    where: { vendorId: apiKey.vendorId, customerEmail },
   }).catch(() => 0)
   const fraudScore  = pastReturns
   const parsedDate  = orderDateRaw ? new Date(orderDateRaw) : null
@@ -146,7 +161,7 @@ export async function POST(
   try {
     claim = await prisma.$transaction(async (tx) => {
       const dup = await tx.claim.findFirst({
-        where:  { vendorId: keyRecord.vendorId, orderId },
+        where:  { vendorId: apiKey.vendorId, orderId },
         select: { id: true },
       })
       if (dup) {
@@ -156,7 +171,7 @@ export async function POST(
       }
       return tx.claim.create({
         data: {
-          vendorId:      keyRecord.vendorId,
+          vendorId:      apiKey.vendorId,
           orderId,
           customerName:  customerName || customerEmail,
           customerEmail,
@@ -196,11 +211,11 @@ export async function POST(
     throw err
   }
 
-  // ── 7. Appel ML pour prédiction automatique ─────────────────
-  const mlApiUrl         = process.env.ML_API_URL ?? 'http://localhost:8000'
-  const returnWindowDays = keyRecord.vendor.returnPolicy?.maxClaimDays ?? 14
-  const fraudThreshold   = keyRecord.vendor.returnPolicy?.fraudScoreThreshold ?? 70
-  const daysToReturn     = orderDate
+  // ── 6. Appel ML pour prédiction automatique ─────────────────
+  const mlApiUrl             = process.env.ML_API_URL ?? 'http://localhost:8000'
+  const returnWindowDays     = apiKey.vendor.returnPolicy?.maxClaimDays ?? 14
+  const fraudReturnThreshold = (apiKey.vendor.returnPolicy as any)?.fraudReturnThreshold ?? 4
+  const daysToReturn = orderDate
     ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
     : 0
 
@@ -209,8 +224,8 @@ export async function POST(
     Customer_Age:            customerAge,
     Customer_Wilaya:         customerWilaya,
     Customer_Past_Returns:   pastReturns,
-    Shop_Name:               shopName || keyRecord.vendor.companyName,
-    Product_Category:        productCategory || keyRecord.vendor.vendorCategories?.[0] || 'Unknown',
+    Shop_Name:               shopName || apiKey.vendor.companyName,
+    Product_Category:        productCategory || apiKey.vendor.vendorCategories?.[0] || 'Unknown',
     Product_Price_DA:        productPrice ?? 1,
     Order_Quantity:          productQuantity,
     Total_Amount_DA:         orderTotal ?? productPrice ?? 1,
@@ -223,7 +238,7 @@ export async function POST(
     Within_Return_Policy:    daysToReturn <= returnWindowDays ? 1 : 0,
     Fraud_Score:             fraudScore,
     Customer_Satisfaction:   3,
-    Is_Suspicious:           fraudScore >= fraudThreshold ? 1 : 0,
+    Is_Suspicious:           pastReturns >= fraudReturnThreshold ? 1 : 0,
     Refund_Amount_DA:        productPrice ?? orderTotal ?? 0,
   }
 
@@ -275,16 +290,22 @@ export async function POST(
     console.warn('[return] ML server unreachable:', err?.code ?? err?.message)
   }
 
+  // ── 7. Marquer la session comme utilisée ─────────────────────
+  await prisma.returnSession.update({
+    where: { token },
+    data:  { usedAt: new Date() },
+  }).catch(() => null)
+
   // ── 8. Mettre à jour lastUsedAt de la clé API ─────────────────
   await prisma.apiKey.update({
-    where: { id: keyRecord.id },
+    where: { id: apiKey.id },
     data:  { lastUsedAt: new Date() },
   }).catch(() => null)
 
   console.log(JSON.stringify({
     event:     'return_submitted',
     claimId:   claim.id,
-    vendorId:  keyRecord.vendorId,
+    vendorId:  apiKey.vendorId,
     orderId,
     reason,
     fraudScore,

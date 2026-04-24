@@ -8,6 +8,7 @@ import {
   CLAIM_TYPE_LABELS,
   DOCUMENT_TYPE_LABELS,
 } from "@/lib/utils";
+import { CheckCircle2, XCircle, Clock, Circle } from "lucide-react";
 import { VendorDetailActions } from "@/components/admin/VendorDetailActions";
 import { DocumentReviewSection } from "@/components/admin/DocumentReviewSection";
 
@@ -64,7 +65,7 @@ export default async function AdminVendorDetailPage({
   const policy = vendor.returnPolicy;
 
   const acceptedTypesLabels =
-    policy?.acceptedTypes?.map((t) => CLAIM_TYPE_LABELS[t] ?? t).join(", ") ?? "—";
+    policy?.acceptedTypes?.map((t) => CLAIM_TYPE_LABELS[t] ?? t).join(", ") ?? "Non configuré";
 
   const fraudLevel = policy
     ? policy.fraudScoreThreshold >= 80
@@ -157,7 +158,10 @@ export default async function AdminVendorDetailPage({
                     :             "bg-white text-orange-700 border-orange-300"
                     }`}
                   >
-                    {accepted ? "✓" : rejected ? "✗" : submitted ? "⏳" : "○"}{" "}
+                    {accepted  ? <CheckCircle2 size={10} />
+                   : rejected  ? <XCircle size={10} />
+                   : submitted ? <Clock size={10} />
+                   :             <Circle size={10} />}{" "}
                     {DOCUMENT_TYPE_LABELS[docType] ?? docType}
                   </span>
                 );
@@ -241,7 +245,7 @@ export default async function AdminVendorDetailPage({
                   <dt className="text-gray-500">Seuil fraude</dt>
                   <dd className="mt-0.5">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${fraudLevel.bg} ${fraudLevel.color} border ${fraudLevel.border}`}>
-                      {policy.fraudScoreThreshold}/100 — {fraudLevel.label}
+                      {policy.fraudScoreThreshold}/100 - {fraudLevel.label}
                     </span>
                   </dd>
                 </div>
@@ -342,7 +346,7 @@ export default async function AdminVendorDetailPage({
                         <span className="text-xs text-gray-600">{Math.round(claim.aiScore * 100)}%</span>
                       </div>
                     ) : (
-                      <span className="text-xs text-gray-400">—</span>
+                      <span className="text-xs text-gray-400">N/A</span>
                     )}
                   </td>
                   <td className="px-6 py-3">

@@ -26,6 +26,7 @@ type Policy = {
   acceptedTypes:           string[];
   validationMode:          "MANUAL" | "AI_AUTO";
   fraudScoreThreshold:     number;
+  fraudReturnThreshold:    number;
 };
 
 type FraudLevel = "STRICT" | "BALANCED" | "FLEXIBLE";
@@ -77,6 +78,7 @@ const defaultPolicy: Policy = {
   acceptedTypes:          ["EXCHANGE", "REFUND"],
   validationMode:         "MANUAL",
   fraudScoreThreshold:    70,
+  fraudReturnThreshold:   4,
 };
 
 // ─── Sous-composants ──────────────────────────────────────────
@@ -133,7 +135,8 @@ export default function ReturnPolicyPage() {
               typeof data.policy.acceptedTypes === "string"
                 ? data.policy.acceptedTypes.split(",")
                 : (data.policy.acceptedTypes ?? prev.acceptedTypes),
-            fraudScoreThreshold: data.policy.fraudScoreThreshold ?? 70,
+            fraudScoreThreshold:  data.policy.fraudScoreThreshold  ?? 70,
+            fraudReturnThreshold: data.policy.fraudReturnThreshold ?? 4,
           }));
         }
       })
@@ -527,6 +530,44 @@ export default function ReturnPolicyPage() {
                   </button>
                 );
               })}
+            </div>
+          </SectionCard>
+
+          {/* 5 — Seuil de retours suspects */}
+          <SectionCard
+            title="Seuil de détection de fraude"
+            description="Après combien de retours d'un même client le système doit-il signaler une suspicion de fraude ?"
+            icon={ShieldCheck}
+          >
+            <div className="flex items-end gap-4">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Nombre de retours déclenchant l'alerte
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={policy.fraudReturnThreshold}
+                    onChange={(e) => {
+                      const v = Math.min(100, Math.max(1, parseInt(e.target.value) || 1));
+                      set("fraudReturnThreshold", v);
+                    }}
+                    className="w-24 px-3 py-2 text-sm font-semibold text-gray-900 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400 tabular-nums"
+                  />
+                  <span className="text-sm text-gray-500">retours par client</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  Par défaut : 4 retours. Un client atteignant ce seuil sera automatiquement marqué comme suspect.
+                </p>
+              </div>
+              <div className="shrink-0 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-center min-w-30">
+                <p className="text-2xl font-bold text-red-500 tabular-nums leading-none">
+                  {policy.fraudReturnThreshold}
+                </p>
+                <p className="text-xs text-red-400 mt-1">retour{policy.fraudReturnThreshold > 1 ? "s" : ""} max</p>
+              </div>
             </div>
           </SectionCard>
 
