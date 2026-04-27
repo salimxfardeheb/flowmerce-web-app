@@ -135,7 +135,7 @@ export async function POST(
           ?? req.headers.get('x-real-ip')
           ?? 'unknown'
 
-  const allowed = await checkRateLimit(orderId, ip)
+  const allowed = await checkRateLimit(`${ip}:${orderId}`)
   if (!allowed) {
     return NextResponse.json(
       { error: 'Trop de tentatives pour cette commande. Réessayez dans 1 heure.' },

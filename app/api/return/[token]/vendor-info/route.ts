@@ -16,7 +16,7 @@ export async function GET(
 
   if (!session) {
     return NextResponse.json(
-      { valid: false, companyName: '', error: `Lien de retour introuvable. (token: ${token.slice(0, 8)}…)` },
+      { valid: false, companyName: '', error: 'Lien de retour introuvable.' },
       { status: 403 }
     )
   }
@@ -46,7 +46,7 @@ export async function GET(
       valid:         true,
       companyName:   apiKey.vendor.companyName,
       acceptedTypes: apiKey.vendor.returnPolicy?.acceptedTypes ?? ['EXCHANGE', 'REFUND', 'REPAIR'],
-      acceptedReasons: apiKey.vendor.returnPolicy?.acceptedReasons ?? [],
+      acceptedReasons: apiKey.vendor.returnPolicy?.acceptedReturnReasons ?? [],
       // session pre-fill data
       orderId:       session.orderId,
       customerEmail: session.customerEmail,

@@ -50,8 +50,10 @@ export async function POST(req: NextRequest) {
   }
 
   const parsed = CreateApiKeySchema.safeParse(await req.json());
-  if (!parsed.success)
-    return NextResponse.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) {
+    console.error("[api-keys] validation error:", parsed.error.flatten());
+    return NextResponse.json({ error: "Données invalides" }, { status: 400 });
+  }
 
   const { name } = parsed.data;
 

@@ -57,10 +57,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, userId: user.id }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Données invalides", details: error.errors },
-        { status: 400 }
-      );
+      console.error("[register] validation error:", error.errors);
+      return NextResponse.json({ error: "Données invalides" }, { status: 400 });
     }
     console.error(error);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

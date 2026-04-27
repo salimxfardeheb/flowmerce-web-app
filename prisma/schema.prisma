@@ -8,17 +8,16 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  password      String
-  name          String
-  role          Role      @default(VENDOR)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  vendor        Vendor?
-  sessions      Session[]
-  accounts      Account[]
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  name      String
+  role      Role      @default(VENDOR)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  accounts  Account[]
+  sessions  Session[]
+  vendor    Vendor?
 
   @@index([role])
 }
@@ -36,8 +35,7 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -48,7 +46,6 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
@@ -63,75 +60,72 @@ model VerificationToken {
 }
 
 model Vendor {
-  id                   String         @id @default(cuid())
-  userId               String         @unique
-  companyName          String
-  siret                String?
-  phone                String
-  address              String
-  website              String?
-  status               VendorStatus   @default(PENDING)
-  rejectionReason      String?
-  requestedDocuments   DocumentType[] @default([])
-  vendorCategories  String[]  @default([])
-
-  documents    Document[]
-  returnPolicy ReturnPolicy?
-  apiKeys      ApiKey[]
-  claims       Claim[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String         @id @default(cuid())
+  userId             String         @unique
+  companyName        String
+  siret              String?
+  phone              String
+  address            String
+  website            String?
+  status             VendorStatus   @default(PENDING)
+  rejectionReason    String?
+  requestedDocuments DocumentType[] @default([])
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  vendorCategories   String[]       @default([])
+  apiKeys            ApiKey[]
+  claims             Claim[]
+  documents          Document[]
+  returnPolicy       ReturnPolicy?
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status])
 }
 
 model Document {
-  id              String         @id @default(cuid())
-  vendorId        String
-  name            String
-  url             String
-  type            DocumentType
-  status          DocumentStatus @default(PENDING)
-  rejectionReason String?
-  createdAt       DateTime       @default(now())
-
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  id                 String         @id @default(cuid())
+  vendorId           String
+  name               String
+  url                String
+  cloudinaryPublicId String?
+  type               DocumentType
+  createdAt          DateTime       @default(now())
+  rejectionReason    String?
+  status             DocumentStatus @default(PENDING)
+  vendor             Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@index([vendorId])
 }
 
 model ReturnPolicy {
-  id                     String         @id @default(cuid())
-  vendorId               String         @unique
-  allowRefusalOnDelivery Boolean        @default(false)
-  maxClaimDays           Int            @default(14)
-  acceptedTypes          ClaimType[]
-  acceptedReasons        String[]       @default([])
-  validationMode         ValidationMode @default(MANUAL)
-  fraudScoreThreshold    Int            @default(70)
-  fraudReturnThreshold   Int            @default(4)
-  createdAt              DateTime       @default(now())
-  updatedAt              DateTime       @updatedAt
-
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  id                      String         @id @default(cuid())
+  vendorId                String         @unique
+  allowRefusalOnDelivery  Boolean        @default(false)
+  maxClaimDays            Int            @default(14)
+  acceptedTypes           ClaimType[]
+  validationMode          ValidationMode @default(MANUAL)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  fraudScoreThreshold     Int            @default(70)
+  fraudReturnThreshold    Int            @default(4)
+  acceptedReturnReasons   String[]       @default([])
+  exchangeOnlyCategories  String[]       @default([])
+  nonRefundableCategories String[]       @default([])
+  partialRefundEnabled    Boolean        @default(false)
+  partialRefundRules      Json?
+  processingDays          Int            @default(5)
+  vendor                  Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 }
 
 model ApiKey {
-  id         String    @id @default(cuid())
-  vendorId   String
-  name       String
-  // SHA-256 hex (64 chars) du raw key. Le raw n'est jamais persisté.
-  key        String    @unique
-  // Préfixe public (12 premiers chars du raw) — affiché au vendeur
-  // pour identifier la clé sans pouvoir la réutiliser.
-  keyPrefix  String?
-  isActive   Boolean   @default(true)
-  lastUsedAt DateTime?
-  createdAt  DateTime  @default(now())
-
+  id             String          @id @default(cuid())
+  vendorId       String
+  name           String
+  key            String          @unique
+  isActive       Boolean         @default(true)
+  lastUsedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  keyPrefix      String?
   vendor         Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   returnSessions ReturnSession[]
 
@@ -153,7 +147,6 @@ model ReturnSession {
   expiresAt     DateTime
   usedAt        DateTime?
   createdAt     DateTime  @default(now())
-
   vendor        ApiKey    @relation(fields: [vendorId], references: [id])
 }
 
@@ -161,31 +154,23 @@ model Claim {
   id            String      @id @default(cuid())
   vendorId      String
   orderId       String
-
   customerName  String
   customerEmail String
-
-  // ── Nouveaux champs page retour ──────────────────────────────
-  productName   String?     // nom du produit commandé
-  orderDate     DateTime?   // date de la commande
-  source        ClaimSource @default(API) // origine : api ou page hébergée
-  fraudScore    Float?      // score de risque 0-100 calculé à la soumission
-  ipAddress     String?     // IP du client (pour anti-fraude)
-
   type          ClaimType
   description   String
-
   status        ClaimStatus @default(PENDING)
-
   aiScore       Float?
   aiDecision    String?
   prediction    Json?
   processedAt   DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  productName   String?
+  orderDate     DateTime?
+  source        ClaimSource @default(API)
+  fraudScore    Float?
+  ipAddress     String?
+  vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([vendorId, orderId])
   @@index([vendorId, createdAt(sort: Desc)])
@@ -195,42 +180,36 @@ model Claim {
 }
 
 model PredictionLog {
-  id       String   @id @default(cuid())
-  claimId  String?
-  vendorId String
-  input    Json
-  output   Json
+  id        String   @id @default(cuid())
+  claimId   String?
+  vendorId  String
+  input     Json
+  output    Json
   createdAt DateTime @default(now())
 
   @@index([vendorId])
   @@index([claimId])
 }
 
-// ── Rate limiting (anti-spam page retour) ────────────────────
 model ReturnRateLimit {
-  id        String   @id @default(cuid())
-  key       String   @unique  // "ip:orderId" ou "orderId"
-  count     Int      @default(1)
-  resetAt   DateTime
+  id      String   @id @default(cuid())
+  key     String   @unique
+  count   Int      @default(1)
+  resetAt DateTime
 
   @@index([key])
   @@index([resetAt])
 }
 
-// ── Tracking cross-boutique des clients à risque ──────────────
 model CustomerFraudRecord {
   id            String    @id @default(cuid())
-  // Matching OR : correspond si email OU phone correspond
   customerEmail String?
   customerPhone String?
-  // Compteurs cross-boutique
-  totalClaims   Int       @default(0)   // nb de réclamations toutes boutiques
-  totalRefusals Int       @default(0)   // nb de refus à la livraison signalés
-  // Dernière activité
+  totalClaims   Int       @default(0)
+  totalRefusals Int       @default(0)
   lastClaimAt   DateTime?
   lastRefusalAt DateTime?
-  // Audit
-  matchedBy     String?                 // "email" | "phone" | "both"
+  matchedBy     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -284,6 +263,6 @@ enum ClaimStatus {
 }
 
 enum ClaimSource {
-  API          // soumis via API directe (ancien flux)
-  HOSTED_PAGE  // soumis via la page hébergée Flowmerce
+  API
+  HOSTED_PAGE
 }

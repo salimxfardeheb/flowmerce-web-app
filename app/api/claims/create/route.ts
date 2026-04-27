@@ -72,9 +72,7 @@ export async function POST(req: NextRequest) {
     ?? "unknown";
 
   // ── 1. Valider la clé API ────────────────────────────────────
-  const rawKey =
-    req.headers.get("x-api-key") ??
-    req.nextUrl.searchParams.get("api_key");
+  const rawKey = req.headers.get("x-api-key");
 
   const auth = await validateApiKey(rawKey);
   if (!auth.ok) return auth.response;
@@ -94,12 +92,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
-  const orderId     = String(body.order_id).trim();
-  const reason      = String(body.reason);
-  const description = String(body.description).trim();
+  const orderId          = String(body.order_id).trim();
+  const reason           = String(body.reason);
+  const description      = String(body.description).trim();
+  const customerEmailNorm = String(body.customer_email).trim().toLowerCase();
+  const customerPhoneNorm = body.customer_phone ? String(body.customer_phone).trim() : undefined;
 
   // ── 5. Rate limiting ─────────────────────────────────────────
-  const allowed = await checkRateLimit(orderId, ip);
+  const allowed = await checkRateLimit(`${ip}:${orderId}`);
   if (!allowed) {
     return NextResponse.json(
       { error: "Trop de tentatives pour cette commande. Réessayez dans 1 heure." },
@@ -107,11 +107,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── 6. Rate limiting par client (anti-fraud-score poisoning) ─
+  const today = new Date().toISOString().slice(0, 10);
+  const allowedPerCustomer = await checkRateLimit(
+    `vendor:${keyRecord.vendorId}:email:${customerEmailNorm}:${today}`,
+    3,
+    24 * 60 * 60 * 1000,
+  );
+  if (!allowedPerCustomer) {
+    return NextResponse.json(
+      { error: "Trop de demandes pour ce client aujourd'hui. Réessayez demain." },
+      { status: 429 }
+    );
+  }
+
   // ── 7. Calculer le fraud score ───────────────────────────────
-  const customerEmailNorm = String(body.customer_email).trim().toLowerCase();
-  const customerPhoneNorm = body.customer_phone ? String(body.customer_phone).trim() : undefined;
   const { record: fraudRecord } = await findOrCreateFraudRecord(customerEmailNorm, customerPhoneNorm);
   const fraudScore = computeFraudScore(fraudRecord);
+  const pastReturns = fraudRecord.totalClaims;
   const orderDateRaw = body.order_date ? new Date(String(body.order_date)) : null;
 
   // ── 8. Vérifier unicité et créer atomiquement ─────────────── (CRIT-6)
@@ -166,7 +179,7 @@ export async function POST(req: NextRequest) {
     data: { lastUsedAt: new Date() },
   });
 
-  // ── 10. Log console structuré ─────────────────────────────────
+  // ── 11. Log console structuré ─────────────────────────────────
   console.log(JSON.stringify({
     event:            "return_submitted",
     claimId:          claim.id,

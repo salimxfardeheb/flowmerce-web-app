@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { cloudinary } from "@/lib/cloudinary";
 
-/**
- * GET /api/vendors/documents/view?id=<documentId>
- * Sert le fichier inline dans le navigateur (PDF ou image).
- * Les fichiers sont uploadés en access_mode "public" sur Cloudinary,
- * donc on utilise directement l'URL stockée — pas besoin de signed URL.
- */
+const SIGNED_URL_TTL_SECONDS = 300; // 5 minutes
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session)
@@ -23,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   const doc = await prisma.document.findUnique({
     where:  { id: documentId },
-    select: { url: true, name: true, id: true },
+    select: { url: true, name: true, id: true, cloudinaryPublicId: true },
   });
 
   if (!doc)
@@ -40,19 +37,32 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // ── Fichiers Cloudinary publics : proxy direct ────────────────
-  // Les fichiers sont uploadés avec access_mode:"public"
-  // → l'URL stockée est directement accessible, pas besoin de signature.
   const isPdf =
-    storedUrl.includes("/raw/upload/") ||
-    storedUrl.toLowerCase().includes(".pdf");
+    storedUrl.includes("/raw/") ||
+    storedUrl.toLowerCase().endsWith(".pdf");
 
+  // ── Nouveaux docs (authenticated) : signed URL courte durée ──
+  if (doc.cloudinaryPublicId) {
+    const resourceType: "image" | "raw" = storedUrl.includes("/raw/") ? "raw" : "image";
+    const expiresAt = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL_SECONDS;
+
+    const signedUrl = cloudinary.utils.url(doc.cloudinaryPublicId, {
+      sign_url:      true,
+      type:          "authenticated",
+      resource_type: resourceType,
+      expires_at:    expiresAt,
+      secure:        true,
+    });
+
+    return proxyAndServe(signedUrl, doc.name, isPdf);
+  }
+
+  // ── Anciens docs (public, accès direct) : proxy direct ───────
   return proxyAndServe(storedUrl, doc.name, isPdf);
 }
 
 const CLOUDINARY_URL_RE = /^https:\/\/res\.cloudinary\.com\//;
 
-// ── Fetcher le fichier et le servir inline ────────────────────
 async function proxyAndServe(
   url: string,
   filename: string | null,
@@ -65,10 +75,7 @@ async function proxyAndServe(
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: {
-        // Certains CDN exigent un User-Agent
-        "User-Agent": "Flowmerce-Admin/1.0",
-      },
+      headers: { "User-Agent": "Flowmerce-Admin/1.0" },
     });
   } catch (err) {
     console.error("[documents/view] fetch error:", err);
@@ -96,7 +103,7 @@ async function proxyAndServe(
     headers: {
       "Content-Type":        contentType,
       "Content-Disposition": `inline; filename="${safeFilename}"`,
-      "Cache-Control":       "private, max-age=3600",
+      "Cache-Control":       "private, no-store",
     },
   });
 }

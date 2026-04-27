@@ -26,8 +26,10 @@ export async function PATCH(
 
   const { vendorId } = await params;
   const parsed = PatchVendorSchema.safeParse(await req.json());
-  if (!parsed.success)
-    return NextResponse.json({ error: "Données invalides", details: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) {
+    console.error("[vendors/patch] validation error:", parsed.error.flatten());
+    return NextResponse.json({ error: "Données invalides" }, { status: 400 });
+  }
 
   const { status, rejectionReason, requestedDocuments } = parsed.data;
 

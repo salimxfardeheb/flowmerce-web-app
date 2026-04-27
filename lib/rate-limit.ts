@@ -1,9 +1,12 @@
 import { prisma } from './prisma'
 
-export async function checkRateLimit(orderId: string, ip: string): Promise<boolean> {
-  const key     = `${ip}:${orderId}`
+export async function checkRateLimit(
+  key: string,
+  maxAttempts = 3,
+  windowMs = 60 * 60 * 1000,
+): Promise<boolean> {
   const now     = new Date()
-  const resetAt = new Date(now.getTime() + 60 * 60 * 1000)
+  const resetAt = new Date(now.getTime() + windowMs)
 
   try {
     return await prisma.$transaction(
@@ -17,7 +20,7 @@ export async function checkRateLimit(orderId: string, ip: string): Promise<boole
           await tx.returnRateLimit.update({ where: { key }, data: { count: 1, resetAt } })
           return true
         }
-        if (existing.count >= 3) return false
+        if (existing.count >= maxAttempts) return false
         await tx.returnRateLimit.update({ where: { key }, data: { count: { increment: 1 } } })
         return true
       },

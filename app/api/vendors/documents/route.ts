@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { v2 as cloudinary } from "cloudinary";
+import { cloudinary } from "@/lib/cloudinary";
 import { getSessionFromRequest } from "@/lib/getSession";
-
-// Config explicite — évite les bugs de parsing de CLOUDINARY_URL
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure:     true,
-});
 
 const VALID_TYPES = [
   "ID_CARD",
@@ -71,21 +63,21 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
 
-  const buffer   = Buffer.from(await file.arrayBuffer());
-  const isPdf    = file.type === "application/pdf";
-  const dataUri  = `data:${file.type};base64,${buffer.toString("base64")}`;
+  const buffer  = Buffer.from(await file.arrayBuffer());
+  const isPdf   = file.type === "application/pdf";
+  const dataUri = `data:${file.type};base64,${buffer.toString("base64")}`;
 
   let cloudinaryUrl: string;
+  let cloudinaryPublicId: string;
   try {
     const result = await cloudinary.uploader.upload(dataUri, {
       folder:        `flomerce/vendors/${vendor.id}/documents`,
       public_id:     `${documentType}_${Date.now()}`,
       resource_type: isPdf ? "raw" : "image",
-      type:          "upload",
-      // Accès public — indispensable pour que private_download_url fonctionne
-      access_mode:   "public",
+      type:          "authenticated",
     });
-    cloudinaryUrl = result.secure_url;
+    cloudinaryUrl      = result.secure_url;
+    cloudinaryPublicId = result.public_id;
   } catch (err) {
     console.error("Cloudinary upload error:", err);
     return NextResponse.json(
@@ -103,23 +95,25 @@ export async function POST(req: NextRequest) {
     await prisma.document.update({
       where: { id: existing.id },
       data: {
-        name: file.name,
-        url:  cloudinaryUrl,
-        status: "PENDING",
-        rejectionReason: null,
+        name:              file.name,
+        url:               cloudinaryUrl,
+        cloudinaryPublicId,
+        status:            "PENDING",
+        rejectionReason:   null,
       },
     });
   } else {
     await prisma.document.create({
       data: {
-        vendorId: vendor.id,
-        name:     file.name,
-        url:      cloudinaryUrl,
-        type:     documentType as any,
-        status:   "PENDING",
+        vendorId:          vendor.id,
+        name:              file.name,
+        url:               cloudinaryUrl,
+        cloudinaryPublicId,
+        type:              documentType as any,
+        status:            "PENDING",
       },
     });
   }
 
-  return NextResponse.json({ success: true, url: cloudinaryUrl });
+  return NextResponse.json({ success: true });
 }
