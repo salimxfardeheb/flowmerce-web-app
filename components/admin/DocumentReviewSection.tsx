@@ -7,7 +7,6 @@ import {
   Building2,
   Home,
   Receipt,
-  Landmark,
   Paperclip,
   Clock,
   CheckCircle2,
@@ -20,11 +19,10 @@ import {
 } from "lucide-react";
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-  ID_CARD:               "Carte d'identité nationale",
-  BUSINESS_REGISTRATION: "Registre du commerce",
-  ADDRESS_PROOF:         "Justificatif de domicile",
-  TAX_CERTIFICATE:       "Attestation fiscale",
-  BANK_DETAILS:          "RIB / Coordonnées bancaires",
+  ID_CARD:               "Carte nationale d'identité (CNI) ou passeport",
+  BUSINESS_REGISTRATION: "Registre du commerce (RC)",
+  ADDRESS_PROOF:         "Justificatif de domicile ou  Facture eau/gaz/électricité < 3 mois",
+  TAX_CERTIFICATE:       "Numéro d'identification fiscale (NIF)",
   OTHER:                 "Autre document",
 };
 
@@ -33,7 +31,6 @@ const DOCUMENT_TYPE_ICONS: Record<string, React.ElementType> = {
   BUSINESS_REGISTRATION: Building2,
   ADDRESS_PROOF:         Home,
   TAX_CERTIFICATE:       Receipt,
-  BANK_DETAILS:          Landmark,
   OTHER:                 Paperclip,
 };
 
@@ -56,11 +53,9 @@ type Props = {
 };
 
 export function DocumentReviewSection({
-  vendorId,
   vendorStatus,
   requestedDocuments,
   documents,
-  alreadySubmittedTypes,
 }: Props) {
   const router                                    = useRouter();
   const [loadingId, setLoadingId]                 = useState<string | null>(null);

@@ -11,7 +11,7 @@ const registerSchema = z.object({
   companyName: z.string().min(2),
   siret:       z.string().optional(),
   phone:       z.string().min(8),
-  address:     z.string().min(5),
+  address:     z.string().min(3),
   website:     z.preprocess(
     (val) => (val === "" ? undefined : val),
     z.string().url().optional()

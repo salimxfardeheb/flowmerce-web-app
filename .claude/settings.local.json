@@ -23,7 +23,11 @@
       "Bash(export PATH=\"$PATH:/usr/local/bin:/usr/bin\")",
       "Bash(node_modules/.bin/prisma generate *)",
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(node_modules/.bin/prisma migrate *)"
+      "Bash(node_modules/.bin/prisma migrate *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git diff HEAD -- app/auth/login/page.tsx 2>$null | Select-Object -First 400)",
+      "PowerShell(git diff HEAD -- app/api/api-keys/route.ts components/claims/ClaimActions.tsx components/admin/VendorActions.tsx 2>$null | Select-Object -First 500)",
+      "PowerShell(git diff HEAD -- app/dashboard/claims/page.tsx app/dashboard/api-keys/page.tsx 2>$null | Select-Object -First 500)"
     ]
   }
 }

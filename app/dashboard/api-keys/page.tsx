@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { VendorAccessGuard } from "@/components/vendor/VendorAccessGuard";
-
+import { Key, Copy, Check, AlertTriangle, Trash2, Plus, X } from "lucide-react";
 
 type ApiKey = {
   id: string;
   name: string;
-  key: string;          // masque (préfixe…) — le raw n'est plus jamais resservi
+  key: string;
   keyPrefix?: string | null;
   isActive: boolean;
   lastUsedAt: string | null;
@@ -22,8 +22,6 @@ export default function ApiKeysPage() {
   const [showForm, setShowForm] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  // Raw keys révélées uniquement à l'instant de leur création (one-shot).
-  // Perdues au reload : la DB ne stocke qu'un hash.
   const [revealed, setRevealed] = useState<Record<string, string>>({});
 
   const fetchKeys = async () => {
@@ -40,6 +38,15 @@ export default function ApiKeysPage() {
   const createKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyName.trim()) return;
+
+    const isDuplicate = keys.some(
+      (k) => k.name.toLowerCase() === newKeyName.trim().toLowerCase()
+    );
+    if (isDuplicate) {
+      setError("Une clé avec ce nom existe déjà.");
+      return;
+    }
+
     setCreating(true);
     setError("");
 
@@ -53,8 +60,6 @@ export default function ApiKeysPage() {
     if (!res.ok) {
       setError(data.error || "Erreur lors de la création");
     } else {
-      // data.key.key contient le RAW (one-shot reveal). On le garde en
-      // mémoire locale puis on stocke le masque côté liste.
       const rawKey: string = data.key.key;
       setRevealed((prev) => ({ ...prev, [data.key.id]: rawKey }));
       const masked = data.key.keyPrefix ? `${data.key.keyPrefix}…` : "••••••••";
@@ -78,74 +83,78 @@ export default function ApiKeysPage() {
   };
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="px-8 py-6 max-w-3xl">
       <VendorAccessGuard />
-      <div className="flex items-center justify-between mb-8">
+
+      {/* Header */}
+      <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Clés API</h1>
-          <p className="text-gray-500 mt-1">Gérez les clés d&apos;accès à l&apos;API Flomerce</p>
+          <h1 className="text-xl font-semibold text-gray-900">Clés API</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Gérez les clés d&apos;accès à l&apos;API Flomerce.
+          </p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors"
+          onClick={() => { setShowForm(!showForm); setError(""); }}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shrink-0"
         >
-          + Nouvelle clé
+          <Plus className="w-4 h-4" />
+          Nouvelle clé
         </button>
       </div>
 
+      {/* Create form */}
       {showForm && (
-        <form
-          onSubmit={createKey}
-          className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6"
-        >
-          <h2 className="font-semibold text-gray-800 mb-4">Créer une clé API</h2>
+        <div className="bg-white rounded-lg border border-gray-200 p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-gray-900">Créer une clé API</h2>
+            <button
+              onClick={() => { setShowForm(false); setError(""); }}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
           {error && (
-            <p className="text-red-600 text-sm mb-3">{error}</p>
+            <p className="text-sm text-red-600 mb-3">{error}</p>
           )}
-          <div className="flex gap-3">
+          <form onSubmit={createKey} className="flex gap-3">
             <input
               type="text"
-              placeholder="Nom de la clé (ex: Production, Test...)"
+              placeholder="Nom de la clé (ex : Production, Test…)"
               value={newKeyName}
               onChange={(e) => setNewKeyName(e.target.value)}
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               required
+              autoFocus
             />
             <button
               type="submit"
               disabled={creating}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
             >
-              {creating ? "..." : "Créer"}
+              {creating ? "Création…" : "Créer"}
             </button>
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="text-gray-500 hover:text-gray-700 px-2"
-            >
-              Annuler
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       )}
 
+      {/* Keys list */}
       {loading ? (
-        <div className="text-gray-500 text-sm">Chargement...</div>
+        <div className="text-sm text-gray-400">Chargement…</div>
       ) : keys.length === 0 ? (
-        <div className="bg-white rounded-xl p-10 text-center border border-dashed border-gray-300">
-          <div className="text-4xl mb-3">🔑</div>
-          <p className="text-gray-500">Aucune clé API. Créez votre première clé.</p>
+        <div className="bg-white rounded-lg border border-gray-200 py-16 flex flex-col items-center">
+          <Key className="w-8 h-8 text-gray-300 mb-3" />
+          <p className="text-sm font-medium text-gray-700">Aucune clé API</p>
+          <p className="text-xs text-gray-400 mt-1">Créez votre première clé pour commencer.</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
           {keys.map((key) => (
-            <div
-              key={key.id}
-              className="bg-white rounded-xl p-5 shadow-sm border border-gray-100"
-            >
+            <div key={key.id} className="p-5">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <p className="font-semibold text-gray-800">{key.name}</p>
+                  <p className="text-sm font-semibold text-gray-900">{key.name}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     Créée le {new Date(key.createdAt).toLocaleDateString("fr-FR")}
                     {key.lastUsedAt &&
@@ -154,11 +163,13 @@ export default function ApiKeysPage() {
                 </div>
                 <button
                   onClick={() => revokeKey(key.id)}
-                  className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                  className="inline-flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 transition-colors"
                 >
+                  <Trash2 className="w-3.5 h-3.5" />
                   Révoquer
                 </button>
               </div>
+
               <div className="flex items-center gap-2">
                 <code className="flex-1 bg-gray-50 text-gray-700 text-xs px-3 py-2 rounded-lg font-mono truncate border border-gray-200">
                   {revealed[key.id] ?? key.key}
@@ -166,32 +177,46 @@ export default function ApiKeysPage() {
                 {revealed[key.id] && (
                   <button
                     onClick={() => copyKey(revealed[key.id], key.id)}
-                    className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
                   >
-                    {copiedId === key.id ? "Copié ✓" : "Copier"}
+                    {copiedId === key.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-green-600" />
+                        Copié
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        Copier
+                      </>
+                    )}
                   </button>
                 )}
               </div>
+
               {revealed[key.id] && (
-                <p className="text-xs text-amber-600 mt-2">
-                  ⚠️ Copiez cette clé maintenant — elle ne sera plus jamais affichée.
-                </p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <p className="text-xs text-amber-600">
+                    Copiez cette clé maintenant — elle ne sera plus jamais affichée.
+                  </p>
+                </div>
               )}
             </div>
           ))}
         </div>
       )}
 
-      <div className="mt-8 bg-blue-50 rounded-xl p-5 border border-blue-100">
-        <h3 className="font-semibold text-blue-800 mb-2">Comment utiliser votre clé API ?</h3>
-        <p className="text-sm text-blue-700 mb-3">
+      {/* Usage guide */}
+      <div className="mt-6 bg-gray-50 rounded-lg border border-gray-200 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">Utilisation</h3>
+        <p className="text-xs text-gray-500 mb-3">
           Ajoutez votre clé dans le header de chaque requête :
         </p>
-        <code className="block bg-blue-900 text-blue-100 text-xs px-4 py-3 rounded-lg font-mono">
+        <code className="block bg-indigo-500 text-gray-100 text-xs px-4 py-3 rounded-lg font-mono">
           Authorization: Bearer flk_votre_cle_api
         </code>
       </div>
     </div>
-    
   );
 }

@@ -66,6 +66,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const duplicate = await prisma.apiKey.findFirst({
+    where: { vendorId: vendor.id, isActive: true, name: { equals: name.trim(), mode: "insensitive" } },
+  });
+  if (duplicate) {
+    return NextResponse.json(
+      { error: "Une clé avec ce nom existe déjà" },
+      { status: 409 }
+    );
+  }
+
   const rawKey = generateApiKey();
   const created = await prisma.apiKey.create({
     data: {

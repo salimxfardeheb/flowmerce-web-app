@@ -58,49 +58,45 @@ export default async function ClaimsPage({
   return (
     <div className="px-8 py-6 max-w-350">
 
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between mb-8">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Réclamations</h1>
-          <p className="text-sm text-gray-500 mt-1 max-w-lg">
+          <p className="text-sm text-gray-500 mt-1">
             Suivez et traitez les demandes clients, avec décisions automatiques et détection de fraude.
           </p>
         </div>
-        <a
-          href="/dashboard/claims?status=PENDING"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shrink-0"
-        >
-          Voir les cas en attente
-          <ArrowRight className="w-4 h-4" />
-        </a>
+        {pending > 0 && (
+          <a
+            href="/dashboard/claims?status=PENDING"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shrink-0"
+          >
+            {pending} en attente
+            <ArrowRight className="w-4 h-4" />
+          </a>
+        )}
       </div>
 
-      {/* ── KPIs ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white rounded-lg border border-gray-200 px-5 py-4">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{total}</p>
+          <p className="text-2xl font-semibold text-gray-900 mt-1">{total}</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-5 py-4">
+        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">En attente</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{pending}</p>
-          {pending > 0 && (
-            <p className="text-xs text-amber-600 mt-1">Nécessite une action</p>
-          )}
+          <p className="text-2xl font-semibold text-gray-900 mt-1">{pending}</p>
+          {pending > 0 && <p className="text-xs text-amber-500 mt-0.5">Action requise</p>}
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-5 py-4">
+        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Décisions auto.</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{withML}</p>
-          {total > 0 && (
-            <p className="text-xs text-gray-400 mt-1">{Math.round((withML / total) * 100)}% du total</p>
-          )}
+          <p className="text-2xl font-semibold text-gray-900 mt-1">{withML}</p>
+          {total > 0 && <p className="text-xs text-gray-400 mt-0.5">{Math.round((withML / total) * 100)}% du total</p>}
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-5 py-4">
+        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Risque élevé</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{highRisk}</p>
-          {highRisk > 0 && (
-            <p className="text-xs text-red-500 mt-1">Nécessite une vérification</p>
-          )}
+          <p className="text-2xl font-semibold text-gray-900 mt-1">{highRisk}</p>
+          {highRisk > 0 && <p className="text-xs text-red-500 mt-0.5">Vérification requise</p>}
         </div>
       </div>
 

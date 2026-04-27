@@ -3,28 +3,38 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  Eye,
+  EyeOff,
+  Plus,
+  X,
+} from "lucide-react";
 
-// Catégories proposées (le vendeur peut en ajouter d'autres)
 const SUGGESTED_CATEGORIES = [
-  { value: "Electronics",  label: "Électronique",    icon: "💻" },
-  { value: "Clothing",     label: "Vêtements",       icon: "👗" },
-  { value: "Shoes",        label: "Chaussures",      icon: "👟" },
-  { value: "Beauty",       label: "Beauté",          icon: "💄" },
-  { value: "Appliances",   label: "Électroménager",  icon: "🏠" },
-  { value: "Books",        label: "Livres",          icon: "📚" },
-  { value: "Toys",         label: "Jouets",          icon: "🧸" },
-  { value: "Sports",       label: "Sport",           icon: "⚽" },
-  { value: "Home",         label: "Maison",          icon: "🛋️" },
-  { value: "Food",         label: "Alimentation",    icon: "🍎" },
+  { value: "Electronics",  label: "Electronique"   },
+  { value: "Clothing",     label: "Vetements"      },
+  { value: "Shoes",        label: "Chaussures"     },
+  { value: "Beauty",       label: "Beaute"         },
+  { value: "Appliances",   label: "Electromenager" },
+  { value: "Books",        label: "Livres"         },
+  { value: "Toys",         label: "Jouets"         },
+  { value: "Sports",       label: "Sport"          },
+  { value: "Home",         label: "Maison"         },
+  { value: "Food",         label: "Alimentation"   },
 ];
 
 type Step = 1 | 2 | 3;
 
 const STEPS = [
-  { num: 1, label: "Compte",      icon: "👤" },
-  { num: 2, label: "Entreprise",  icon: "🏢" },
-  { num: 3, label: "Catégories",  icon: "🏷️" },
+  { num: 1 as Step, label: "Compte",      desc: "Vos identifiants de connexion"         },
+  { num: 2 as Step, label: "Entreprise",  desc: "Les informations de votre societe"     },
+  { num: 3 as Step, label: "Categories",  desc: "Les produits que vous commercialisez"  },
 ];
+
+const INPUT = "w-full border border-gray-200 rounded-lg px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-400";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -43,9 +53,9 @@ export default function RegisterPage() {
     website: "",
   });
 
-  // Catégories sélectionnées + catégories custom ajoutées
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [customInput, setCustomInput] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -69,37 +79,15 @@ export default function RegisterPage() {
     setSelectedCategories((prev) => prev.filter((c) => c !== val));
   };
 
-  // Validation par étape
   const canGoNext = (): boolean => {
-    if (step === 1) {
-      return (
-        form.name.trim().length >= 2 &&
-        form.email.includes("@") &&
-        form.password.length >= 8
-      );
-    }
-    if (step === 2) {
-      return (
-        form.companyName.trim().length >= 2 &&
-        form.phone.trim().length >= 8 &&
-        form.address.trim().length >= 5
-      );
-    }
-    if (step === 3) {
-      return selectedCategories.length >= 1;
-    }
+    if (step === 1) return form.name.trim().length >= 2 && form.email.includes("@") && form.password.length >= 8;
+    if (step === 2) return form.companyName.trim().length >= 2 && form.phone.trim().length >= 8;
+    if (step === 3) return selectedCategories.length >= 1;
     return false;
   };
 
-  const goNext = () => {
-    setError("");
-    if (step < 3) setStep((s) => (s + 1) as Step);
-  };
-
-  const goPrev = () => {
-    setError("");
-    if (step > 1) setStep((s) => (s - 1) as Step);
-  };
+  const goNext = () => { setError(""); if (step < 3) setStep((s) => (s + 1) as Step); };
+  const goPrev = () => { setError(""); if (step > 1) setStep((s) => (s - 1) as Step); };
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -112,11 +100,7 @@ export default function RegisterPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        if (data.details?.length > 0) {
-          setError(data.details.map((e: any) => e.message).join(" — "));
-        } else {
-          setError(data.error || "Une erreur est survenue");
-        }
+        setError(data.details?.length > 0 ? data.details.map((e: any) => e.message).join(" — ") : data.error || "Une erreur est survenue");
         return;
       }
       router.push("/auth/login?registered=true");
@@ -127,143 +111,165 @@ export default function RegisterPage() {
     }
   };
 
+  const currentStep = STEPS.find((s) => s.num === step)!;
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
-      <div className="w-full max-w-lg">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
 
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
-              </svg>
-            </div>
-            <span className="text-xl font-bold text-indigo-700 tracking-tight">Flowmerce</span>
+      {/* Card */}
+      <div className="w-full max-w-4xl bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex">
+
+        {/* Left panel */}
+        <div className="w-72 bg-indigo-700 p-8 flex flex-col shrink-0">
+          <Link href="/" className="text-white font-bold tracking-tight text-base mb-10 block">
+            Flowmerce
           </Link>
-          <h2 className="text-xl font-semibold text-gray-800 mt-3">Inscription Vendeur</h2>
-          <p className="text-gray-500 text-sm mt-1">Créez votre compte en 3 étapes</p>
-        </div>
 
-        {/* Stepper */}
-        <div className="flex items-center justify-center mb-8">
-          {STEPS.map((s, i) => (
-            <div key={s.num} className="flex items-center">
-              <div className="flex flex-col items-center">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                  step > s.num
-                    ? "bg-green-500 text-white"
-                    : step === s.num
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200"
-                    : "bg-gray-200 text-gray-500"
-                }`}>
-                  {step > s.num ? "✓" : s.icon}
+          <nav className="flex flex-col gap-5">
+            {STEPS.map((s) => {
+              const done    = step > s.num;
+              const active  = step === s.num;
+              return (
+                <div key={s.num} className="flex items-start gap-3">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                    done   ? "bg-green-400 text-white" :
+                    active ? "bg-white text-indigo-700" :
+                             "bg-indigo-600/50 text-indigo-400"
+                  }`}>
+                    {done
+                      ? <Check size={11} strokeWidth={3} />
+                      : <span className="text-xs font-bold leading-none">{s.num}</span>
+                    }
+                  </div>
+                  <div>
+                    <p className={`text-base font-medium leading-none ${active ? "text-white" : done ? "text-indigo-200" : "text-indigo-400"}`}>
+                      {s.label}
+                    </p>
+                    {active && (
+                      <p className="text-sm text-indigo-300 mt-1 leading-snug">{s.desc}</p>
+                    )}
+                  </div>
                 </div>
-                <span className={`text-xs mt-1 font-medium ${step === s.num ? "text-indigo-600" : "text-gray-400"}`}>
-                  {s.label}
-                </span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className={`h-0.5 w-16 mx-2 mb-4 transition-all ${step > s.num ? "bg-green-400" : "bg-gray-200"}`} />
-              )}
+              );
+            })}
+          </nav>
+
+          <div className="mt-auto">
+            <div className="h-px bg-indigo-600 mb-4" />
+            <p className="text-sm text-indigo-300 mb-2">Etape {step} sur 3</p>
+            <div className="h-1 bg-indigo-600 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-white/50 rounded-full transition-all duration-300"
+                style={{ width: `${(step / 3) * 100}%` }}
+              />
             </div>
-          ))}
+          </div>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+        {/* Right panel */}
+        <div className="flex-1 p-12 flex flex-col">
 
-          {/* Erreur */}
+          {/* Step header */}
+          <div className="mb-6">
+            <p className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-1">
+              Etape {step} sur 3
+            </p>
+            <h1 className="text-xl font-semibold text-gray-900">{currentStep.label}</h1>
+            <p className="text-base text-gray-500 mt-0.5">{currentStep.desc}</p>
+          </div>
+
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-5 text-sm flex items-start gap-2">
-              <span>⚠️</span>
+            <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 px-3.5 py-3 rounded-lg mb-5 text-sm">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
 
-          {/* ── Étape 1 : Compte ── */}
+          {/* Etape 1 */}
           {step === 1 && (
-            <div className="space-y-4">
-              <div className="mb-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Informations de connexion</p>
-              </div>
+            <div className="flex flex-col gap-4 flex-1">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nom complet <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nom complet <span className="text-red-400">*</span>
+                </label>
                 <input name="name" type="text" required value={form.name} onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="Jean Dupont" />
+                  className={INPUT} placeholder="Mohammed ben Mohammed" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email <span className="text-red-400">*</span>
+                </label>
                 <input name="email" type="email" required value={form.email} onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="jean@exemple.com" />
+                  className={INPUT} placeholder="Mohammed@exemple.com" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe <span className="text-red-500">*</span></label>
-                <input name="password" type="password" required minLength={8} value={form.password} onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="Minimum 8 caractères" />
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Mot de passe <span className="text-red-400">*</span>
+                </label>
+                <div className="relative">
+                  <input name="password" type={showPassword ? "text" : "password"} required minLength={8} value={form.password} onChange={handleChange}
+                    className={`${INPUT} pr-10`} placeholder="Minimum 8 caracteres" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
                 {form.password.length > 0 && form.password.length < 8 && (
-                  <p className="text-xs text-red-500 mt-1">Au moins 8 caractères requis</p>
+                  <p className="text-xs text-red-500 mt-1.5">Au moins 8 caracteres requis</p>
                 )}
               </div>
             </div>
           )}
 
-          {/* ── Étape 2 : Entreprise ── */}
+          {/* Etape 2 */}
           {step === 2 && (
-            <div className="space-y-4">
-              <div className="mb-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Informations entreprise</p>
-              </div>
+            <div className="flex flex-col gap-4 flex-1">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l'entreprise <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nom de l&apos;entreprise <span className="text-red-400">*</span>
+                  </label>
                   <input name="companyName" type="text" required value={form.companyName} onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="Ma Boutique" />
+                    className={INPUT} placeholder="Ma Boutique" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">SIRET</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">SIRET</label>
                   <input name="siret" type="text" value={form.siret} onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="12345678901234" />
+                    className={INPUT} placeholder="12345678901234" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Telephone <span className="text-red-400">*</span>
+                  </label>
                   <input name="phone" type="tel" required value={form.phone} onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="06 00 00 00 00" />
+                    className={INPUT} placeholder="06 00 00 00 00" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Site web</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Site web</label>
                   <input name="website" type="url" value={form.website} onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="https://..." />
+                    className={INPUT} placeholder="https://..." />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Adresse <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Adresse <span className="text-red-400">*</span>
+                </label>
                 <input name="address" type="text" required value={form.address} onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="123 rue de la Paix, 75001 Paris" />
+                  className={INPUT} placeholder="123 rue de Mohammed, 31001 Oran" />
               </div>
             </div>
           )}
 
-          {/* ── Étape 3 : Catégories ── */}
+          {/* Etape 3 */}
           {step === 3 && (
-            <div className="space-y-5">
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Catégories de vente</p>
-                <p className="text-xs text-gray-400">Sélectionnez les catégories de produits que vous vendez. Vous pourrez les configurer en détail dans votre politique de retours.</p>
-              </div>
-
-              {/* Grille de catégories proposées */}
-              <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-4 flex-1">
+              <div className="grid grid-cols-3 gap-2">
                 {SUGGESTED_CATEGORIES.map((cat) => {
                   const active = selectedCategories.includes(cat.value);
                   return (
@@ -271,84 +277,73 @@ export default function RegisterPage() {
                       key={cat.value}
                       type="button"
                       onClick={() => toggleCategory(cat.value)}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 transition-all text-left ${
+                      className={`relative flex items-center justify-center px-2 py-3 rounded-lg border text-sm font-medium transition-all ${
                         active
-                          ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                          : "border-gray-200 bg-white text-gray-600 hover:border-indigo-200 hover:bg-gray-50"
+                          ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                          : "border-gray-200 text-gray-600 hover:border-indigo-200 hover:bg-gray-50"
                       }`}
                     >
-                      <span className="text-lg">{cat.icon}</span>
-                      <span className="text-xs font-medium">{cat.label}</span>
-                      {active && <span className="ml-auto text-indigo-500 text-xs">✓</span>}
+                      {cat.label}
+                      {active && (
+                        <span className="absolute top-1 right-1 w-3 h-3 bg-indigo-600 rounded-full flex items-center justify-center">
+                          <Check size={8} className="text-white" strokeWidth={3} />
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
 
-              {/* Ajout d'une catégorie personnalisée */}
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">Ajouter une catégorie personnalisée</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={customInput}
-                    onChange={(e) => setCustomInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomCategory(); } }}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="Ex: Bijoux, Animaux, Auto..."
-                  />
-                  <button
-                    type="button"
-                    onClick={addCustomCategory}
-                    disabled={!customInput.trim()}
-                    className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                  >
-                    + Ajouter
-                  </button>
-                </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customInput}
+                  onChange={(e) => setCustomInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomCategory(); } }}
+                  className={INPUT}
+                  placeholder="Categorie personnalisee..."
+                />
+                <button
+                  type="button"
+                  onClick={addCustomCategory}
+                  disabled={!customInput.trim()}
+                  className="inline-flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                >
+                  <Plus size={14} />
+                </button>
               </div>
 
-              {/* Résumé des sélectionnées */}
               {selectedCategories.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">
-                    {selectedCategories.length} catégorie{selectedCategories.length > 1 ? "s" : ""} sélectionnée{selectedCategories.length > 1 ? "s" : ""}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedCategories.map((cat) => {
-                      const suggested = SUGGESTED_CATEGORIES.find((s) => s.value === cat);
-                      return (
-                        <span key={cat} className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-medium px-3 py-1.5 rounded-full">
-                          {suggested?.icon ?? "🏷️"} {suggested?.label ?? cat}
-                          <button
-                            type="button"
-                            onClick={() => removeCategory(cat)}
-                            className="ml-1 text-indigo-400 hover:text-indigo-700 transition"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedCategories.map((cat) => {
+                    const suggested = SUGGESTED_CATEGORIES.find((s) => s.value === cat);
+                    return (
+                      <span key={cat} className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-md">
+                        {suggested?.label ?? cat}
+                        <button type="button" onClick={() => removeCategory(cat)} className="text-indigo-400 hover:text-indigo-700 transition-colors ml-0.5">
+                          <X size={11} />
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
               )}
 
               {selectedCategories.length === 0 && (
-                <p className="text-xs text-red-500">⚠️ Sélectionnez au moins une catégorie pour continuer</p>
+                <p className="text-xs text-gray-400">Selectionnez au moins une categorie pour continuer.</p>
               )}
             </div>
           )}
 
           {/* Navigation */}
-          <div className="flex gap-3 mt-8">
+          <div className="flex gap-2.5 mt-8 pt-5 border-t border-gray-100">
             {step > 1 && (
               <button
                 type="button"
                 onClick={goPrev}
-                className="flex-1 border-2 border-gray-300 text-gray-600 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50 transition"
+                className="px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
               >
-                ← Retour
+                Retour
               </button>
             )}
 
@@ -357,35 +352,41 @@ export default function RegisterPage() {
                 type="button"
                 onClick={goNext}
                 disabled={!canGoNext()}
-                className="flex-1 bg-indigo-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm"
+                className="ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                Suivant →
+                Continuer
+                <ArrowRight size={14} />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleSubmit}
                 disabled={loading || !canGoNext()}
-                className="flex-1 bg-indigo-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm"
+                className="ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Création du compte...
-                  </span>
-                ) : "✅ Créer mon compte"}
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Creation...
+                  </>
+                ) : (
+                  <>
+                    <Check size={14} strokeWidth={2.5} />
+                    Creer mon compte
+                  </>
+                )}
               </button>
             )}
           </div>
         </div>
-
-        <p className="text-center text-sm text-gray-500 mt-5">
-          Déjà un compte ?{" "}
-          <Link href="/auth/login" className="text-indigo-600 font-medium hover:underline">
-            Se connecter
-          </Link>
-        </p>
       </div>
+
+      <p className="text-base text-gray-500 mt-5">
+        Deja un compte ?{" "}
+        <Link href="/auth/login" className="text-indigo-600 font-medium hover:text-indigo-800 transition-colors">
+          Se connecter
+        </Link>
+      </p>
     </div>
   );
 }

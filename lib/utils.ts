@@ -65,10 +65,9 @@ export const VENDOR_STATUS_LABELS: Record<string, string> = {
 };
 
 export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-  ID_CARD: "Carte d'identité nationale",
+  ID_CARD:               "Carte d'identité nationale",
   BUSINESS_REGISTRATION: "Registre du commerce",
-  ADDRESS_PROOF: "Justificatif de domicile",
-  TAX_CERTIFICATE: "Attestation fiscale",
-  BANK_DETAILS: "RIB / Coordonnées bancaires",
-  OTHER: "Autre document",
+  ADDRESS_PROOF:         "Justificatif de domicile",
+  TAX_CERTIFICATE:       "Attestation fiscale",
+  OTHER:                 "Autre document",
 };
