@@ -136,9 +136,7 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       });
       if (dup) {
-        const e = new Error("DUPLICATE_CLAIM");
-        (e as any).code = "DUPLICATE_CLAIM";
-        throw e;
+        throw Object.assign(new Error("DUPLICATE_CLAIM"), { code: "DUPLICATE_CLAIM" });
       }
       return tx.claim.create({
         data: {

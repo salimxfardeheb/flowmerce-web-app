@@ -47,15 +47,15 @@ export async function GET(_req: NextRequest) {
     fraudReturnThreshold: policy?.fraudReturnThreshold ?? 4,
 
     // Paramètres avancés (nouveaux)
-    nonRefundableCategories:  (policy as any)?.nonRefundableCategories ?? [],
-    exchangeOnlyCategories:   (policy as any)?.exchangeOnlyCategories  ?? [],
-    partialRefundEnabled:     (policy as any)?.partialRefundEnabled     ?? false,
-    partialRefundRules:       (policy as any)?.partialRefundRules ?? {
+    nonRefundableCategories:  policy?.nonRefundableCategories ?? [],
+    exchangeOnlyCategories:   policy?.exchangeOnlyCategories  ?? [],
+    partialRefundEnabled:     policy?.partialRefundEnabled     ?? false,
+    partialRefundRules:       policy?.partialRefundRules ?? {
       after_50pct_window:   50,
       used_product_penalty: 20,
     },
-    acceptedReturnReasons:    (policy as any)?.acceptedReturnReasons ?? [],
-    processingDays:           (policy as any)?.processingDays ?? 5,
+    acceptedReturnReasons:    policy?.acceptedReturnReasons ?? [],
+    processingDays:           policy?.processingDays ?? 5,
 
     // Référentiels disponibles
     _available: {

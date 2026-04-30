@@ -9,6 +9,7 @@
 //   Body:   { ...ReturnRequest }
 
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { validateApiKey } from "@/lib/api-key-auth";
 import { findOrCreateFraudRecord, computeFraudScore } from "@/lib/fraud-score";
@@ -174,7 +175,7 @@ export async function POST(req: NextRequest) {
 
     if (policy.acceptedTypes.length > 0) {
       const claimType = mapReasonToType(rawBody.Return_Reason!)
-      if (!policy.acceptedTypes.includes(claimType as any)) {
+      if (!policy.acceptedTypes.includes(claimType)) {
         return NextResponse.json({
           refused: true,
           reason:  'CLAIM_TYPE_NOT_ACCEPTED',
@@ -196,7 +197,7 @@ export async function POST(req: NextRequest) {
   // 5. Appliquer la politique du vendeur
   const { input: mlInput, policyWarnings, policyRejected } = applyVendorPolicy(
     rawBody,
-    keyRecord.vendor.returnPolicy as any
+    keyRecord.vendor.returnPolicy
   );
 
   if (policyRejected) {
@@ -215,7 +216,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Supprimer Refund_Amount_DA du payload ML (retiré côté ML)
-  delete (mlInput as any).Refund_Amount_DA
+  delete (mlInput as unknown as Record<string, unknown>).Refund_Amount_DA
 
   // 6. Appeler le FastAPI Python
   const mlApiUrl = process.env.ML_API_URL;
@@ -279,8 +280,8 @@ export async function POST(req: NextRequest) {
       .create({
         data: {
           vendorId: keyRecord.vendorId,
-          input: mlInput as any,
-          output: prediction as any,
+          input: mlInput as Prisma.InputJsonValue,
+          output: prediction as Prisma.InputJsonValue,
         },
       })
       .catch((e) => console.error("[predict] Log error:", e)),

@@ -85,12 +85,12 @@ export async function POST(req: NextRequest) {
     maxClaimDays:             returnPolicy?.maxClaimDays            ?? 30,
     fraudScoreThreshold:      returnPolicy?.fraudScoreThreshold     ?? 70,
     fraudReturnThreshold:     returnPolicy?.fraudReturnThreshold    ?? 4,
-    nonRefundableCategories:  (returnPolicy as any)?.nonRefundableCategories  ?? [] as string[],
-    exchangeOnlyCategories:   (returnPolicy as any)?.exchangeOnlyCategories   ?? [] as string[],
-    partialRefundEnabled:     (returnPolicy as any)?.partialRefundEnabled      ?? false,
-    partialRefundRules:       (returnPolicy as any)?.partialRefundRules        ?? null,
-    acceptedReturnReasons:    (returnPolicy as any)?.acceptedReturnReasons     ?? [] as string[],
-    processingDays:           (returnPolicy as any)?.processingDays            ?? 5,
+    nonRefundableCategories:  returnPolicy?.nonRefundableCategories  ?? [],
+    exchangeOnlyCategories:   returnPolicy?.exchangeOnlyCategories   ?? [],
+    partialRefundEnabled:     returnPolicy?.partialRefundEnabled      ?? false,
+    partialRefundRules:       returnPolicy?.partialRefundRules        ?? null,
+    acceptedReturnReasons:    returnPolicy?.acceptedReturnReasons     ?? [],
+    processingDays:           returnPolicy?.processingDays            ?? 5,
   }
 
   // Délai calculé côté serveur depuis order_date (non manipulable par le client).

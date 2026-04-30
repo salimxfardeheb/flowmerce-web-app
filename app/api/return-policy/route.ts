@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   // Retourner aussi les catégories du vendeur (choisies à l'inscription)
   return NextResponse.json({
     policy,
-    vendorCategories: (vendor as any).vendorCategories ?? [],
+    vendorCategories: vendor.vendorCategories ?? [],
   });
 }
 

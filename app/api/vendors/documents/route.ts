@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DocumentType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cloudinary } from "@/lib/cloudinary";
 import { getSessionFromRequest } from "@/lib/getSession";
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
 
   // Upsert en base
   const existing = await prisma.document.findFirst({
-    where: { vendorId: vendor.id, type: documentType as any },
+    where: { vendorId: vendor.id, type: documentType as DocumentType },
   });
 
   if (existing) {
@@ -109,7 +110,7 @@ export async function POST(req: NextRequest) {
         name:              file.name,
         url:               cloudinaryUrl,
         cloudinaryPublicId,
-        type:              documentType as any,
+        type:              documentType as DocumentType,
         status:            "PENDING",
       },
     });

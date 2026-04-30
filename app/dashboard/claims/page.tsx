@@ -202,13 +202,13 @@ export default async function ClaimsPage({
                 const productName = claim.productName;
                 const prediction  = claim.prediction as Record<string, unknown> | null;
 
-                const overrideData    = (prediction as any)?.override;
+                const overrideData    = prediction?.override as Record<string, unknown> | undefined;
                 const displayDecision = overrideData?.resolution ?? claim.aiDecision;
                 const isOverridden    = !!overrideData;
 
-                const productPrice = (prediction as any)?.productPrice   as number | null;
-                const productQty   = (prediction as any)?.productQuantity as number | null;
-                const orderTotal   = (prediction as any)?.orderTotal      as number | null;
+                const productPrice = prediction?.productPrice   as number | null;
+                const productQty   = prediction?.productQuantity as number | null;
+                const orderTotal   = prediction?.orderTotal      as number | null;
 
                 const riskLevel =
                   fraudScore === null
