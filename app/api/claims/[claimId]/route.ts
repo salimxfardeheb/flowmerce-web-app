@@ -109,16 +109,14 @@ export async function PATCH(
   let vendorId: string | null = null
   let isExternalCall = false
 
-  const authHeader = req.headers.get('authorization')
-  const rawKey =
-    authHeader?.replace(/^Bearer\s+/, '') ??
-    req.headers.get('x-api-key') ??
-    null
+  // x-api-key est le signal canonique pour les appels externes.
+  // Authorization: Bearer flo_/flw_ est accepté pour rétrocompatibilité.
+  // Un JWT NextAuth ne commence jamais par ce préfixe → pas de collision.
+  const explicitKey = req.headers.get('x-api-key')
+  const bearerValue = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? null
+  const rawKey      = explicitKey ?? (/^fl[ow]_/.test(bearerValue ?? '') ? bearerValue : null)
 
-  // Une clé API Flowmerce commence toujours par "flo_"
-  const looksLikeApiKey = !!rawKey && (rawKey.startsWith('flo_') || rawKey.startsWith('flw_'))
-
-  if (looksLikeApiKey) {
+  if (rawKey) {
     // Appel externe via API key (boutique partenaire)
     const apiAuth = await validateApiKey(rawKey)
     if (!apiAuth.ok) return apiAuth.response
