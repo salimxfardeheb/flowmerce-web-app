@@ -10,7 +10,6 @@ type Props = {
   claimId:        string;
   aiDecision?:    string | null;
   aiScore?:       number | null;
-  prediction?:    Record<string, unknown> | null;
   currentStatus?: string;
 };
 
@@ -27,7 +26,7 @@ const STATUS_OPTIONS = [
   { value: "IN_PROGRESS", label: "En cours",  cls: "bg-blue-100 hover:bg-blue-200 text-blue-700"       },
 ];
 
-export function ClaimActions({ claimId, aiDecision, aiScore, prediction, currentStatus }: Props) {
+export function ClaimActions({ claimId, aiDecision, aiScore, currentStatus }: Props) {
   const router = useRouter();
   const [open,         setOpen]         = useState(false);
   const [loading,      setLoading]      = useState(false);
@@ -37,18 +36,20 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
   const quickStatus = async (status: string) => {
     setLoading(true);
     await fetch(`/api/claims/${claimId}`, {
-      method: "PATCH",
+      method:  "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body:    JSON.stringify({ status }),
     });
     setLoading(false);
     router.refresh();
   };
 
   const handleSave = async () => {
+    if (!resolution) return;
+
     setLoading(true);
-    await fetch(`/api/claims/${claimId}`, {
-      method: "PATCH",
+    const res = await fetch(`/api/claims/${claimId}`, {
+      method:  "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         aiDecision:   resolution   || undefined,
@@ -56,18 +57,19 @@ export function ClaimActions({ claimId, aiDecision, aiScore, prediction, current
       }),
     });
     setLoading(false);
+
+    if (!res.ok) return;
+
     setOpen(false);
     router.refresh();
   };
 
   const confidence = aiScore != null ? Math.round(aiScore * 100) : null;
-  const predAny    = prediction as any;
-  const mlShipping = predAny?.shipping_paid_by?.prediction ?? predAny?.shipping?.responsible ?? null;
-  void mlShipping;
 
   return (
     <div className="flex flex-col gap-1.5">
-      {/* Quick status buttons */}
+
+      {/* Boutons rapides de statut */}
       <div className="flex gap-1.5 flex-wrap">
         {STATUS_OPTIONS.filter(s => s.value !== currentStatus).map(s => (
           <button
