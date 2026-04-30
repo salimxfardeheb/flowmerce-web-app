@@ -61,3 +61,38 @@ export function computeFraudScore(record: CustomerFraudRecord | null): number {
   const refusalsContrib = Math.min(record.totalRefusals * 15, 40)
   return Math.min(claimsContrib + refusalsContrib, 100)
 }
+
+// ─────────────────────────────────────────────────────────────
+// evaluateFraud
+// Combine la recherche du record, le calcul du score et
+// la génération du signal d'alerte en une seule opération.
+// ─────────────────────────────────────────────────────────────
+export interface FraudEvalResult {
+  record:             CustomerFraudRecord
+  score:              number
+  totalClaims:        number
+  isFraudAlert:       boolean
+  fraudSignalMessage: string | null
+}
+
+export async function evaluateFraud(
+  email: string,
+  phone: string | null,
+  thresholds?: { scoreThreshold?: number; returnThreshold?: number },
+): Promise<FraudEvalResult> {
+  const { record } = await findOrCreateFraudRecord(email, phone ?? undefined)
+  const score       = computeFraudScore(record)
+  const totalClaims = (record.totalClaims ?? 0) + 1   // +1 pour la demande en cours
+
+  const scoreThreshold  = thresholds?.scoreThreshold  ?? 70
+  const returnThreshold = thresholds?.returnThreshold ?? 4
+  const isFraudAlert    = score > scoreThreshold || totalClaims > returnThreshold
+
+  const fraudSignalMessage: string | null = isFraudAlert
+    ? score > scoreThreshold
+      ? `⚠️ Signal fraude : score de risque élevé (${score}/100). Cette demande est soumise à contrôle renforcé.`
+      : `⚠️ Signal fraude : ${totalClaims} retours enregistrés. Un nombre élevé de retours peut entraîner une restriction.`
+    : null
+
+  return { record, score, totalClaims, isFraudAlert, fraudSignalMessage }
+}

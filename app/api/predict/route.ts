@@ -1,4 +1,4 @@
-// src/app/api/predict/route.ts
+// app/api/predict/route.ts
 //
 // Endpoint public appelé par les vendeurs avec leur clé API.
 // Flux : Validation clé → Application politique → Appel FastAPI → Log → Réponse
@@ -8,88 +8,63 @@
 //   Header: x-api-key: flw_xxxxxxxx
 //   Body:   { ...ReturnRequest }
 
-import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { validateApiKey } from "@/lib/api-key-auth";
+import { NextRequest, NextResponse }    from "next/server";
+import { Prisma }                        from "@prisma/client";
+import { prisma }                        from "@/lib/prisma";
+import { validateApiKey }                from "@/lib/api-key-auth";
 import { findOrCreateFraudRecord, computeFraudScore } from "@/lib/fraud-score";
+import { callMLPredict }                 from "@/lib/services/ml";
+import { checkReturnPolicy }             from "@/lib/services/return-policy";
 
 // ─────────────────────────────────────────────────────────────
 // Types (miroir du schéma Pydantic FastAPI)
 // ─────────────────────────────────────────────────────────────
 interface ReturnRequest {
-  Customer_Gender: string;
-  Customer_Age: number;
-  Customer_Wilaya: string;
-  Customer_Past_Returns: number;
-  Shop_Name: string;
-  Product_Category: string;
-  Product_Price_DA: number;
-  Order_Quantity: number;
-  Total_Amount_DA: number;
-  Payment_Method: string;
-  Shipping_Method: string;
-  Shipping_Cost_DA: number;
-  Return_Reason: string;
-  Days_to_Return: number;
+  Customer_Gender:        string;
+  Customer_Age:           number;
+  Customer_Wilaya:        string;
+  Customer_Past_Returns:  number;
+  Shop_Name:              string;
+  Product_Category:       string;
+  Product_Price_DA:       number;
+  Order_Quantity:         number;
+  Total_Amount_DA:        number;
+  Payment_Method:         string;
+  Shipping_Method:        string;
+  Shipping_Cost_DA:       number;
+  Return_Reason:          string;
+  Days_to_Return:         number;
   Shop_Return_Window_Days: number;
-  Within_Return_Policy: 0 | 1;
-  Fraud_Score: number;
-  Customer_Satisfaction: number;
-  Is_Suspicious: 0 | 1;
-}
-
-interface MLPrediction {
-  resolution: {
-    prediction: "Exchange" | "Refund" | "Reject" | "Repair";
-    probabilities: Record<string, number>;
-  };
-  shipping_paid_by: {
-    prediction: "Client" | "Vendeur";
-    probabilities: Record<string, number>;
-  };
+  Within_Return_Policy:   0 | 1;
+  Fraud_Score:            number;
+  Customer_Satisfaction:  number;
+  Is_Suspicious:          0 | 1;
 }
 
 // ─────────────────────────────────────────────────────────────
 // Validation des champs requis
 // ─────────────────────────────────────────────────────────────
 const REQUIRED_FIELDS: (keyof ReturnRequest)[] = [
-  "Customer_Gender",
-  "Customer_Age",
-  "Customer_Wilaya",
-  "Customer_Past_Returns",
-  "Shop_Name",
-  "Product_Category",
-  "Product_Price_DA",
-  "Order_Quantity",
-  "Total_Amount_DA",
-  "Payment_Method",
-  "Shipping_Method",
-  "Shipping_Cost_DA",
-  "Return_Reason",
-  "Days_to_Return",
-  "Fraud_Score",
-  "Customer_Satisfaction",
-  "Is_Suspicious",
+  "Customer_Gender", "Customer_Age", "Customer_Wilaya", "Customer_Past_Returns",
+  "Shop_Name", "Product_Category", "Product_Price_DA", "Order_Quantity",
+  "Total_Amount_DA", "Payment_Method", "Shipping_Method", "Shipping_Cost_DA",
+  "Return_Reason", "Days_to_Return", "Fraud_Score", "Customer_Satisfaction", "Is_Suspicious",
 ];
 
 function validateInput(body: Partial<ReturnRequest>): string | null {
   for (const field of REQUIRED_FIELDS) {
-    if (body[field] === undefined || body[field] === null || body[field] === "") {
+    if (body[field] === undefined || body[field] === null || body[field] === "")
       return `Champ manquant ou invalide : ${field}`;
-    }
   }
-  if (body.Fraud_Score! < 0 || body.Fraud_Score! > 100)
-    return "Fraud_Score doit être entre 0 et 100";
+  if (body.Fraud_Score! < 0 || body.Fraud_Score! > 100)    return "Fraud_Score doit être entre 0 et 100";
   if (body.Customer_Satisfaction! < 1 || body.Customer_Satisfaction! > 5)
     return "Customer_Satisfaction doit être entre 1 et 5";
-  if (body.Is_Suspicious !== 0 && body.Is_Suspicious !== 1)
-    return "Is_Suspicious doit être 0 ou 1";
+  if (body.Is_Suspicious !== 0 && body.Is_Suspicious !== 1) return "Is_Suspicious doit être 0 ou 1";
   return null;
 }
 
 // ─────────────────────────────────────────────────────────────
-// Return_Reason → ClaimType (pour vérification acceptedTypes)
+// Return_Reason → ClaimType
 // ─────────────────────────────────────────────────────────────
 function mapReasonToType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
   const r = reason.toLowerCase()
@@ -99,257 +74,139 @@ function mapReasonToType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Logique de politique vendeur
-// Enrichit / surcharge l'input ML avec les règles du vendeur
+// Enrichissement de l'input ML avec la politique vendeur
 // ─────────────────────────────────────────────────────────────
-function applyVendorPolicy(
+function enrichWithVendorPolicy(
   input: Partial<ReturnRequest>,
-  policy: {
-    maxClaimDays: number;
-    fraudScoreThreshold?: number | null;
-    acceptedTypes?: string[];
-  } | null
-): { input: ReturnRequest; policyWarnings: string[]; policyRejected: boolean } {
+  policy: { maxClaimDays: number; fraudScoreThreshold?: number | null } | null,
+): { enriched: ReturnRequest; warnings: string[] } {
+  const enriched  = { ...input } as ReturnRequest;
   const warnings: string[] = [];
-  const enriched = { ...input } as ReturnRequest;
 
-  if (!policy) return { input: enriched, policyWarnings: warnings, policyRejected: false };
+  if (!policy) return { enriched, warnings };
 
   enriched.Shop_Return_Window_Days = policy.maxClaimDays;
-  enriched.Within_Return_Policy =
-    enriched.Days_to_Return <= policy.maxClaimDays ? 1 : 0;
+  enriched.Within_Return_Policy    = enriched.Days_to_Return <= policy.maxClaimDays ? 1 : 0;
 
-  const fraudThreshold = policy.fraudScoreThreshold ?? 70;
-  if (enriched.Fraud_Score >= fraudThreshold) {
+  const threshold = policy.fraudScoreThreshold ?? 70;
+  if (enriched.Fraud_Score >= threshold) {
     enriched.Is_Suspicious = 1;
-    warnings.push(
-      `Fraud_Score (${enriched.Fraud_Score}) dépasse le seuil vendeur (${fraudThreshold}) — marqué comme suspect`
-    );
+    warnings.push(`Fraud_Score (${enriched.Fraud_Score}) dépasse le seuil vendeur (${threshold}) — marqué comme suspect`);
   }
 
-  return { input: enriched, policyWarnings: warnings, policyRejected: false };
+  return { enriched, warnings };
 }
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/predict
 // ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  // 1. Extraire la clé API (header x-api-key ou Authorization: Bearer)
+  // 1. Auth
   const rawKey =
     req.headers.get("x-api-key") ||
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
     null;
 
-  // 2. Valider la clé API
   const auth = await validateApiKey(rawKey);
   if (!auth.ok) return auth.response;
   const { keyRecord } = auth;
 
-  // 3. Parser le body
+  // 2. Parse + validate
   let rawBody: Partial<ReturnRequest>;
-  try {
-    rawBody = await req.json();
-  } catch {
+  try { rawBody = await req.json(); }
+  catch { return NextResponse.json({ error: "Body JSON invalide" }, { status: 400 }); }
+
+  const validationError = validateInput(rawBody);
+  if (validationError) return NextResponse.json({ error: validationError }, { status: 422 });
+
+  // 3. Politique bloquante (délai + type accepté)
+  const policy      = keyRecord.vendor.returnPolicy;
+  const policyCheck = checkReturnPolicy(policy, {
+    daysToReturn: rawBody.Days_to_Return!,
+    claimType:    mapReasonToType(rawBody.Return_Reason!),
+  });
+
+  if (!policyCheck.ok) {
     return NextResponse.json(
-      { error: "Body JSON invalide" },
-      { status: 400 }
+      { refused: true, reason: policyCheck.code, message: policyCheck.message },
+      { status: 200 },
     );
   }
 
-  // 4. Valider les champs requis
-  const validationError = validateInput(rawBody);
-  if (validationError) {
-    return NextResponse.json({ error: validationError }, { status: 422 });
-  }
-
-  // 4b. Filtre politique bloquant (avant tout appel ML)
-  const policy = keyRecord.vendor.returnPolicy
-  if (policy) {
-    if (rawBody.Days_to_Return! > policy.maxClaimDays) {
-      return NextResponse.json({
-        refused: true,
-        reason:  'OUT_OF_RETURN_WINDOW',
-        message: `Délai de réclamation dépassé (${rawBody.Days_to_Return}j > ${policy.maxClaimDays}j autorisés)`,
-      }, { status: 200 })
-    }
-
-    if (policy.acceptedTypes.length > 0) {
-      const claimType = mapReasonToType(rawBody.Return_Reason!)
-      if (!policy.acceptedTypes.includes(claimType)) {
-        return NextResponse.json({
-          refused: true,
-          reason:  'CLAIM_TYPE_NOT_ACCEPTED',
-          message: `La boutique n'accepte pas les réclamations de type ${claimType}`,
-        }, { status: 200 })
-      }
-    }
-  }
-
-  // 4c. Fraud score cross-boutique (remplace body.Fraud_Score)
-  // NE PAS incrémenter totalClaims ici — fait uniquement à la création du claim (étape 5)
-  const rawBodyAny = rawBody as Record<string, unknown>
+  // 4. Fraud score cross-boutique
+  const rawBodyAny = rawBody as Record<string, unknown>;
   const { record: fraudRecord } = await findOrCreateFraudRecord(
     rawBodyAny.customer_email as string | undefined,
     rawBodyAny.customer_phone as string | undefined,
-  )
-  rawBody.Fraud_Score = computeFraudScore(fraudRecord)
-
-  // 5. Appliquer la politique du vendeur
-  const { input: mlInput, policyWarnings, policyRejected } = applyVendorPolicy(
-    rawBody,
-    keyRecord.vendor.returnPolicy
   );
+  rawBody.Fraud_Score = computeFraudScore(fraudRecord);
 
-  if (policyRejected) {
-    return NextResponse.json(
-      {
-        resolution: { prediction: "Reject", probabilities: {} },
-        shipping_paid_by: { prediction: "Client", probabilities: {} },
-        vendor_policy_applied: {
-          return_window_days: keyRecord.vendor.returnPolicy?.maxClaimDays ?? 14,
-          within_policy: false,
-          warnings: policyWarnings,
-        },
-      },
-      { status: 422 }
-    );
-  }
+  // 5. Enrichir l'input ML avec la politique vendeur
+  const { enriched: mlInput, warnings: policyWarnings } = enrichWithVendorPolicy(rawBody, policy);
 
   // Supprimer Refund_Amount_DA du payload ML (retiré côté ML)
-  delete (mlInput as unknown as Record<string, unknown>).Refund_Amount_DA
+  delete (mlInput as unknown as Record<string, unknown>).Refund_Amount_DA;
 
-  // 6. Appeler le FastAPI Python
-  const mlApiUrl = process.env.ML_API_URL;
-  let prediction: MLPrediction;
+  // 6. Appel ML
+  const mlResult = await callMLPredict(mlInput);
 
-  const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 10_000);
-
-  try {
-    const mlRes = await fetch(`${mlApiUrl}/predict`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(process.env.ML_INTERNAL_SECRET
-          ? { "X-Internal-Key": process.env.ML_INTERNAL_SECRET }
-          : {}),
-      },
-      body: JSON.stringify(mlInput),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!mlRes.ok) {
-      const errBody = await mlRes.json().catch(() => ({}));
-      console.error("[predict] FastAPI error:", errBody);
+  if (!mlResult.ok) {
+    if (mlResult.timedOut) {
       return NextResponse.json(
-        { error: "Erreur du modèle ML", detail: errBody },
-        { status: 502 }
+        { error: "Le serveur ML n'a pas répondu dans les délais (10 s)", mlServerDown: true },
+        { status: 504 },
       );
     }
-
-    prediction = await mlRes.json();
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-
-    const isTimeout = err?.name === "AbortError" || err?.name === "TimeoutError";
-    if (isTimeout) {
-      return NextResponse.json(
-        {
-          error:       "Le serveur ML n'a pas répondu dans les délais (10 s)",
-          mlServerDown: true,
-        },
-        { status: 504 }
-      );
-    }
-
-    console.error("[predict] Network error:", err?.code ?? err?.message);
     return NextResponse.json(
-      {
-        error:       "Le serveur de prédiction est inaccessible. Vérifiez que le service ML est bien démarré sur " + mlApiUrl + ".",
-        mlServerDown: true,
-      },
-      { status: 503 }
+      { error: "Le serveur de prédiction est inaccessible.", mlServerDown: true, detail: mlResult.error },
+      { status: 503 },
     );
   }
 
-  // 7. Logger la prédiction et mettre à jour lastUsedAt (en parallèle)
+  // 7. Log + mise à jour lastUsedAt
   await Promise.all([
-    prisma.predictionLog
-      .create({
-        data: {
-          vendorId: keyRecord.vendorId,
-          input: mlInput as Prisma.InputJsonValue,
-          output: prediction as Prisma.InputJsonValue,
-        },
-      })
-      .catch((e) => console.error("[predict] Log error:", e)),
+    prisma.predictionLog.create({
+      data: { vendorId: keyRecord.vendorId, input: mlInput as unknown as Prisma.InputJsonValue, output: mlResult.prediction as unknown as Prisma.InputJsonValue },
+    }).catch((e) => console.error("[predict] Log error:", e)),
 
-    prisma.apiKey
-      .update({
-        where: { id: keyRecord.id },
-        data: { lastUsedAt: new Date() },
-      })
+    prisma.apiKey.update({ where: { id: keyRecord.id }, data: { lastUsedAt: new Date() } })
       .catch((e) => console.error("[predict] lastUsedAt update error:", e)),
   ]);
 
-  // 8. Enrichir la réponse avec les avertissements de politique
   return NextResponse.json(
     {
-      ...prediction,
+      ...mlResult.prediction,
       vendor_policy_applied: {
-        return_window_days: keyRecord.vendor.returnPolicy?.maxClaimDays ?? 14,
-        within_policy: mlInput.Within_Return_Policy === 1,
-        warnings: policyWarnings,
+        return_window_days: policy?.maxClaimDays ?? 14,
+        within_policy:      mlInput.Within_Return_Policy === 1,
+        warnings:           policyWarnings,
       },
     },
-    { status: 200 }
+    { status: 200 },
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// GET /api/predict  → documentation inline
+// GET /api/predict → documentation inline
 // ─────────────────────────────────────────────────────────────
 export async function GET() {
   return NextResponse.json({
-    endpoint: "POST /api/predict",
-    description: "Prédiction de résolution et du payeur des frais de retour",
-    authentication: "Header requis : x-api-key ou Authorization: Bearer <key>",
+    endpoint:        "POST /api/predict",
+    description:     "Prédiction de résolution et du payeur des frais de retour",
+    authentication:  "Header requis : x-api-key ou Authorization: Bearer <key>",
     required_fields: REQUIRED_FIELDS,
     example_request: {
-      Customer_Gender: "Female",
-      Customer_Age: 30,
-      Customer_Wilaya: "Alger",
-      Customer_Past_Returns: 3,
-      Shop_Name: "MonShop",
-      Product_Category: "Electronics",
-      Product_Price_DA: 15000,
-      Order_Quantity: 1,
-      Total_Amount_DA: 15500,
-      Payment_Method: "CCP",
-      Shipping_Method: "Standard",
-      Shipping_Cost_DA: 500,
-      Return_Reason: "Defective",
-      Days_to_Return: 5,
-      Fraud_Score: 12,
-      Customer_Satisfaction: 4,
-      Is_Suspicious: 0,
+      Customer_Gender: "Female", Customer_Age: 30, Customer_Wilaya: "Alger",
+      Customer_Past_Returns: 3, Shop_Name: "MonShop", Product_Category: "Electronics",
+      Product_Price_DA: 15000, Order_Quantity: 1, Total_Amount_DA: 15500,
+      Payment_Method: "CCP", Shipping_Method: "Standard", Shipping_Cost_DA: 500,
+      Return_Reason: "Defective", Days_to_Return: 5, Fraud_Score: 12,
+      Customer_Satisfaction: 4, Is_Suspicious: 0,
     },
     example_response: {
-      resolution: {
-        prediction: "Refund",
-        probabilities: { Exchange: 0.12, Refund: 0.71, Reject: 0.09, Repair: 0.08 },
-      },
-      shipping_paid_by: {
-        prediction: "Vendeur",
-        probabilities: { Client: 0.23, Vendeur: 0.77 },
-      },
-      vendor_policy_applied: {
-        return_window_days: 14,
-        within_policy: true,
-        warnings: [],
-      },
+      resolution:           { prediction: "Refund", probabilities: { Exchange: 0.12, Refund: 0.71, Reject: 0.09, Repair: 0.08 } },
+      shipping_paid_by:     { prediction: "Vendeur", probabilities: { Client: 0.23, Vendeur: 0.77 } },
+      vendor_policy_applied: { return_window_days: 14, within_policy: true, warnings: [] },
     },
   });
 }

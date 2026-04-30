@@ -2,16 +2,13 @@
 //
 // Reçoit les demandes de retour depuis n'importe quelle boutique externe
 // Authentification : Authorization: Bearer <api-key>
-//
-// Fonctionnalités :
-//  - Vérification politique avancée (catégories non remboursables, délai, fraude)
-//  - Messages d'erreur précis renvoyés à la boutique appelante
-//  - Signal fraude dans la réponse si approuvé avec score élevé
 
-import { NextRequest, NextResponse } from 'next/server'
-import { Prisma }                    from '@prisma/client'
-import { prisma }                    from '@/lib/prisma'
-import { validateApiKey }            from '@/lib/api-key-auth'
+import { NextRequest, NextResponse }   from 'next/server'
+import { Prisma }                       from '@prisma/client'
+import { prisma }                       from '@/lib/prisma'
+import { validateApiKey }               from '@/lib/api-key-auth'
+import { evaluateFraud }                from '@/lib/fraud-score'
+import { checkReturnPolicy }            from '@/lib/services/return-policy'
 
 // ── Mapping reason externe → ClaimType Flowmerce ─────────────────────────
 function reasonToClaimType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
@@ -21,21 +18,14 @@ function reasonToClaimType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
 }
 
 const DECISION_MAP: Record<string, 'Refund' | 'Exchange' | 'Repair' | 'Reject'> = {
-  Refund:   'Refund',
-  Exchange: 'Exchange',
-  Repair:   'Repair',
-  Reject:   'Reject',
+  Refund: 'Refund', Exchange: 'Exchange', Repair: 'Repair', Reject: 'Reject',
 }
 
-// ── Normalisation des catégories produit ──────────────────────────────────
-// Les catégories stockées dans ReturnPolicy.nonRefundableCategories
-// sont comparées aux catégories envoyées par la boutique (insensible à la casse)
-function normalizeCategory(cat: string | undefined): string {
-  return (cat || '').toLowerCase().trim()
-}
+const VALID_REASONS = ['DEFECTIVE', 'WRONG_ITEM', 'DESCRIPTION', 'CHANGE_MIND']
+const EMAIL_RE      = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: NextRequest) {
-  // ── 1. Authentification par clé API ─────────────────────────────────────
+  // ── 1. Auth ──────────────────────────────────────────────────────────────
   const rawKey =
     req.headers.get('authorization')?.replace(/^Bearer\s+/, '') ??
     req.headers.get('x-api-key') ??
@@ -45,98 +35,59 @@ export async function POST(req: NextRequest) {
   if (!authResult.ok) return authResult.response
 
   const { keyRecord } = authResult
-  const vendor = keyRecord.vendor
+  const vendor        = keyRecord.vendor
 
-  // ── 2. Parser le body ────────────────────────────────────────────────────
+  // ── 2. Parse + validation ─────────────────────────────────────────────────
   let body: Record<string, unknown>
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 })
-  }
+  try { body = await req.json() }
+  catch { return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 }) }
 
-  // ── 3. Validation minimale ───────────────────────────────────────────────
   const required = [
     'customer_name', 'customer_email', 'product_name', 'order_id',
     'reason', 'description', 'external_return_id', 'external_source',
   ]
   for (const field of required) {
-    if (!body[field] || String(body[field]).trim() === '') {
+    if (!body[field] || String(body[field]).trim() === '')
       return NextResponse.json({ error: `Champ requis manquant : ${field}` }, { status: 400 })
-    }
   }
-
-  const validReasons = ['DEFECTIVE', 'WRONG_ITEM', 'DESCRIPTION', 'CHANGE_MIND']
-  if (!validReasons.includes(String(body.reason))) {
+  if (!VALID_REASONS.includes(String(body.reason)))
     return NextResponse.json({ error: 'Raison invalide' }, { status: 400 })
-  }
-
-  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailRe.test(String(body.customer_email))) {
+  if (!EMAIL_RE.test(String(body.customer_email)))
     return NextResponse.json({ error: 'Email invalide' }, { status: 400 })
-  }
 
-  // ── 4. Charger la politique de retour du vendeur ─────────────────────────
-  const returnPolicy = await prisma.returnPolicy.findUnique({
-    where: { vendorId: vendor.id },
+  const customerEmail   = String(body.customer_email).toLowerCase()
+  const customerPhone   = body.customer_phone ? String(body.customer_phone) : null
+  const productCategory = body.product_category ? String(body.product_category) : undefined
+  const daysToReturn    = (() => {
+    const raw = body.order_date ? new Date(String(body.order_date)) : null
+    if (raw && !isNaN(raw.getTime()))
+      return Math.max(0, Math.floor((Date.now() - raw.getTime()) / 86_400_000))
+    return typeof body.days_to_return === 'number' ? body.days_to_return : 0
+  })()
+  const fraudScore = typeof body.fraud_score === 'number' ? body.fraud_score : 0
+
+  // ── 3. Politique de retour ────────────────────────────────────────────────
+  const returnPolicy = await prisma.returnPolicy.findUnique({ where: { vendorId: vendor.id } })
+
+  const policyCheck = checkReturnPolicy(returnPolicy, {
+    daysToReturn,
+    productCategory,
+    claimType: reasonToClaimType(String(body.reason)),
   })
 
-  const policy = {
-    maxClaimDays:             returnPolicy?.maxClaimDays            ?? 30,
-    fraudScoreThreshold:      returnPolicy?.fraudScoreThreshold     ?? 70,
-    fraudReturnThreshold:     returnPolicy?.fraudReturnThreshold    ?? 4,
-    nonRefundableCategories:  returnPolicy?.nonRefundableCategories  ?? [],
-    exchangeOnlyCategories:   returnPolicy?.exchangeOnlyCategories   ?? [],
-    partialRefundEnabled:     returnPolicy?.partialRefundEnabled      ?? false,
-    partialRefundRules:       returnPolicy?.partialRefundRules        ?? null,
-    acceptedReturnReasons:    returnPolicy?.acceptedReturnReasons     ?? [],
-    processingDays:           returnPolicy?.processingDays            ?? 5,
+  if (!policyCheck.ok) {
+    return NextResponse.json(
+      { error: policyCheck.message, code: policyCheck.code, ...policyCheck.extra },
+      { status: 422 },
+    )
   }
+  const { forceExchange } = policyCheck
 
-  // Délai calculé côté serveur depuis order_date (non manipulable par le client).
-  // Fallback sur body.days_to_return si order_date est absent.
-  const orderDateRaw  = body.order_date ? new Date(String(body.order_date)) : null
-  const orderDate     = orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null
-  const daysToReturn  = orderDate
-    ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
-    : (typeof body.days_to_return === 'number' ? body.days_to_return : 0)
-  const fraudScore    = typeof body.fraud_score    === 'number' ? body.fraud_score    : 0
-  const productCat    = normalizeCategory(body.product_category as string | undefined)
-  const customerEmail = String(body.customer_email).toLowerCase()
-
-  // ── 5. Vérification : délai de rétractation ───────────────────────────────
-  if (daysToReturn > policy.maxClaimDays) {
-    return NextResponse.json({
-      error:       `Vous avez dépassé le délai de rétractation (${policy.maxClaimDays} jours). Votre demande a été soumise après ${daysToReturn} jours.`,
-      code:        'DELAY_EXCEEDED',
-      policy_days: policy.maxClaimDays,
-      days_actual: daysToReturn,
-    }, { status: 422 })
-  }
-
-  // ── 6. Vérification : catégorie non remboursable ──────────────────────────
-  const nonRefundNorm = policy.nonRefundableCategories.map(normalizeCategory)
-  if (nonRefundNorm.length > 0 && productCat && nonRefundNorm.includes(productCat)) {
-    const catDisplay = body.product_category as string || productCat
-    return NextResponse.json({
-      error: `La catégorie "${catDisplay}" est non remboursable selon la politique du vendeur. Aucun retour ne peut être accepté pour ce type de produit.`,
-      code:  'NON_REFUNDABLE_CATEGORY',
-      category: catDisplay,
-    }, { status: 422 })
-  }
-
-  // ── 7. Vérification : catégorie échange uniquement → forcer Exchange ──────
-  const exchangeOnlyNorm = policy.exchangeOnlyCategories.map(normalizeCategory)
-  const forceExchange    = exchangeOnlyNorm.length > 0 && productCat && exchangeOnlyNorm.includes(productCat)
-
-  // ── 8. Vérifier les doublons ──────────────────────────────────────────────
+  // ── 4. Doublon ───────────────────────────────────────────────────────────
   const existing = await prisma.claim.findFirst({
     where: {
       vendorId:   vendor.id,
-      prediction: {
-        path:   ['externalReturnId'],
-        equals: String(body.external_return_id),
-      },
+      prediction: { path: ['externalReturnId'], equals: String(body.external_return_id) },
     },
   })
   if (existing) {
@@ -145,74 +96,43 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // ── 9. Historique fraude du client ────────────────────────────────────────
-  let fraudRecord = await prisma.customerFraudRecord.findFirst({
-    where: { customerEmail },
-  })
-
-  const customerPhone = body.customer_phone ? String(body.customer_phone) : null
-
-  if (!fraudRecord) {
-    fraudRecord = await prisma.customerFraudRecord.create({
-      data: { customerEmail, customerPhone },
+  // ── 5. Évaluation fraude ─────────────────────────────────────────────────
+  const { record: fraudRecord, score, totalClaims, isFraudAlert, fraudSignalMessage } =
+    await evaluateFraud(customerEmail, customerPhone, {
+      scoreThreshold:  returnPolicy?.fraudScoreThreshold  ?? 70,
+      returnThreshold: returnPolicy?.fraudReturnThreshold ?? 4,
     })
-  }
 
-  const totalClientClaims = (fraudRecord.totalClaims ?? 0) + 1
+  // ── 6. Décision IA + surcharge échange seul ──────────────────────────────
+  let aiDecision = body.ai_decision ? DECISION_MAP[String(body.ai_decision)] ?? null : null
+  if (forceExchange && aiDecision === 'Refund') aiDecision = 'Exchange'
 
-  // ── 10. Vérification fraude ───────────────────────────────────────────────
-  // Si fraude ET pas déjà rejeté par le ML → signalement (mais on accepte quand même)
-  const isFraudAlert = fraudScore > policy.fraudScoreThreshold ||
-                       totalClientClaims > policy.fraudReturnThreshold
-
-  // Message de signal fraude renvoyé dans la réponse (pas un rejet)
-  let fraudSignalMessage: string | null = null
-  if (isFraudAlert) {
-    fraudSignalMessage =
-      fraudScore > policy.fraudScoreThreshold
-        ? `⚠️ Signal fraude : score de risque élevé (${fraudScore}/100). Cette demande est soumise à contrôle renforcé.`
-        : `⚠️ Signal fraude : vous avez ${totalClientClaims} retours enregistrés. Un nombre élevé de retours peut entraîner une restriction.`
-  }
-
-  // ── 11. Décision ML + surcharge échange seul ──────────────────────────────
-  let aiDecision = body.ai_decision
-    ? DECISION_MAP[String(body.ai_decision)] ?? null
-    : null
-
-  if (forceExchange && aiDecision === 'Refund') {
-    aiDecision = 'Exchange'  // Surcharge : catégorie échange uniquement
-  }
-
-  const claimType = forceExchange
-    ? 'EXCHANGE'
-    : reasonToClaimType(String(body.reason))
-
+  const claimType   = forceExchange ? 'EXCHANGE' : reasonToClaimType(String(body.reason))
   const description = String(body.description).trim().length >= 10
     ? String(body.description).trim()
     : `Retour ${body.external_source || 'externe'} : ${String(body.product_name)}. Raison : ${String(body.reason)}.`
 
-  // ── 12. Stocker les métadonnées ───────────────────────────────────────────
+  // ── 7. Création du claim ─────────────────────────────────────────────────
   const predictionData = {
-    externalReturnId:  String(body.external_return_id),
-    externalSource:    String(body.external_source),
-    webhookUrl:        body.webhook_url    ? String(body.webhook_url)    : null,
-    webhookSecret:     body.webhook_secret ? String(body.webhook_secret) : null,
+    externalReturnId: String(body.external_return_id),
+    externalSource:   String(body.external_source),
+    webhookUrl:       body.webhook_url    ? String(body.webhook_url)    : null,
+    webhookSecret:    body.webhook_secret ? String(body.webhook_secret) : null,
     customerPhone,
     fraudScore,
-    fraudAlert:        isFraudAlert,
-    fraudSignal:       fraudSignalMessage,
-    totalClientClaims,
-    productCategory:   body.product_category ? String(body.product_category) : null,
+    fraudAlert:       isFraudAlert,
+    fraudSignal:      fraudSignalMessage,
+    totalClientClaims: totalClaims,
+    productCategory:  productCategory ?? null,
     forceExchange,
     aiDecision,
-    aiConfidence:      typeof body.ai_confidence === 'number' ? body.ai_confidence : null,
-    probabilities:     body.ai_probabilities ?? null,
-    orderDate:         body.order_date  ? String(body.order_date)  : null,
-    orderTotal:        typeof body.order_total === 'number' ? body.order_total : null,
-    receivedAt:        new Date().toISOString(),
+    aiConfidence:     typeof body.ai_confidence === 'number' ? body.ai_confidence : null,
+    probabilities:    body.ai_probabilities ?? null,
+    orderDate:        body.order_date  ? String(body.order_date)  : null,
+    orderTotal:       typeof body.order_total === 'number' ? body.order_total : null,
+    receivedAt:       new Date().toISOString(),
   } satisfies Prisma.InputJsonObject
 
-  // ── 13. Créer le claim ────────────────────────────────────────────────────
   const claim = await prisma.claim.create({
     data: {
       vendorId:      vendor.id,
@@ -224,38 +144,29 @@ export async function POST(req: NextRequest) {
       status:        'PENDING',
       source:        'API',
       description,
-      fraudScore,
+      fraudScore:    score,
       aiDecision,
       prediction:    predictionData,
     },
   })
 
-  // ── 14. Incrémenter totalClaims ───────────────────────────────────────────
   await prisma.customerFraudRecord.update({
     where: { id: fraudRecord.id },
     data:  { totalClaims: { increment: 1 } },
   })
 
-  console.log(
-    `[External Claim] Créé ${claim.id} pour vendor ${vendor.id}` +
-    ` | fraudAlert=${isFraudAlert} | forceExchange=${forceExchange}`
-  )
+  console.log(`[External Claim] Créé ${claim.id} pour vendor ${vendor.id} | fraudAlert=${isFraudAlert} | forceExchange=${forceExchange}`)
 
   return NextResponse.json(
     {
-      claim: {
-        id:        claim.id,
-        status:    claim.status,
-        createdAt: claim.createdAt,
-      },
-      // Informations renvoyées à la boutique pour enrichir la réponse client
+      claim:          { id: claim.id, status: claim.status, createdAt: claim.createdAt },
       policy_applied: {
-        force_exchange:     forceExchange,
-        fraud_alert:        isFraudAlert,
-        fraud_signal:       fraudSignalMessage,
-        processing_days:    policy.processingDays,
+        force_exchange:  forceExchange,
+        fraud_alert:     isFraudAlert,
+        fraud_signal:    fraudSignalMessage,
+        processing_days: returnPolicy?.processingDays ?? 5,
       },
     },
-    { status: 201 }
+    { status: 201 },
   )
 }
