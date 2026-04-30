@@ -1,11 +1,11 @@
 // app/api/claims/external/route.ts — Flowmerce v2
 //
-// Reçoit les demandes de retour depuis CabaStore (ou tout autre e-commerce externe)
+// Reçoit les demandes de retour depuis n'importe quelle boutique externe
 // Authentification : Authorization: Bearer <api-key>
 //
-// Nouveautés v2 :
+// Fonctionnalités :
 //  - Vérification politique avancée (catégories non remboursables, délai, fraude)
-//  - Messages d'erreur précis renvoyés au client CabaStore
+//  - Messages d'erreur précis renvoyés à la boutique appelante
 //  - Signal fraude dans la réponse si approuvé avec score élevé
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -27,9 +27,9 @@ const DECISION_MAP: Record<string, 'Refund' | 'Exchange' | 'Repair' | 'Reject'> 
   Reject:   'Reject',
 }
 
-// ── Catégories mapping (CabaStore → Flowmerce-ML) ────────────────────────
+// ── Normalisation des catégories produit ──────────────────────────────────
 // Les catégories stockées dans ReturnPolicy.nonRefundableCategories
-// correspondent aux noms de catégories produit de CabaStore
+// sont comparées aux catégories envoyées par la boutique (insensible à la casse)
 function normalizeCategory(cat: string | undefined): string {
   return (cat || '').toLowerCase().trim()
 }
@@ -93,7 +93,13 @@ export async function POST(req: NextRequest) {
     processingDays:           (returnPolicy as any)?.processingDays            ?? 5,
   }
 
-  const daysToReturn  = typeof body.days_to_return === 'number' ? body.days_to_return : 0
+  // Délai calculé côté serveur depuis order_date (non manipulable par le client).
+  // Fallback sur body.days_to_return si order_date est absent.
+  const orderDateRaw  = body.order_date ? new Date(String(body.order_date)) : null
+  const orderDate     = orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null
+  const daysToReturn  = orderDate
+    ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
+    : (typeof body.days_to_return === 'number' ? body.days_to_return : 0)
   const fraudScore    = typeof body.fraud_score    === 'number' ? body.fraud_score    : 0
   const productCat    = normalizeCategory(body.product_category as string | undefined)
   const customerEmail = String(body.customer_email).toLowerCase()
@@ -242,7 +248,7 @@ export async function POST(req: NextRequest) {
         status:    claim.status,
         createdAt: claim.createdAt,
       },
-      // Informations renvoyées à CabaStore pour enrichir la réponse client
+      // Informations renvoyées à la boutique pour enrichir la réponse client
       policy_applied: {
         force_exchange:     forceExchange,
         fraud_alert:        isFraudAlert,

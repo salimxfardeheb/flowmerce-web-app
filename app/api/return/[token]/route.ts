@@ -130,6 +130,26 @@ export async function POST(
     return NextResponse.json({ error: "Cette résolution n'est pas acceptée par ce vendeur" }, { status: 400 })
   }
 
+  // ── 3b. Vérification du délai de retour (refus auto, sans ML) ─
+  const parsedOrderDate = orderDateRaw ? new Date(orderDateRaw) : null
+  const orderDate       = parsedOrderDate && !isNaN(parsedOrderDate.getTime()) ? parsedOrderDate : null
+  const returnWindowDays = apiKey.vendor.returnPolicy?.maxClaimDays ?? 14
+  const daysSinceOrder = orderDate
+    ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
+    : 0
+
+  if (orderDate && daysSinceOrder > returnWindowDays) {
+    return NextResponse.json(
+      {
+        error:       `Délai de retour dépassé. La politique du vendeur autorise ${returnWindowDays} jours, mais votre demande arrive ${daysSinceOrder} jours après l'achat.`,
+        code:        'DELAY_EXCEEDED',
+        policy_days: returnWindowDays,
+        days_actual: daysSinceOrder,
+      },
+      { status: 422 }
+    )
+  }
+
   // ── 4. Rate limit (3/h par IP+orderId) ──────────────────────
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
           ?? req.headers.get('x-real-ip')
@@ -147,8 +167,6 @@ export async function POST(
   const claimType = desiredResolution as 'EXCHANGE' | 'REFUND' | 'REPAIR'
   const { record: fraudRecord } = await findOrCreateFraudRecord(customerEmail, customerPhone || undefined)
   const fraudScore = computeFraudScore(fraudRecord)
-  const parsedDate  = orderDateRaw ? new Date(orderDateRaw) : null
-  const orderDate   = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null
 
   const fullDescription = [
     productName,
@@ -222,11 +240,7 @@ export async function POST(
 
   // ── 6. Appel ML pour prédiction automatique ─────────────────
   const mlApiUrl             = process.env.ML_API_URL ?? 'http://localhost:8000'
-  const returnWindowDays     = apiKey.vendor.returnPolicy?.maxClaimDays ?? 14
   const fraudReturnThreshold = (apiKey.vendor.returnPolicy as any)?.fraudReturnThreshold ?? 4
-  const daysToReturn = orderDate
-    ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
-    : 0
   const pastReturns = fraudRecord.totalClaims
 
   const mlInput = {
@@ -243,9 +257,9 @@ export async function POST(
     Shipping_Method:         shippingMethod,
     Shipping_Cost_DA:        shippingCost,
     Return_Reason:           reason,
-    Days_to_Return:          daysToReturn,
+    Days_to_Return:          daysSinceOrder,
     Shop_Return_Window_Days: returnWindowDays,
-    Within_Return_Policy:    daysToReturn <= returnWindowDays ? 1 : 0,
+    Within_Return_Policy:    1,
     Fraud_Score:             fraudScore,
     Customer_Satisfaction:   3,
     Is_Suspicious:           pastReturns >= fraudReturnThreshold ? 1 : 0,

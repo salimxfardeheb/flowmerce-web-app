@@ -22,7 +22,42 @@ interface PredictionData extends Record<string, Prisma.JsonValue | undefined> {
   webhookSecret?:    string | null
 }
 
-// ── Notifier CabaStore via webhook ────────────────────────────────────────
+// ── Validation SSRF : rejette tout ce qui n'est pas HTTPS public ─────────
+function isSafeWebhookUrl(rawUrl: string): boolean {
+  let parsed: URL
+  try { parsed = new URL(rawUrl) } catch { return false }
+
+  if (parsed.protocol !== 'https:') return false
+
+  const host = parsed.hostname.toLowerCase()
+
+  if (host === 'localhost') return false
+  if (host.endsWith('.local')) return false
+
+  // IPv6 loopback / link-local / unique-local / IPv4-mapped
+  if (host === '[::1]') return false
+  if (host.startsWith('[fc') || host.startsWith('[fd')) return false
+  if (host.startsWith('[fe80')) return false
+  if (host.startsWith('[::ffff:')) return false
+
+  // IPv4 private / reserved ranges
+  const oct = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (oct) {
+    const [a, b] = [Number(oct[1]), Number(oct[2])]
+    if (a === 0)                            return false // 0.0.0.0/8
+    if (a === 10)                           return false // RFC 1918
+    if (a === 127)                          return false // loopback
+    if (a === 169 && b === 254)             return false // link-local / cloud metadata
+    if (a === 172 && b >= 16 && b <= 31)   return false // RFC 1918
+    if (a === 192 && b === 168)             return false // RFC 1918
+    if (a === 100 && b >= 64 && b <= 127)  return false // CGNAT
+    if (a >= 240)                           return false // reserved
+  }
+
+  return true
+}
+
+// ── Notifier la boutique externe via webhook ─────────────────────────────
 async function notifyExternalWebhook(
   prediction: PredictionData,
   claimId:    string,
@@ -35,6 +70,11 @@ async function notifyExternalWebhook(
 
   if (!webhookUrl || !returnId) return
 
+  if (!isSafeWebhookUrl(webhookUrl)) {
+    console.error('[Flowmerce Webhook] URL rejetée (SSRF) :', webhookUrl)
+    return
+  }
+
   try {
     await fetch(webhookUrl, {
       method:  'POST',
@@ -45,9 +85,11 @@ async function notifyExternalWebhook(
       body: JSON.stringify({
         returnId,
         claimId,
-        status:     newStatus,
-        resolution: aiDecision,
-        source:     'flowmerce',
+        status:         newStatus,
+        resolution:     aiDecision,
+        source:         'flowmerce',
+        externalSource: prediction.externalSource ?? null,
+        timestamp:      new Date().toISOString(),
       }),
       signal: AbortSignal.timeout(8000),
     })
@@ -77,7 +119,7 @@ export async function PATCH(
   const looksLikeApiKey = !!rawKey && (rawKey.startsWith('flo_') || rawKey.startsWith('flw_'))
 
   if (looksLikeApiKey) {
-    // Appel externe (CabaStore ou autre partenaire)
+    // Appel externe via API key (boutique partenaire)
     const apiAuth = await validateApiKey(rawKey)
     if (!apiAuth.ok) return apiAuth.response
 
@@ -164,7 +206,7 @@ export async function PATCH(
         overriddenAt:     new Date().toISOString(),
         overriddenBy:     isExternalCall ? `api:${resolvedVendorId}` : userId,
         originalDecision: claim.aiDecision,
-        source:           isExternalCall ? 'cabastore' : 'dashboard',
+        source:           isExternalCall ? (currentPrediction.externalSource ?? 'external') : 'dashboard',
       },
     } satisfies Prisma.InputJsonObject
 
@@ -182,9 +224,9 @@ export async function PATCH(
     data:  updateData,
   })
 
-  // ── 6. Webhook vers CabaStore (sauf si l'appel vient déjà de CabaStore) ─
-  // _from_external = true quand CabaStore fait le PATCH → on n'envoie pas
-  // de webhook retour pour éviter la boucle infinie
+  // ── 6. Webhook vers la boutique externe (sauf si l'appel vient d'elle) ─
+  // _from_external = true quand la boutique fait elle-même le PATCH → on
+  // n'envoie pas de webhook retour pour éviter la boucle infinie
   if (!_from_external) {
     const pred = (claim.prediction as PredictionData | null) ?? {}
     if (pred.externalReturnId) {
