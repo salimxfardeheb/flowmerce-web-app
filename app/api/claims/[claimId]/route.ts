@@ -1,19 +1,3 @@
-// app/api/claims/[claimId]/route.ts — Flowmerce v2
-//
-// PATCH : modifier le statut ou la décision ML d'un claim
-//
-// Authentification supportée :
-//   1. Session NextAuth  → dashboard Flowmerce (vendeur/admin connecté)
-//   2. Bearer API key    → appel externe CabaStore (Authorization: Bearer flo_xxx)
-//
-// Body attendu :
-// {
-//   status?:           'APPROVED' | 'REJECTED' | 'IN_PROGRESS'
-//   aiDecision?:       'Refund' | 'Exchange' | 'Repair' | 'Reject'
-//   overrideShipping?: string | null
-//   overrideNote?:     string | null
-//   _from_external?:   boolean   ← flag anti-boucle webhook (posé par CabaStore)
-// }
 
 import { NextRequest, NextResponse }   from 'next/server'
 import { Prisma }                       from '@prisma/client'
