@@ -199,7 +199,7 @@ export default async function AdminVendorDetailPage({
                      : rejected  ? <XCircle size={10} />
                      : submitted ? <Clock size={10} />
                      :             <Circle size={10} />}
-                      {DOCUMENT_TYPE_LABELS[docType] ?? docType}
+                      {DOCUMENT_TYPE_LABELS[docType as keyof typeof DOCUMENT_TYPE_LABELS] ?? docType}
                     </span>
                   );
                 })

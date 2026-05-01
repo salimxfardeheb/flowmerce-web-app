@@ -6,6 +6,7 @@ import {
   Store, Package, Hash, Calendar, User, Mail, Phone,
   AlertTriangle, XCircle, CheckCircle, RotateCcw, Loader2, ChevronDown,
 } from 'lucide-react'
+import { RETURN_REASONS, CLAIM_TYPES } from '@/lib/constants'
 
 type VendorInfo = {
   valid:           boolean
@@ -22,24 +23,25 @@ type VendorInfo = {
   shopName:        string
 }
 
-const RESOLUTION_OPTIONS = [
-  { value: 'REFUND',   label: 'Remboursement',  desc: 'Je souhaite être remboursé(e)' },
-  { value: 'EXCHANGE', label: 'Échange',         desc: 'Je souhaite un produit de remplacement' },
-  { value: 'REPAIR',   label: 'Réparation',      desc: 'Je souhaite que le produit soit réparé' },
+const RESOLUTION_OPTIONS: { value: typeof CLAIM_TYPES[number]; label: string; desc: string }[] = [
+  { value: 'REFUND',   label: 'Remboursement', desc: 'Je souhaite être remboursé(e)'              },
+  { value: 'EXCHANGE', label: 'Échange',        desc: 'Je souhaite un produit de remplacement'     },
+  { value: 'REPAIR',   label: 'Réparation',     desc: 'Je souhaite que le produit soit réparé'     },
 ]
 
-const DEFAULT_REASONS = [
-  { value: "Produit défectueux",          desc: "Le produit est endommagé ou ne fonctionne pas" },
-  { value: "Produit contrefait",          desc: "Le produit semble être une contrefaçon" },
-  { value: "Produit endommagé livraison", desc: "Le produit a été abîmé pendant le transport" },
-  { value: "Changement d'avis",           desc: "Je n'ai plus besoin de ce produit" },
-  { value: "Panne après utilisation",     desc: "Le produit est tombé en panne rapidement" },
-  { value: "Mauvaise taille",             desc: "La taille ou la couleur ne correspond pas" },
-  { value: "Allergie/Réaction",           desc: "Réaction allergique au produit" },
-  { value: "Ne correspond pas",           desc: "Le produit reçu est différent de la commande" },
-  { value: "Erreur de commande vendeur",  desc: "Mauvais produit envoyé par la boutique" },
-  { value: "Pièces manquantes",           desc: "Des éléments manquent dans le colis" },
-]
+const REASON_DESCS: Record<typeof RETURN_REASONS[number], string> = {
+  'Produit défectueux':          'Le produit est endommagé ou ne fonctionne pas',
+  'Produit contrefait':          'Le produit semble être une contrefaçon',
+  'Produit endommagé livraison': 'Le produit a été abîmé pendant le transport',
+  "Changement d'avis":           "Je n'ai plus besoin de ce produit",
+  'Panne après utilisation':     'Le produit est tombé en panne rapidement',
+  'Mauvaise taille':             'La taille ou la couleur ne correspond pas',
+  'Allergie/Réaction':           'Réaction allergique au produit',
+  'Ne correspond pas':           'Le produit reçu est différent de la commande',
+  'Erreur de commande vendeur':  'Mauvais produit envoyé par la boutique',
+  'Pièces manquantes':           'Des éléments manquent dans le colis',
+}
+const DEFAULT_REASONS = RETURN_REASONS.map((value) => ({ value, desc: REASON_DESCS[value] }))
 
 export default function ReturnPage() {
   const params = useParams()

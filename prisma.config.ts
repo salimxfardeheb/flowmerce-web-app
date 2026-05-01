@@ -1,7 +1,14 @@
-import { defineConfig } from 'prisma/config'
-import * as dotenv from 'dotenv'
-import path from 'path'
+import "dotenv/config";
+import { defineConfig } from "prisma/config";
 
-dotenv.config({ path: path.resolve(__dirname, '.env.local') })
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+    seed: "node node_modules/jiti/lib/jiti-cli.mjs prisma/seed.ts",
+  },
+  datasource: {
+    url: process.env["DATABASE_URL"],
+  },
+});
 
-export default defineConfig({})

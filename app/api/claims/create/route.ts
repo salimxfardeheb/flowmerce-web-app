@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { validateApiKey } from "@/lib/api-key-auth";
 import { findOrCreateFraudRecord, computeFraudScore } from "@/lib/fraud-score";
+import { EXTERNAL_RETURN_REASONS } from "@/lib/constants";
 
 
 // ─────────────────────────────────────────────────────────────
@@ -30,8 +31,7 @@ function validatePayload(body: Record<string, unknown>): string | null {
     return "Email invalide";
   }
 
-  const validReasons = ["DEFECTIVE", "WRONG_ITEM", "DESCRIPTION", "CHANGE_MIND"];
-  if (!validReasons.includes(String(body.reason))) {
+  if (!(EXTERNAL_RETURN_REASONS as readonly string[]).includes(String(body.reason))) {
     return "Raison invalide";
   }
 

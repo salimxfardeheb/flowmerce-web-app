@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brain, X } from "lucide-react";
+import type { AIDecision } from "@/lib/constants";
 
-type Resolution = "Refund" | "Exchange" | "Repair" | "Reject";
+type Resolution = AIDecision;
 
 type Props = {
   claimId:        string;

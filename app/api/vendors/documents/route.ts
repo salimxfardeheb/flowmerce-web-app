@@ -3,15 +3,9 @@ import { DocumentType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cloudinary } from "@/lib/cloudinary";
 import { getSessionFromRequest } from "@/lib/getSession";
+import { DOCUMENT_TYPES } from "@/lib/constants";
 
-const VALID_TYPES = [
-  "ID_CARD",
-  "BUSINESS_REGISTRATION",
-  "ADDRESS_PROOF",
-  "TAX_CERTIFICATE",
-  "BANK_DETAILS",
-  "OTHER",
-];
+const VALID_TYPES: readonly string[] = DOCUMENT_TYPES;
 
 export async function POST(req: NextRequest) {
   const session = await getSessionFromRequest();

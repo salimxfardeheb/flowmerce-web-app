@@ -9,6 +9,7 @@ import { prisma }                       from '@/lib/prisma'
 import { validateApiKey }               from '@/lib/api-key-auth'
 import { evaluateFraud }                from '@/lib/fraud-score'
 import { checkReturnPolicy }            from '@/lib/services/return-policy'
+import { EXTERNAL_RETURN_REASONS, AI_DECISIONS, type AIDecision } from '@/lib/constants'
 
 // ── Mapping reason externe → ClaimType Flowmerce ─────────────────────────
 function reasonToClaimType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
@@ -17,12 +18,8 @@ function reasonToClaimType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
   return 'REFUND'
 }
 
-const DECISION_MAP: Record<string, 'Refund' | 'Exchange' | 'Repair' | 'Reject'> = {
-  Refund: 'Refund', Exchange: 'Exchange', Repair: 'Repair', Reject: 'Reject',
-}
-
-const VALID_REASONS = ['DEFECTIVE', 'WRONG_ITEM', 'DESCRIPTION', 'CHANGE_MIND']
-const EMAIL_RE      = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const DECISION_MAP: Record<string, AIDecision> = Object.fromEntries(AI_DECISIONS.map((d) => [d, d]))
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: NextRequest) {
   // ── 1. Auth ──────────────────────────────────────────────────────────────
@@ -50,7 +47,7 @@ export async function POST(req: NextRequest) {
     if (!body[field] || String(body[field]).trim() === '')
       return NextResponse.json({ error: `Champ requis manquant : ${field}` }, { status: 400 })
   }
-  if (!VALID_REASONS.includes(String(body.reason)))
+  if (!(EXTERNAL_RETURN_REASONS as readonly string[]).includes(String(body.reason)))
     return NextResponse.json({ error: 'Raison invalide' }, { status: 400 })
   if (!EMAIL_RE.test(String(body.customer_email)))
     return NextResponse.json({ error: 'Email invalide' }, { status: 400 })

@@ -44,30 +44,9 @@ export function formatDate(date: Date | string): string {
   });
 }
 
-export const CLAIM_TYPE_LABELS: Record<string, string> = {
-  EXCHANGE: "Échange",
-  REFUND: "Remboursement",
-  REPAIR: "Réparation",
-};
-
-export const CLAIM_STATUS_LABELS: Record<string, string> = {
-  PENDING: "En attente",
-  APPROVED: "Approuvée",
-  REJECTED: "Rejetée",
-  IN_PROGRESS: "En cours",
-};
-
-export const VENDOR_STATUS_LABELS: Record<string, string> = {
-  PENDING: "En attente",
-  APPROVED: "Approuvé",
-  REJECTED: "Rejeté",
-  DOCUMENTS_REQUESTED: "Documents demandés",
-};
-
-export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-  ID_CARD:               "Carte d'identité nationale",
-  BUSINESS_REGISTRATION: "Registre du commerce",
-  ADDRESS_PROOF:         "Justificatif de domicile",
-  TAX_CERTIFICATE:       "Attestation fiscale",
-  OTHER:                 "Autre document",
-};
+export {
+  CLAIM_TYPE_LABELS,
+  CLAIM_STATUS_LABELS,
+  VENDOR_STATUS_LABELS,
+  DOCUMENT_TYPE_LABELS,
+} from './constants';

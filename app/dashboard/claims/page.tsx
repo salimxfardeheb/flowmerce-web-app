@@ -203,7 +203,9 @@ export default async function ClaimsPage({
                 const prediction  = claim.prediction as Record<string, unknown> | null;
 
                 const overrideData    = prediction?.override as Record<string, unknown> | undefined;
-                const displayDecision = overrideData?.resolution ?? claim.aiDecision;
+                const displayDecision = typeof overrideData?.resolution === "string"
+                  ? overrideData.resolution
+                  : claim.aiDecision;
                 const isOverridden    = !!overrideData;
 
                 const productPrice = prediction?.productPrice   as number | null;
@@ -295,12 +297,12 @@ export default async function ClaimsPage({
                             </div>
                           )}
 
-                          {isOverridden && overrideData?.note && (
+                          {isOverridden && typeof overrideData?.note && (
                             <p
                               className="text-xs text-gray-400 italic truncate max-w-40"
-                              title={overrideData.note}
+                              title={overrideData.note as string}
                             >
-                              {overrideData.note}
+                              {overrideData.note as string}
                             </p>
                           )}
                         </div>
@@ -352,7 +354,6 @@ export default async function ClaimsPage({
                         currentStatus={claim.status}
                         aiDecision={claim.aiDecision}
                         aiScore={claim.aiScore}
-                        prediction={claim.prediction as Record<string, unknown> | null}
                       />
                     </td>
 

@@ -1,3 +1,4 @@
+import type { ElementType } from "react";
 import { getSessionServer } from "@/lib/getSession";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
@@ -37,7 +38,7 @@ export default async function AdminVendorsPage() {
     DOCUMENTS_REQUESTED: "bg-amber-50 text-amber-700 border-amber-200",
   };
 
-  const StatusIcon: Record<string, React.ElementType> = {
+  const StatusIcon: Record<string, ElementType> = {
     PENDING:             Clock,
     APPROVED:            CheckCircle2,
     REJECTED:            XCircle,
@@ -220,7 +221,7 @@ export default async function AdminVendorsPage() {
                              : rejected  ? <XCircle size={10} />
                              : submitted ? <Clock size={10} />
                              :             <div className="w-2 h-2 rounded-full border border-gray-300" />}
-                              {DOCUMENT_TYPE_LABELS[docType] ?? docType}
+                              {DOCUMENT_TYPE_LABELS[docType as keyof typeof DOCUMENT_TYPE_LABELS] ?? docType}
                             </span>
                           );
                         })}

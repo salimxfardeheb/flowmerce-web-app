@@ -11,21 +11,13 @@
 //   acceptedReturnReasons    : raisons acceptées (vide = toutes)
 //   processingDays           : délai de traitement interne (jours)
 
-import { NextRequest, NextResponse } from 'next/server'
-import { auth }                      from '@/lib/auth'
-import { prisma }                    from '@/lib/prisma'
+import { NextRequest, NextResponse }             from 'next/server'
+import { auth }                                   from '@/lib/auth'
+import { prisma }                                 from '@/lib/prisma'
+import { RETURN_REASONS, VENDOR_CATEGORIES }      from '@/lib/constants'
 
-const ALL_CATEGORIES = [
-  'Electronics', 'Appliances', 'Clothing', 'Shoes',
-  'Beauty', 'Books', 'Toys', 'Sports', 'Home', 'Food',
-]
-
-const ALL_REASONS = [
-  'Produit défectueux', 'Produit contrefait', 'Produit endommagé livraison',
-  "Changement d'avis", 'Panne après utilisation', 'Mauvaise taille',
-  'Allergie/Réaction', 'Ne correspond pas', 'Erreur de commande vendeur',
-  'Pièces manquantes',
-]
+const ALL_CATEGORIES = VENDOR_CATEGORIES
+const ALL_REASONS    = RETURN_REASONS
 
 // ── GET ───────────────────────────────────────────────────────────────────
 

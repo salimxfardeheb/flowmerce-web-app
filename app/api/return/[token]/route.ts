@@ -7,14 +7,11 @@ import { checkRateLimit }               from '@/lib/rate-limit'
 import { findOrCreateFraudRecord, computeFraudScore } from '@/lib/fraud-score'
 import { callMLPredict }                from '@/lib/services/ml'
 import { checkReturnPolicy }            from '@/lib/services/return-policy'
+import { RETURN_REASONS, CLAIM_TYPES }  from '@/lib/constants'
 
 // ─────────────────────────────────────────────────────────────
-const VALID_REASONS = new Set([
-  'Produit défectueux', 'Produit contrefait', 'Produit endommagé livraison',
-  "Changement d'avis", 'Panne après utilisation', 'Mauvaise taille',
-  'Allergie/Réaction', 'Ne correspond pas', 'Erreur de commande vendeur', 'Pièces manquantes',
-])
-const VALID_RESOLUTIONS = new Set(['EXCHANGE', 'REFUND', 'REPAIR'])
+const VALID_REASONS     = new Set<string>(RETURN_REASONS)
+const VALID_RESOLUTIONS = new Set<string>(CLAIM_TYPES)
 const HTML_RE  = /<[^>]*>/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
