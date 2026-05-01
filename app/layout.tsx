@@ -3,8 +3,12 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Flomerce - Plateforme Vendeur",
-  description: "Gérez vos retours et réclamations clients avec Flomerce",
+  title: "Flowmerce - Plateforme Vendeur",
+  description: "Gérez vos retours et réclamations clients avec Flowmerce",
+  icons: {
+    icon: "/logos/logo-mark.svg",
+    apple: "/logos/logo-mark.svg",
+  },
 };
 
 export default function RootLayout({

@@ -1,6 +1,7 @@
 import { getSessionServer } from "@/lib/getSession";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { SignOutButton } from "@/components/layout/SignOutButton";
 import { DashboardNav } from "@/components/layout/DashboardNav";
 
@@ -20,8 +21,14 @@ export default async function DashboardLayout({
 
         {/* Logo */}
         <div className="px-5 pt-5 pb-4 border-b border-gray-100">
-          <Link href="/" className="text-base font-bold text-indigo-700 tracking-tight">
-            Flowmerce
+          <Link href="/" className="block">
+            <Image
+              src="/logos/logo-lockup.svg"
+              alt="Flowmerce"
+              width={140}
+              height={28}
+              priority
+            />
           </Link>
           <p className="text-xs text-gray-400 mt-1.5">Espace vendeur</p>
         </div>

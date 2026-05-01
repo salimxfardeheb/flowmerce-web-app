@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Flowmerce">
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#0B1220"></rect>
+  <path d="M16 22 Q 26 14 36 22 T 52 22" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" fill="none"></path>
+  <path d="M16 38 Q 26 30 36 38 T 52 38" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" fill="none" opacity="0.7"></path>
+  <path d="M16 50 Q 24 44 32 50" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" fill="none" opacity="0.45"></path>
+</svg>
