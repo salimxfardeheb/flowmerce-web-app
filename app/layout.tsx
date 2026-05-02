@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Flowmerce - Plateforme Vendeur",
+  title: "Flowmerce",
   description: "Gérez vos retours et réclamations clients avec Flowmerce",
   icons: {
     icon: "/logos/logo-mark.svg",
