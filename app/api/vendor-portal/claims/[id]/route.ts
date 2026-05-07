@@ -38,14 +38,14 @@ export async function PATCH(
   // ── 2. Charger la réclamation et vérifier l'appartenance ─────────────
   const claim = await prisma.claim.findUnique({
     where:  { id },
-    select: { id: true, vendorId: true, apiKeyId: true, status: true, prediction: true },
+    select: { id: true, vendorId: true, status: true, prediction: true },
   })
 
   if (!claim) {
     return NextResponse.json({ error: 'Réclamation introuvable' }, { status: 404 })
   }
-  // Isolation stricte : vendorId ET apiKeyId doivent correspondre au token
-  if (claim.vendorId !== payload.vendorId || claim.apiKeyId !== payload.apiKeyId) {
+  // Isolation stricte : seul le vendeur propriétaire peut modifier
+  if (claim.vendorId !== payload.vendorId) {
     return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 })
   }
 

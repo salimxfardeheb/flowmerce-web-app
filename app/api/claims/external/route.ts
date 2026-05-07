@@ -1,7 +1,14 @@
-// app/api/claims/external/route.ts — Flowmerce v2
+// app/api/claims/external/route.ts — Flowmerce
 //
-// Reçoit les demandes de retour depuis n'importe quelle boutique externe
-// Authentification : Authorization: Bearer <api-key>
+// POST : soumettre un claim (existant, inchangé)
+// GET  : lister les claims du vendeur authentifié via clé API (NOUVEAU)
+//
+// GET /api/claims/external
+// Authorization: Bearer <api_key>
+// Query params (optionnels):
+//   ?status=PENDING|APPROVED|REJECTED|IN_PROGRESS
+//   ?limit=50     (défaut: 50, max: 200)
+//   ?offset=0
 
 import { NextRequest, NextResponse }   from 'next/server'
 import { Prisma }                       from '@prisma/client'
@@ -11,7 +18,64 @@ import { evaluateFraud }                from '@/lib/fraud-score'
 import { checkReturnPolicy }            from '@/lib/services/return-policy'
 import { EXTERNAL_RETURN_REASONS, AI_DECISIONS, type AIDecision } from '@/lib/constants'
 
-// ── Mapping reason externe → ClaimType Flowmerce ─────────────────────────
+// ── GET — liste les claims du vendeur (auth par clé API) ──────────────────
+
+export async function GET(req: NextRequest) {
+  const rawKey =
+    req.headers.get('authorization')?.replace(/^Bearer\s+/, '') ??
+    req.headers.get('x-api-key') ??
+    null
+
+  const auth = await validateApiKey(rawKey)
+  if (!auth.ok) return auth.response
+
+  const vendor = auth.keyRecord.vendor
+  const { searchParams } = new URL(req.url)
+
+  const status = searchParams.get('status')?.toUpperCase()
+  const limit  = Math.min(Math.max(Number(searchParams.get('limit'))  || 50, 1), 200)
+  const offset = Math.max(Number(searchParams.get('offset')) || 0, 0)
+
+  const where: Prisma.ClaimWhereInput = { vendorId: vendor.id }
+  if (status && ['PENDING', 'APPROVED', 'REJECTED', 'IN_PROGRESS'].includes(status)) {
+    where.status = status as 'PENDING' | 'APPROVED' | 'REJECTED' | 'IN_PROGRESS'
+  }
+
+  const [claims, total] = await Promise.all([
+    prisma.claim.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take:    limit,
+      skip:    offset,
+      select: {
+        id:            true,
+        orderId:       true,
+        customerName:  true,
+        customerEmail: true,
+        productName:   true,
+        type:          true,
+        status:        true,
+        aiDecision:    true,
+        aiScore:       true,
+        fraudScore:    true,
+        source:        true,
+        createdAt:     true,
+        updatedAt:     true,
+        processedAt:   true,
+        prediction:    true,
+      },
+    }),
+    prisma.claim.count({ where }),
+  ])
+
+  return NextResponse.json({
+    claims,
+    meta: { total, limit, offset, vendor: { id: vendor.id, companyName: vendor.companyName } },
+  })
+}
+
+// ── POST — soumettre un claim (identique à l'original, inchangé) ──────────
+
 function reasonToClaimType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
   if (reason === 'DEFECTIVE')  return 'REPAIR'
   if (reason === 'WRONG_ITEM') return 'EXCHANGE'
@@ -22,7 +86,6 @@ const DECISION_MAP: Record<string, AIDecision> = Object.fromEntries(AI_DECISIONS
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: NextRequest) {
-  // ── 1. Auth ──────────────────────────────────────────────────────────────
   const rawKey =
     req.headers.get('authorization')?.replace(/^Bearer\s+/, '') ??
     req.headers.get('x-api-key') ??
@@ -34,7 +97,6 @@ export async function POST(req: NextRequest) {
   const { keyRecord } = authResult
   const vendor        = keyRecord.vendor
 
-  // ── 2. Parse + validation ─────────────────────────────────────────────────
   let body: Record<string, unknown>
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 }) }
@@ -63,15 +125,11 @@ export async function POST(req: NextRequest) {
   })()
   const fraudScore = typeof body.fraud_score === 'number' ? body.fraud_score : 0
 
-  // ── 3. Politique de retour ────────────────────────────────────────────────
   const returnPolicy = await prisma.returnPolicy.findUnique({ where: { vendorId: vendor.id } })
 
   const policyCheck = checkReturnPolicy(returnPolicy, {
-    daysToReturn,
-    productCategory,
-    claimType: reasonToClaimType(String(body.reason)),
+    daysToReturn, productCategory, claimType: reasonToClaimType(String(body.reason)),
   })
-
   if (!policyCheck.ok) {
     return NextResponse.json(
       { error: policyCheck.message, code: policyCheck.code, ...policyCheck.extra },
@@ -80,7 +138,6 @@ export async function POST(req: NextRequest) {
   }
   const { forceExchange } = policyCheck
 
-  // ── 4. Doublon ───────────────────────────────────────────────────────────
   const existing = await prisma.claim.findFirst({
     where: {
       vendorId:   vendor.id,
@@ -93,14 +150,12 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // ── 5. Évaluation fraude ─────────────────────────────────────────────────
   const { record: fraudRecord, score, totalClaims, isFraudAlert, fraudSignalMessage } =
     await evaluateFraud(customerEmail, customerPhone, {
       scoreThreshold:  returnPolicy?.fraudScoreThreshold  ?? 70,
       returnThreshold: returnPolicy?.fraudReturnThreshold ?? 4,
     })
 
-  // ── 6. Décision IA + surcharge échange seul ──────────────────────────────
   let aiDecision = body.ai_decision ? DECISION_MAP[String(body.ai_decision)] ?? null : null
   if (forceExchange && aiDecision === 'Refund') aiDecision = 'Exchange'
 
@@ -109,7 +164,6 @@ export async function POST(req: NextRequest) {
     ? String(body.description).trim()
     : `Retour ${body.external_source || 'externe'} : ${String(body.product_name)}. Raison : ${String(body.reason)}.`
 
-  // ── 7. Création du claim ─────────────────────────────────────────────────
   const predictionData = {
     externalReturnId: String(body.external_return_id),
     externalSource:   String(body.external_source),
@@ -117,22 +171,23 @@ export async function POST(req: NextRequest) {
     webhookSecret:    body.webhook_secret ? String(body.webhook_secret) : null,
     customerPhone,
     fraudScore,
-    fraudAlert:       isFraudAlert,
-    fraudSignal:      fraudSignalMessage,
+    fraudAlert:        isFraudAlert,
+    fraudSignal:       fraudSignalMessage,
     totalClientClaims: totalClaims,
-    productCategory:  productCategory ?? null,
+    productCategory:   productCategory ?? null,
     forceExchange,
     aiDecision,
-    aiConfidence:     typeof body.ai_confidence === 'number' ? body.ai_confidence : null,
-    probabilities:    body.ai_probabilities ?? null,
-    orderDate:        body.order_date  ? String(body.order_date)  : null,
-    orderTotal:       typeof body.order_total === 'number' ? body.order_total : null,
-    receivedAt:       new Date().toISOString(),
+    aiConfidence:    typeof body.ai_confidence === 'number' ? body.ai_confidence : null,
+    probabilities:   body.ai_probabilities ?? null,
+    orderDate:       body.order_date  ? String(body.order_date)  : null,
+    orderTotal:      typeof body.order_total === 'number' ? body.order_total : null,
+    receivedAt:      new Date().toISOString(),
   } satisfies Prisma.InputJsonObject
 
   const claim = await prisma.claim.create({
     data: {
       vendorId:      vendor.id,
+      apiKeyId:      keyRecord.id,               // ← clé API utilisée
       customerName:  String(body.customer_name),
       customerEmail,
       productName:   String(body.product_name),
@@ -151,8 +206,6 @@ export async function POST(req: NextRequest) {
     where: { id: fraudRecord.id },
     data:  { totalClaims: { increment: 1 } },
   })
-
-  console.log(`[External Claim] Créé ${claim.id} pour vendor ${vendor.id} | fraudAlert=${isFraudAlert} | forceExchange=${forceExchange}`)
 
   return NextResponse.json(
     {

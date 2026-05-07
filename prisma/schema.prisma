@@ -152,6 +152,7 @@ model ReturnSession {
 model Claim {
   id            String      @id @default(cuid())
   vendorId      String
+  apiKeyId      String? 
   orderId       String
   customerName  String
   customerEmail String
@@ -168,6 +169,7 @@ model Claim {
   orderDate     DateTime?
   source        ClaimSource @default(API)
   fraudScore    Float?
+  customerPhone String?
   ipAddress     String?
   vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
