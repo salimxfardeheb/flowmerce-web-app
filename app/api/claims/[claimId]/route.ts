@@ -5,6 +5,7 @@ import { auth }                         from '@/lib/auth'
 import { prisma }                       from '@/lib/prisma'
 import { validateApiKey }               from '@/lib/api-key-auth'
 import { z }                            from 'zod'
+import { notifyClient }                 from '@/lib/notifications'
 
 const PatchClaimSchema = z.object({
   status:           z.enum(['APPROVED', 'REJECTED', 'IN_PROGRESS']).optional(),
@@ -235,6 +236,36 @@ export async function PATCH(
         (updated.aiDecision as string | null),
       )
     }
+  }
+
+  // ── 7. Notifier le client par SMS + Email (best-effort) ─────────────────
+  const finalDecision = aiDecision ?? (claim.aiDecision as string | null)
+  const finalStatus   = (updateData.status as string | undefined) ?? claim.status
+
+  if (finalStatus === 'APPROVED' || finalStatus === 'REJECTED') {
+    const pred          = (claim.prediction as Record<string, unknown> | null) ?? {}
+    const customerPhone = (claim.customerPhone as string | null)
+                       ?? (pred.customerPhone as string | null)
+                       ?? null
+    const rejectReason  = finalDecision === 'Reject'
+      ? (overrideNote?.trim() ?? null)
+      : null
+
+    const vendor = await prisma.vendor.findUnique({
+      where:  { id: claim.vendorId },
+      select: { companyName: true },
+    })
+
+    notifyClient({
+      customerName:  claim.customerName,
+      customerEmail: claim.customerEmail,
+      customerPhone,
+      orderId:       claim.orderId ?? claimId,
+      vendorName:    vendor?.companyName ?? 'le vendeur',
+      decision:      finalDecision ?? finalStatus,
+      motif:         rejectReason ?? undefined,
+      claimId,
+    }).catch(err => console.error('[Notify] Erreur notification client:', err))
   }
 
   return NextResponse.json({ claim: updated })
