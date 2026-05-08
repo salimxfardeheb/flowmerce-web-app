@@ -145,6 +145,7 @@ export async function POST(
           orderId,
           customerName:  customerName || customerEmail,
           customerEmail,
+          customerPhone: customerPhone || null,
           type:          claimType,
           description:   fullDescription,
           status:        'PENDING',

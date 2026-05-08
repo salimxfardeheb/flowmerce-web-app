@@ -156,6 +156,7 @@ model Claim {
   orderId       String
   customerName  String
   customerEmail String
+  customerPhone String?
   type          ClaimType
   description   String
   status        ClaimStatus @default(PENDING)

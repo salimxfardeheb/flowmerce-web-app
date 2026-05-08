@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 function IconShield() {
   return (
@@ -71,20 +72,6 @@ function IconTrendDown() {
   );
 }
 
-function Logo({ size = 8 }: { size?: number }) {
-  return (
-    <div
-      className="bg-indigo-600 rounded-lg flex items-center justify-center"
-      style={{ width: size * 4, height: size * 4 }}
-    >
-      <svg width={size * 2} height={size * 2} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="12 2 2 7 12 12 22 7 12 2" />
-        <polyline points="2 17 12 22 22 17" />
-        <polyline points="2 12 12 17 22 12" />
-      </svg>
-    </div>
-  );
-}
 
 const FEATURES = [
   {
@@ -223,9 +210,8 @@ export default function HomePage() {
       {/* ── NAVBAR ── */}
       <nav className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Logo size={8} />
-            <span className="font-bold text-lg tracking-tight">Flowmerce</span>
+          <div className="flex items-center">
+            <Image src="/logos/logo-lockup.svg" alt="Flowmerce" width={160} height={32} priority />
           </div>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-500">
@@ -485,9 +471,8 @@ export default function HomePage() {
       {/* ── FOOTER ── */}
       <footer className="border-t border-gray-100 py-10 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2.5">
-            <Logo size={7} />
-            <span className="font-bold text-gray-900">Flowmerce</span>
+          <div className="flex items-center">
+            <Image src="/logos/logo-lockup.svg" alt="Flowmerce" width={140} height={28} />
           </div>
           <p className="text-sm text-gray-400">
             &copy; 2026 Flowmerce. Tous droits reserves.

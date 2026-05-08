@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { loginAction } from "./actions";
 import Link from "next/link";
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Lock, Mail } from "lucide-react";
 
@@ -22,16 +22,12 @@ function LoginForm() {
     setLoading(true);
     setError("");
 
-    const res = await signIn("credentials", {
-      email: form.email,
-      password: form.password,
-      redirect: false,
-    });
+    const result = await loginAction(form.email, form.password);
 
     setLoading(false);
 
-    if (res?.error) {
-      setError("Email ou mot de passe incorrect");
+    if (result.error) {
+      setError(result.error);
       return;
     }
 

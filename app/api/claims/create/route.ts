@@ -144,6 +144,7 @@ export async function POST(req: NextRequest) {
           orderId,
           customerName:  String(body.customer_name).trim(),
           customerEmail: String(body.customer_email).trim().toLowerCase(),
+          customerPhone: customerPhoneNorm ?? null,
           productName:   String(body.product_name).trim(),
           orderDate:     orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null,
           type:          reasonToClaimType(reason),

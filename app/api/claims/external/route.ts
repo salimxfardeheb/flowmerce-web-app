@@ -17,6 +17,7 @@ import { validateApiKey }               from '@/lib/api-key-auth'
 import { evaluateFraud }                from '@/lib/fraud-score'
 import { checkReturnPolicy }            from '@/lib/services/return-policy'
 import { EXTERNAL_RETURN_REASONS, AI_DECISIONS, type AIDecision } from '@/lib/constants'
+import { callMLPredict } from '@/lib/services/ml'
 
 // ── GET — liste les claims du vendeur (auth par clé API) ──────────────────
 
@@ -114,9 +115,15 @@ export async function POST(req: NextRequest) {
   if (!EMAIL_RE.test(String(body.customer_email)))
     return NextResponse.json({ error: 'Email invalide' }, { status: 400 })
 
-  const customerEmail   = String(body.customer_email).toLowerCase()
-  const customerPhone   = body.customer_phone ? String(body.customer_phone) : null
-  const productCategory = body.product_category ? String(body.product_category) : undefined
+  const customerEmail    = String(body.customer_email).toLowerCase()
+  const customerPhone    = body.customer_phone    ? String(body.customer_phone)    : null
+  const productCategory  = body.product_category  ? String(body.product_category)  : undefined
+  const customerGender   = body.customer_gender   ? String(body.customer_gender)   : null
+  const customerAge      = typeof body.customer_age === 'number' ? body.customer_age : null
+  const customerWilaya   = body.customer_wilaya   ? String(body.customer_wilaya)   : null
+  const paymentMethod    = body.payment_method    ? String(body.payment_method)    : null
+  const shippingMethod   = body.shipping_method   ? String(body.shipping_method)   : null
+  const shippingCost     = typeof body.shipping_cost === 'number' ? body.shipping_cost : null
   const daysToReturn    = (() => {
     const raw = body.order_date ? new Date(String(body.order_date)) : null
     if (raw && !isNaN(raw.getTime()))
@@ -206,6 +213,52 @@ export async function POST(req: NextRequest) {
     where: { id: fraudRecord.id },
     data:  { totalClaims: { increment: 1 } },
   })
+
+  // ── 8. Prédiction ML (best-effort, uniquement si pas de décision fournie) ─
+  if (!aiDecision) {
+    const mlInput = {
+      Customer_Gender:         customerGender   ?? 'Unknown',
+      Customer_Age:            customerAge      ?? 0,
+      Customer_Wilaya:         customerWilaya   ?? 'Unknown',
+      Customer_Past_Returns:   totalClaims,
+      Shop_Name:               vendor.companyName,
+      Product_Category:        productCategory  ?? 'Unknown',
+      Product_Price_DA:        typeof body.order_total === 'number' ? body.order_total : 1,
+      Order_Quantity:          1,
+      Total_Amount_DA:         typeof body.order_total === 'number' ? body.order_total : 1,
+      Payment_Method:          paymentMethod    ?? 'Unknown',
+      Shipping_Method:         shippingMethod   ?? 'Standard',
+      Shipping_Cost_DA:        shippingCost     ?? 0,
+      Return_Reason:           String(body.reason),
+      Days_to_Return:          daysToReturn,
+      Shop_Return_Window_Days: returnPolicy?.maxClaimDays ?? 30,
+      Within_Return_Policy:    1 as const,
+      Fraud_Score:             score,
+      Customer_Satisfaction:   3,
+      Is_Suspicious:           isFraudAlert ? 1 as const : 0 as const,
+    }
+
+    const mlResult = await callMLPredict(mlInput)
+    if (mlResult.ok) {
+      const resolution   = mlResult.prediction.resolution?.prediction ?? null
+      const confidence   = resolution
+        ? (mlResult.prediction.resolution.probabilities?.[resolution] ?? null)
+        : null
+
+      await prisma.claim.update({
+        where: { id: claim.id },
+        data: {
+          aiDecision: resolution as AIDecision | null,
+          aiScore:    confidence,
+          prediction: { ...predictionData, aiDecision: resolution, aiConfidence: confidence },
+        },
+      }).catch((e) => console.error('[External Claim] ML update error:', e))
+    } else {
+      console.warn('[External Claim] ML server unreachable:', mlResult.error)
+    }
+  }
+
+  console.log(`[External Claim] Créé ${claim.id} pour vendor ${vendor.id} | fraudAlert=${isFraudAlert} | forceExchange=${forceExchange}`)
 
   return NextResponse.json(
     {

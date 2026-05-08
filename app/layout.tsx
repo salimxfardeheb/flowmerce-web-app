@@ -8,9 +8,13 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title:       'Flowmerce - Plateforme Vendeur',
-  description: 'Gérez vos retours et réclamations clients avec Flowmerce',
-}
+  title: "Flowmerce",
+  description: "Gérez vos retours et réclamations clients avec Flowmerce",
+  icons: {
+    icon: "/logos/logo-mark.svg",
+    apple: "/logos/logo-mark.svg",
+  },
+};
 
 export default function RootLayout({
   children,

@@ -10,10 +10,20 @@
 //   - Seuls les statuts APPROVED, REJECTED, IN_PROGRESS sont acceptés
 //   - Un vendeur ne peut pas repasser en PENDING
 
+<<<<<<< HEAD
 import { NextRequest, NextResponse }  from 'next/server'
 import { prisma }                     from '@/lib/prisma'
 import { Prisma }                     from '@prisma/client'
 import { verifyPortalToken }          from '@/lib/vendor-portal-token'
+=======
+import { NextRequest, NextResponse }   from 'next/server'
+import { Prisma }                       from '@prisma/client'
+import { auth }                         from '@/lib/auth'
+import { prisma }                       from '@/lib/prisma'
+import { validateApiKey }               from '@/lib/api-key-auth'
+import { z }                            from 'zod'
+import { notifyClient }                 from '@/lib/notifications'
+>>>>>>> ad96a0deb34a22b728e569b3a0aecb6d4fe12c27
 
 const ALLOWED_STATUSES = ['APPROVED', 'REJECTED', 'IN_PROGRESS'] as const
 type AllowedStatus = (typeof ALLOWED_STATUSES)[number]
