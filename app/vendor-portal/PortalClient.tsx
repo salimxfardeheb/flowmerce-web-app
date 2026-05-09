@@ -1,10 +1,10 @@
 'use client'
 // app/vendor-portal/PortalClient.tsx — Flowmerce
-//
-// Composant client : affiche la table des réclamations du vendeur
-// et permet de gérer les statuts via le token de portail.
+// Même UX que le dashboard : "Approuver" ouvre une modale de confirmation
+// avec sélecteur de décision ML (modifiable) avant envoi de la notification.
 
 import { useState, useTransition } from 'react'
+import { X, CheckCircle, Brain } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,8 @@ export interface PortalClaim {
   description:   string | null
 }
 
+type Resolution = 'Refund' | 'Exchange' | 'Repair' | 'Reject'
+
 interface Props {
   initialClaims: PortalClaim[]
   token:         string
@@ -31,7 +33,7 @@ interface Props {
   currentFilter: string
 }
 
-// ── Configs visuelles ─────────────────────────────────────────────────────────
+// ── Configs ───────────────────────────────────────────────────────────────────
 
 const STATUS_CFG: Record<string, { label: string; pill: string }> = {
   PENDING:     { label: 'En attente',  pill: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'  },
@@ -41,41 +43,48 @@ const STATUS_CFG: Record<string, { label: string; pill: string }> = {
 }
 
 const AI_CFG: Record<string, { label: string; cls: string }> = {
-  Refund:   { label: 'Remboursement', cls: 'text-green-700'  },
-  Exchange: { label: 'Échange',        cls: 'text-blue-700'   },
-  Repair:   { label: 'Réparation',     cls: 'text-amber-700'  },
-  Reject:   { label: 'Refus',          cls: 'text-red-700'    },
+  Refund:   { label: 'Remboursement', cls: 'text-green-700' },
+  Exchange: { label: 'Échange',        cls: 'text-blue-700'  },
+  Repair:   { label: 'Réparation',     cls: 'text-amber-700' },
+  Reject:   { label: 'Refus',          cls: 'text-red-700'   },
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  REFUND:   'Remboursement',
-  EXCHANGE: 'Échange',
-  REPAIR:   'Réparation',
+  REFUND: 'Remboursement', EXCHANGE: 'Échange', REPAIR: 'Réparation',
 }
 
+const RESOLUTION_OPTIONS: {
+  value: Resolution; label: string; emoji: string; dot: string; cls: string
+}[] = [
+  { value: 'Refund',   label: 'Remboursement', emoji: '💰', dot: 'bg-green-500', cls: 'border-green-300 bg-green-50 text-green-800'  },
+  { value: 'Exchange', label: 'Échange',        emoji: '🔄', dot: 'bg-blue-500',  cls: 'border-blue-300 bg-blue-50 text-blue-800'    },
+  { value: 'Repair',   label: 'Réparation',     emoji: '🔧', dot: 'bg-amber-400', cls: 'border-amber-300 bg-amber-50 text-amber-800' },
+  { value: 'Reject',   label: 'Refus',           emoji: '❌', dot: 'bg-red-500',   cls: 'border-red-300 bg-red-50 text-red-800'       },
+]
+
 const FILTER_TABS = [
-  { value: '',            label: 'Toutes'      },
-  { value: 'PENDING',     label: 'En attente'  },
-  { value: 'IN_PROGRESS', label: 'En cours'    },
-  { value: 'APPROVED',    label: 'Approuvées'  },
-  { value: 'REJECTED',    label: 'Rejetées'    },
+  { value: '',            label: 'Toutes'     },
+  { value: 'PENDING',     label: 'En attente' },
+  { value: 'IN_PROGRESS', label: 'En cours'   },
+  { value: 'APPROVED',    label: 'Approuvées' },
+  { value: 'REJECTED',    label: 'Rejetées'   },
 ]
 
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function PortalClient({
-  initialClaims,
-  token,
-  vendorName,
-  vendorId,
-  currentFilter,
+  initialClaims, token, vendorName, vendorId, currentFilter,
 }: Props) {
-  const [claims, setClaims]       = useState<PortalClaim[]>(initialClaims)
+  const [claims, setClaims]   = useState<PortalClaim[]>(initialClaims)
   const [loadingId, setLoadingId] = useState<string | null>(null)
-  const [error, setError]         = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
+  const [error, setError]     = useState<string | null>(null)
+  const [, startTransition]   = useTransition()
 
-  // Counts for KPIs
+  // Modale d'approbation
+  const [approveTarget, setApproveTarget] = useState<PortalClaim | null>(null)
+  const [resolution, setResolution]       = useState<Resolution | ''>('')
+  const [note, setNote]                   = useState('')
+
   const counts = {
     total:   claims.length,
     pending: claims.filter(c => c.status === 'PENDING').length,
@@ -83,8 +92,8 @@ export default function PortalClient({
     done:    claims.filter(c => c.status === 'APPROVED' || c.status === 'REJECTED').length,
   }
 
-  // ── Action : changer le statut d'une réclamation ──────────────────────────
-  async function updateStatus(claimId: string, status: string, note?: string) {
+  // ── Action rapide (sans décision) ──────────────────────────────────────────
+  async function quickUpdate(claimId: string, status: string) {
     setLoadingId(claimId)
     setError(null)
     try {
@@ -94,19 +103,14 @@ export default function PortalClient({
           'Content-Type':  'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ status, ...(note ? { note } : {}) }),
+        body: JSON.stringify({ status }),
       })
-
       if (!res.ok) {
         const { error: msg } = await res.json().catch(() => ({ error: 'Erreur inconnue' }))
         setError(msg ?? 'Erreur lors de la mise à jour')
         return
       }
-
-      // Mise à jour optimiste de la liste locale
-      setClaims(prev =>
-        prev.map(c => c.id === claimId ? { ...c, status } : c)
-      )
+      setClaims(prev => prev.map(c => c.id === claimId ? { ...c, status } : c))
     } catch {
       setError('Erreur réseau. Veuillez réessayer.')
     } finally {
@@ -114,12 +118,54 @@ export default function PortalClient({
     }
   }
 
-  // ── Filtrage côté client (navigation via URL mais state local) ────────────
+  // ── Approbation avec décision ──────────────────────────────────────────────
+  function openApprove(claim: PortalClaim) {
+    setApproveTarget(claim)
+    setResolution((claim.aiDecision as Resolution) ?? '')
+    setNote('')
+    setError(null)
+  }
+
+  async function handleApprove() {
+    if (!approveTarget || !resolution) return
+    setLoadingId(approveTarget.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/vendor-portal/claims/${approveTarget.id}`, {
+        method:  'PATCH',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          status:     'APPROVED',
+          aiDecision: resolution,
+          ...(note.trim() ? { note: note.trim() } : {}),
+        }),
+      })
+      if (!res.ok) {
+        const { error: msg } = await res.json().catch(() => ({ error: 'Erreur inconnue' }))
+        setError(msg ?? 'Erreur lors de la mise à jour')
+        return
+      }
+      setClaims(prev => prev.map(c =>
+        c.id === approveTarget.id
+          ? { ...c, status: 'APPROVED', aiDecision: resolution }
+          : c
+      ))
+      setApproveTarget(null)
+      setNote('')
+    } catch {
+      setError('Erreur réseau. Veuillez réessayer.')
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
   const filtered = currentFilter
     ? claims.filter(c => c.status === currentFilter)
     : claims
 
-  // ── Rendu ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
 
@@ -134,9 +180,7 @@ export default function PortalClient({
           </div>
           <div className="text-right">
             <p className="text-xs text-gray-400">Accès sécurisé via Flowmerce</p>
-            <p className="text-xs text-gray-300 mt-0.5 font-mono">
-              {vendorId.slice(0, 8)}…
-            </p>
+            <p className="text-xs text-gray-300 mt-0.5 font-mono">{vendorId.slice(0, 8)}…</p>
           </div>
         </div>
       </header>
@@ -146,10 +190,10 @@ export default function PortalClient({
         {/* ── KPIs ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
-            { label: 'Total',      value: counts.total,   cls: 'text-gray-900'   },
-            { label: 'En attente', value: counts.pending,  cls: 'text-amber-600'  },
-            { label: 'En cours',   value: counts.inProg,   cls: 'text-blue-600'   },
-            { label: 'Traitées',   value: counts.done,     cls: 'text-green-600'  },
+            { label: 'Total',      value: counts.total,   cls: 'text-gray-900'  },
+            { label: 'En attente', value: counts.pending,  cls: 'text-amber-600' },
+            { label: 'En cours',   value: counts.inProg,   cls: 'text-blue-600'  },
+            { label: 'Traitées',   value: counts.done,     cls: 'text-green-600' },
           ].map(({ label, value, cls }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 px-4 py-3.5">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
@@ -165,34 +209,26 @@ export default function PortalClient({
           </div>
         )}
 
-        {/* ── Onglets de filtre ── */}
+        {/* ── Onglets filtre ── */}
         <div className="flex items-center gap-1 mb-5 flex-wrap">
           {FILTER_TABS.map(tab => {
             const count = tab.value
               ? claims.filter(c => c.status === tab.value).length
               : claims.length
             const isActive = currentFilter === tab.value
-            // URL relative sans window (compatible SSR)
             const href = tab.value
               ? `/vendor-portal?t=${encodeURIComponent(token)}&filter=${tab.value}`
               : `/vendor-portal?t=${encodeURIComponent(token)}`
-
             return (
-              <a
-                key={tab.value}
-                href={href}
+              <a key={tab.value} href={href}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                  isActive
-                    ? 'bg-gray-900 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
+                  isActive ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
                 {tab.label}
                 <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                   isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
-                }`}>
-                  {count}
-                </span>
+                }`}>{count}</span>
               </a>
             )
           })}
@@ -204,7 +240,7 @@ export default function PortalClient({
             <p className="text-3xl mb-3">↩</p>
             <p className="text-sm font-medium text-gray-700">Aucune réclamation</p>
             <p className="text-xs text-gray-400 mt-1">
-              {currentFilter ? 'Aucune réclamation avec ce statut.' : 'Les demandes de vos clients apparaîtront ici.'}
+              {currentFilter ? 'Aucune réclamation avec ce statut.' : 'Les demandes apparaîtront ici.'}
             </p>
           </div>
         ) : (
@@ -224,13 +260,11 @@ export default function PortalClient({
                   const statusCfg = STATUS_CFG[claim.status] ?? STATUS_CFG.PENDING
                   const aiCfg     = claim.aiDecision ? AI_CFG[claim.aiDecision] : null
                   const isLoading = loadingId === claim.id
-
-                  const fraud = claim.fraudScore
-                  const riskCfg = fraud === null ? null
-                    : fraud >= 60 ? { label: 'Élevé',  cls: 'text-red-700 bg-red-50 ring-1 ring-red-200'     }
+                  const fraud     = claim.fraudScore
+                  const riskCfg   = fraud === null ? null
+                    : fraud >= 60 ? { label: 'Élevé',  cls: 'text-red-700 bg-red-50 ring-1 ring-red-200'      }
                     : fraud >= 35 ? { label: 'Modéré', cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200' }
-                    :               { label: 'Faible',  cls: 'text-gray-600 bg-gray-50 ring-1 ring-gray-200'   }
-
+                    :               { label: 'Faible',  cls: 'text-gray-600 bg-gray-50 ring-1 ring-gray-200'    }
                   const canAct = !isLoading && claim.status !== 'APPROVED' && claim.status !== 'REJECTED'
 
                   return (
@@ -250,9 +284,7 @@ export default function PortalClient({
                         <p className="text-gray-800 max-w-32 truncate" title={claim.productName ?? undefined}>
                           {claim.productName ?? '—'}
                         </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {TYPE_LABELS[claim.type] ?? claim.type}
-                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">{TYPE_LABELS[claim.type] ?? claim.type}</p>
                       </td>
 
                       {/* Décision IA */}
@@ -262,25 +294,23 @@ export default function PortalClient({
                             <span className={`font-semibold text-xs ${aiCfg.cls}`}>{aiCfg.label}</span>
                             {claim.aiScore != null && (
                               <p className="text-xs text-gray-400 mt-0.5">
-                                Confiance {Math.round(claim.aiScore * 100)}%
+                                {Math.round(claim.aiScore * 100)}% conf.
                               </p>
                             )}
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-300 italic">Non analysée</span>
+                          <span className="text-xs text-gray-300 italic">—</span>
                         )}
                       </td>
 
-                      {/* Risque fraude */}
+                      {/* Risque */}
                       <td className="px-4 py-3">
                         {riskCfg ? (
                           <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${riskCfg.cls}`}>
                             {riskCfg.label}
                             <span className="opacity-50 font-normal">{Math.round(fraud!)}</span>
                           </span>
-                        ) : (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
+                        ) : <span className="text-xs text-gray-300">—</span>}
                       </td>
 
                       {/* Statut */}
@@ -302,34 +332,38 @@ export default function PortalClient({
                       {/* Actions */}
                       <td className="px-4 py-3">
                         {canAct ? (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <button
-                              onClick={() => updateStatus(claim.id, 'APPROVED')}
-                              disabled={isLoading}
-                              className="px-2.5 py-1 text-xs font-semibold rounded-md bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50"
-                            >
-                              Approuver
-                            </button>
-                            {claim.status !== 'IN_PROGRESS' && (
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex gap-1.5 flex-wrap">
+                              {/* Approuver → modale */}
                               <button
-                                onClick={() => updateStatus(claim.id, 'IN_PROGRESS')}
+                                onClick={() => openApprove(claim)}
                                 disabled={isLoading}
-                                className="px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-100 hover:bg-blue-200 text-blue-700 transition disabled:opacity-50"
+                                className="px-2.5 py-1 text-xs font-semibold rounded-md bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50 flex items-center gap-1"
                               >
-                                En cours
+                                <CheckCircle className="w-3 h-3" />
+                                Approuver
                               </button>
-                            )}
-                            <button
-                              onClick={() => updateStatus(claim.id, 'REJECTED')}
-                              disabled={isLoading}
-                              className="px-2.5 py-1 text-xs font-semibold rounded-md bg-red-100 hover:bg-red-200 text-red-700 transition disabled:opacity-50"
-                            >
-                              Rejeter
-                            </button>
+                              {claim.status !== 'IN_PROGRESS' && (
+                                <button
+                                  onClick={() => quickUpdate(claim.id, 'IN_PROGRESS')}
+                                  disabled={isLoading}
+                                  className="px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-100 hover:bg-blue-200 text-blue-700 transition disabled:opacity-50"
+                                >
+                                  En cours
+                                </button>
+                              )}
+                              <button
+                                onClick={() => quickUpdate(claim.id, 'REJECTED')}
+                                disabled={isLoading}
+                                className="px-2.5 py-1 text-xs font-semibold rounded-md bg-red-100 hover:bg-red-200 text-red-700 transition disabled:opacity-50"
+                              >
+                                Rejeter
+                              </button>
+                            </div>
                           </div>
-                        ) : claim.status === 'APPROVED' || claim.status === 'REJECTED' ? (
+                        ) : (
                           <span className="text-xs text-gray-300 italic">Traitée</span>
-                        ) : null}
+                        )}
                       </td>
 
                     </tr>
@@ -343,8 +377,100 @@ export default function PortalClient({
         <p className="text-xs text-center text-gray-300 mt-8">
           Portail sécurisé • Flowmerce — accès limité à vos réclamations uniquement
         </p>
-
       </div>
+
+      {/* ══ Modale approbation ════════════════════════════════════════════════ */}
+      {approveTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-md border border-gray-200">
+
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Approuver la réclamation</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Confirmez ou modifiez la décision avant envoi de la notification.
+                </p>
+              </div>
+              <button onClick={() => setApproveTarget(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+
+              {/* Décision ML actuelle */}
+              {approveTarget.aiDecision && (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2.5 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-indigo-500 font-medium uppercase tracking-wide flex items-center gap-1">
+                      <Brain className="w-3 h-3" /> Décision ML
+                    </p>
+                    <p className="text-sm font-semibold text-indigo-800 mt-0.5">{approveTarget.aiDecision}</p>
+                  </div>
+                  {approveTarget.aiScore != null && (
+                    <span className="text-xs text-indigo-400 bg-indigo-100 px-2 py-0.5 rounded-full">
+                      {Math.round(approveTarget.aiScore * 100)}% conf.
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Sélecteur décision */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Décision à envoyer au client <span className="text-red-400 font-normal normal-case">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {RESOLUTION_OPTIONS.map(opt => (
+                    <label key={opt.value}
+                      className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                        resolution === opt.value
+                          ? opt.cls + ' border-current'
+                          : 'border-gray-200 hover:border-gray-300 bg-gray-50 text-gray-500'
+                      }`}
+                    >
+                      <input
+                        type="radio" name="portal-resolution" value={opt.value}
+                        checked={resolution === opt.value}
+                        onChange={() => setResolution(opt.value)}
+                        className="sr-only"
+                      />
+                      <span className="text-base">{opt.emoji}</span>
+                      <span className="text-xs font-medium">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Note */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Note <span className="font-normal normal-case text-gray-400">— optionnel</span>
+                </label>
+                <textarea rows={2} value={note} onChange={e => setNote(e.target.value)}
+                  placeholder="Commentaire visible dans la notification client…"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none transition"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 px-5 pb-5">
+              <button onClick={() => setApproveTarget(null)}
+                className="flex-1 border border-gray-200 text-gray-600 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                Annuler
+              </button>
+              <button
+                onClick={handleApprove}
+                disabled={!resolution || loadingId === approveTarget.id}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {loadingId === approveTarget.id ? 'Envoi…' : '✅ Approuver & notifier'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
