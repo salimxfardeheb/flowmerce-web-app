@@ -191,6 +191,60 @@ export async function POST(req: NextRequest) {
     timestamp:   new Date().toISOString(),
   }));
 
+  // ── 12. Auto-approbation si validationMode = AI_AUTO ──────────
+  const returnPolicy = await prisma.returnPolicy.findUnique({
+    where:  { vendorId: keyRecord.vendorId },
+    select: { validationMode: true },
+  })
+
+  if (returnPolicy?.validationMode === 'AI_AUTO') {
+    const decision = (claim.aiDecision ?? 'Refund') as 'Refund' | 'Exchange' | 'Repair' | 'Reject'
+
+    await prisma.claim.update({
+      where: { id: claim.id },
+      data: {
+        status:      'APPROVED',
+        processedAt: new Date(),
+        aiDecision:  decision,
+        prediction: {
+          autoApprovedAt: new Date().toISOString(),
+          autoApprovedBy: 'auto_on_create',
+        },
+      },
+    })
+
+    const { notifyCustomer } = await import('@/lib/services/notification')
+    notifyCustomer({
+      customerName:  claim.customerName,
+      customerEmail: claim.customerEmail,
+      customerPhone: claim.customerPhone ?? null,
+      orderId:       claim.orderId,
+      status:        'APPROVED',
+      aiDecision:    decision,
+      claimType:     claim.type,
+      note:          null,
+    }).catch(err => console.error('[claims/create] Erreur notification auto-approve :', err))
+
+    console.log(JSON.stringify({
+      event:     'claim_auto_approved',
+      claimId:   claim.id,
+      vendorId:  keyRecord.vendorId,
+      decision,
+      timestamp: new Date().toISOString(),
+    }))
+
+    return NextResponse.json(
+      {
+        success:    true,
+        claim_id:   claim.id,
+        status:     'APPROVED',
+        customer_past_returns: pastReturns,
+        message:    'Votre demande de retour a été enregistrée et approuvée automatiquement.',
+      },
+      { status: 201 }
+    )
+  }
+
   return NextResponse.json(
     {
       success:    true,
