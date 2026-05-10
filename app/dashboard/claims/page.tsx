@@ -9,6 +9,7 @@ import { prisma }                                 from '@/lib/prisma'
 import { redirect }                               from 'next/navigation'
 import { CLAIM_TYPE_LABELS, CLAIM_STATUS_LABELS, formatDate } from '@/lib/utils'
 import { ClaimActions }                           from '@/components/claims/ClaimActions'
+import { AutoApproveToggle }                      from '@/components/claims/AutoApproveToggle' 
 import { checkVendorAccess }                      from '@/lib/vendorGuard'
 import { AlertTriangle, ArrowRight, Brain, Inbox, Sparkles, Key } from 'lucide-react'
 
@@ -82,6 +83,12 @@ export default async function ClaimsPage({
     prisma.claim.findMany({ where: scopeWhere, select: { id: true, status: true, aiDecision: true, fraudScore: true, apiKeyId: true } }),
   ])
 
+  // Lire le validationMode du vendeur (pour le toggle auto-approve)
+  const returnPolicy = vendorId
+    ? await prisma.returnPolicy.findUnique({ where: { vendorId }, select: { validationMode: true } })
+    : null
+  const validationMode = (returnPolicy?.validationMode ?? 'MANUAL') as 'MANUAL' | 'AI_AUTO'
+
   const total    = allScopedClaims.length
   const pending  = allScopedClaims.filter(c => c.status === 'PENDING').length
   const withML   = allScopedClaims.filter(c => c.aiDecision !== null).length
@@ -143,15 +150,17 @@ export default async function ClaimsPage({
               : 'Suivez et traitez les demandes clients, avec décisions automatiques et détection de fraude.'}
           </p>
         </div>
-        {pending > 0 && (
-          <a
-            href={buildUrl({ status: 'PENDING' })}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shrink-0"
-          >
-            {pending} en attente
-            <ArrowRight className="w-4 h-4" />
-          </a>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {pending > 0 && (
+            <a
+              href={buildUrl({ status: 'PENDING' })}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              {pending} en attente
+              <ArrowRight className="w-4 h-4" />
+            </a>
+          )}
+        </div>
       </div>
 
       {/* ── Filtre par clé API (admin + vendeur multi-clés) ── */}
@@ -228,8 +237,9 @@ export default async function ClaimsPage({
         </div>
       </div>
 
-      {/* ── Filtres statut / risque / ML ── */}
-      <div className="flex items-center gap-1 mb-5 flex-wrap">
+      {/* ── Filtres statut / risque / ML + Toggle auto-approve ── */}
+      <div className="flex items-center justify-between gap-2 mb-5">
+        <div className="flex items-center gap-1 flex-wrap">
         <a
           href={buildUrl({ status: undefined, risk: undefined, ml: undefined })}
           className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -276,6 +286,16 @@ export default async function ClaimsPage({
           <Brain className="w-3.5 h-3.5" />
           Décisions auto.
         </a>
+        </div>
+
+        {/* Toggle auto-approve — visible uniquement pour les vendeurs (pas admin global) */}
+        {!isAdmin || vendorId ? (
+          <AutoApproveToggle
+            initialMode={validationMode}
+            pendingCount={pending}
+            apiEndpoint="/api/claims/validation-mode"
+          />
+        ) : null}
       </div>
 
       {/* ── Table ── */}

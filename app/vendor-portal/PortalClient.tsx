@@ -4,7 +4,8 @@
 // avec sélecteur de décision ML (modifiable) avant envoi de la notification.
 
 import { useState, useTransition } from 'react'
-import { X, CheckCircle, Brain } from 'lucide-react'
+import { X, CheckCircle, Brain }   from 'lucide-react'
+import { AutoApproveToggle }       from '@/components/claims/AutoApproveToggle'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,11 +27,12 @@ export interface PortalClaim {
 type Resolution = 'Refund' | 'Exchange' | 'Repair' | 'Reject'
 
 interface Props {
-  initialClaims: PortalClaim[]
-  token:         string
-  vendorName:    string
-  vendorId:      string
-  currentFilter: string
+  initialClaims:         PortalClaim[]
+  token:                 string
+  vendorName:            string
+  vendorId:              string
+  currentFilter:         string
+  initialValidationMode: 'MANUAL' | 'AI_AUTO'
 }
 
 // ── Configs ───────────────────────────────────────────────────────────────────
@@ -53,13 +55,41 @@ const TYPE_LABELS: Record<string, string> = {
   REFUND: 'Remboursement', EXCHANGE: 'Échange', REPAIR: 'Réparation',
 }
 
+// ── SVG icons pour les décisions ─────────────────────────────────────────────
+
+const RESOLUTION_ICONS: Record<Resolution, React.ReactNode> = {
+  Refund: (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.4"/>
+      <path d="M8 4.5v1M8 10.5v1M6 6.5a2 2 0 0 1 4 0c0 1.2-.8 1.8-2 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+    </svg>
+  ),
+  Exchange: (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 5h9M8 2.5 11 5l-3 2.5M14 11H5M8 8.5 5 11l3 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
+  Repair: (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10.5 2.5a3 3 0 0 1 0 4.2L5.2 12a1.5 1.5 0 1 1-2.1-2.1l5.2-5.3a3 3 0 0 1 2.2-2.1Z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+      <path d="m12 4-1 1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+    </svg>
+  ),
+  Reject: (
+    <svg viewBox="0 0 16 16" fill="none" className="w-4 h-4" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.4"/>
+      <path d="M5.5 5.5 10.5 10.5M10.5 5.5 5.5 10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+    </svg>
+  ),
+}
+
 const RESOLUTION_OPTIONS: {
-  value: Resolution; label: string; emoji: string; dot: string; cls: string
+  value: Resolution; label: string; dot: string; cls: string
 }[] = [
-  { value: 'Refund',   label: 'Remboursement', emoji: '💰', dot: 'bg-green-500', cls: 'border-green-300 bg-green-50 text-green-800'  },
-  { value: 'Exchange', label: 'Échange',        emoji: '🔄', dot: 'bg-blue-500',  cls: 'border-blue-300 bg-blue-50 text-blue-800'    },
-  { value: 'Repair',   label: 'Réparation',     emoji: '🔧', dot: 'bg-amber-400', cls: 'border-amber-300 bg-amber-50 text-amber-800' },
-  { value: 'Reject',   label: 'Refus',           emoji: '❌', dot: 'bg-red-500',   cls: 'border-red-300 bg-red-50 text-red-800'       },
+  { value: 'Refund',   label: 'Remboursement', dot: 'bg-green-500', cls: 'border-green-300 bg-green-50 text-green-800'  },
+  { value: 'Exchange', label: 'Échange',        dot: 'bg-blue-500',  cls: 'border-blue-300 bg-blue-50 text-blue-800'    },
+  { value: 'Repair',   label: 'Réparation',     dot: 'bg-amber-400', cls: 'border-amber-300 bg-amber-50 text-amber-800' },
+  { value: 'Reject',   label: 'Refus',          dot: 'bg-red-500',   cls: 'border-red-300 bg-red-50 text-red-800'       },
 ]
 
 const FILTER_TABS = [
@@ -73,14 +103,15 @@ const FILTER_TABS = [
 // ── Composant principal ───────────────────────────────────────────────────────
 
 export default function PortalClient({
-  initialClaims, token, vendorName, vendorId, currentFilter,
+  initialClaims, token, vendorName, vendorId, currentFilter, initialValidationMode,
 }: Props) {
-  const [claims, setClaims]   = useState<PortalClaim[]>(initialClaims)
-  const [loadingId, setLoadingId] = useState<string | null>(null)
-  const [error, setError]     = useState<string | null>(null)
-  const [, startTransition]   = useTransition()
+  const [claims, setClaims]         = useState<PortalClaim[]>(initialClaims)
+  const [loadingId, setLoadingId]   = useState<string | null>(null)
+  const [error, setError]           = useState<string | null>(null)
+  const [, startTransition]         = useTransition()
+  const [validationMode, setValidationMode] = useState<'MANUAL' | 'AI_AUTO'>(initialValidationMode)
 
-  // Modale d'approbation
+  // Modale d'approbation individuelle
   const [approveTarget, setApproveTarget] = useState<PortalClaim | null>(null)
   const [resolution, setResolution]       = useState<Resolution | ''>('')
   const [note, setNote]                   = useState('')
@@ -178,9 +209,9 @@ export default function PortalClient({
             </p>
             <h1 className="text-lg font-bold text-gray-900">{vendorName}</h1>
           </div>
-          <div className="text-right">
+          <div className="text-right flex flex-col items-end gap-1">
             <p className="text-xs text-gray-400">Accès sécurisé via Flowmerce</p>
-            <p className="text-xs text-gray-300 mt-0.5 font-mono">{vendorId.slice(0, 8)}…</p>
+            <p className="text-xs text-gray-300 font-mono">{vendorId.slice(0, 8)}…</p>
           </div>
         </div>
       </header>
@@ -209,8 +240,9 @@ export default function PortalClient({
           </div>
         )}
 
-        {/* ── Onglets filtre ── */}
-        <div className="flex items-center gap-1 mb-5 flex-wrap">
+        {/* ── Onglets filtre + Toggle auto-approve ── */}
+        <div className="flex items-center justify-between gap-4 mb-5">
+          <div className="flex items-center gap-1 flex-wrap">
           {FILTER_TABS.map(tab => {
             const count = tab.value
               ? claims.filter(c => c.status === tab.value).length
@@ -232,6 +264,25 @@ export default function PortalClient({
               </a>
             )
           })}
+          </div>
+
+          {/* Toggle auto-approve */}
+          <AutoApproveToggle
+            initialMode={initialValidationMode}
+            pendingCount={counts.pending}
+            apiEndpoint="/api/vendor-portal/settings/validation-mode"
+            authToken={token}
+            onToggled={(newMode, approved) => {
+              setValidationMode(newMode)
+              if (newMode === 'AI_AUTO' && approved > 0) {
+                setClaims(prev => prev.map(c =>
+                  c.status === 'PENDING'
+                    ? { ...c, status: 'APPROVED', aiDecision: c.aiDecision ?? 'Refund' }
+                    : c
+                ))
+              }
+            }}
+          />
         </div>
 
         {/* ── Table ── */}
@@ -334,15 +385,17 @@ export default function PortalClient({
                         {canAct ? (
                           <div className="flex flex-col gap-1.5">
                             <div className="flex gap-1.5 flex-wrap">
-                              {/* Approuver → modale */}
-                              <button
-                                onClick={() => openApprove(claim)}
-                                disabled={isLoading}
-                                className="px-2.5 py-1 text-xs font-semibold rounded-md bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50 flex items-center gap-1"
-                              >
-                                <CheckCircle className="w-3 h-3" />
-                                Approuver
-                              </button>
+                              {/* Approuver → masqué si auto-approve actif */}
+                              {validationMode === 'MANUAL' && (
+                                <button
+                                  onClick={() => openApprove(claim)}
+                                  disabled={isLoading}
+                                  className="px-2.5 py-1 text-xs font-semibold rounded-md bg-green-600 hover:bg-green-700 text-white transition disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  <CheckCircle className="w-3 h-3" />
+                                  Approuver
+                                </button>
+                              )}
                               {claim.status !== 'IN_PROGRESS' && (
                                 <button
                                   onClick={() => quickUpdate(claim.id, 'IN_PROGRESS')}
@@ -435,7 +488,7 @@ export default function PortalClient({
                         onChange={() => setResolution(opt.value)}
                         className="sr-only"
                       />
-                      <span className="text-base">{opt.emoji}</span>
+                      <span className="shrink-0">{RESOLUTION_ICONS[opt.value]}</span>
                       <span className="text-xs font-medium">{opt.label}</span>
                     </label>
                   ))}
@@ -462,9 +515,14 @@ export default function PortalClient({
               <button
                 onClick={handleApprove}
                 disabled={!resolution || loadingId === approveTarget.id}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
-                {loadingId === approveTarget.id ? 'Envoi…' : '✅ Approuver & notifier'}
+                {loadingId === approveTarget.id ? 'Envoi…' : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Approuver &amp; notifier
+                  </>
+                )}
               </button>
             </div>
           </div>

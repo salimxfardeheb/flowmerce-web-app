@@ -8,7 +8,7 @@
 
 import { verifyPortalToken }               from '@/lib/vendor-portal-token'
 import { prisma }                          from '@/lib/prisma'
-import PortalClient, { type PortalClaim } from './PortalClient'
+import PortalClient, { type PortalClaim } from './PortalClient' 
 
 function ErrorPage({ message }: { message: string }) {
   return (
@@ -57,6 +57,13 @@ export default async function VendorPortalPage({
     return <ErrorPage message="Vendeur introuvable. Contactez l'administrateur." />
   }
 
+  // Lire le validationMode pour le toggle auto-approve
+  const returnPolicy = await prisma.returnPolicy.findUnique({
+    where:  { vendorId },
+    select: { validationMode: true },
+  })
+  const validationMode = (returnPolicy?.validationMode ?? 'MANUAL') as 'MANUAL' | 'AI_AUTO'
+
   // Filtre de statut optionnel
   const VALID = ['PENDING', 'APPROVED', 'REJECTED', 'IN_PROGRESS'] as const
   type S = (typeof VALID)[number]
@@ -104,6 +111,7 @@ export default async function VendorPortalPage({
       vendorName={vendor.companyName}
       vendorId={vendorId}
       currentFilter={up ?? ''}
+      initialValidationMode={validationMode}
     />
   )
 }
