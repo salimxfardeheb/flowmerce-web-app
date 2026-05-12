@@ -16,8 +16,8 @@ import { auth }                                   from '@/lib/auth'
 import { prisma }                                 from '@/lib/prisma'
 import { RETURN_REASONS, VENDOR_CATEGORIES }      from '@/lib/constants'
 
-const ALL_CATEGORIES = VENDOR_CATEGORIES
-const ALL_REASONS    = RETURN_REASONS
+const ALL_CATEGORIES: readonly string[] = VENDOR_CATEGORIES
+const ALL_REASONS:    readonly string[] = RETURN_REASONS
 
 // ── GET ───────────────────────────────────────────────────────────────────
 
