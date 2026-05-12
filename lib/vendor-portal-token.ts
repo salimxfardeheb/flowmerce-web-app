@@ -7,8 +7,9 @@
 // VENDOR_PORTAL_SECRET doit être dans .env.local (min 32 chars recommandé).
 
 import { createHmac, timingSafeEqual } from 'crypto'
+import { env } from './env'
 
-const SECRET = process.env.VENDOR_PORTAL_SECRET ?? 'default-portal-secret-change-me'
+const SECRET = env.VENDOR_PORTAL_SECRET
 
 export interface PortalTokenPayload {
   vendorId: string

@@ -12,6 +12,7 @@
 import nodemailer from 'nodemailer'
 import path       from 'path'
 import fs         from 'fs'
+import { env }    from '@/lib/env'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -225,13 +226,8 @@ function buildEmailHtml(p: NotificationPayload): string {
 // ── Envoi email ───────────────────────────────────────────────────────────────
 
 async function sendEmail(p: NotificationPayload): Promise<boolean> {
-  const user = process.env.GMAIL_USER
-  const pass = process.env.GMAIL_APP_PASSWORD
-
-  if (!user || !pass) {
-    console.warn('[Notification/Email] Non configuré — GMAIL_USER ou GMAIL_APP_PASSWORD manquant')
-    return false
-  }
+  const user = env.GMAIL_USER
+  const pass = env.GMAIL_APP_PASSWORD
 
   const cfg     = DECISION_CONFIG[p.aiDecision ?? p.status] ?? DECISION_CONFIG['IN_PROGRESS']
   const subject = p.aiDecision

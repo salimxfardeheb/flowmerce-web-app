@@ -48,7 +48,7 @@ const REQUIRED_FIELDS: (keyof ReturnRequest)[] = [
   "Customer_Gender", "Customer_Age", "Customer_Wilaya", "Customer_Past_Returns",
   "Shop_Name", "Product_Category", "Product_Price_DA", "Order_Quantity",
   "Total_Amount_DA", "Payment_Method", "Shipping_Method", "Shipping_Cost_DA",
-  "Return_Reason", "Days_to_Return", "Fraud_Score", "Customer_Satisfaction", "Is_Suspicious",
+  "Return_Reason", "Days_to_Return", "Customer_Satisfaction", "Is_Suspicious",
 ];
 
 function validateInput(body: Partial<ReturnRequest>): string | null {
@@ -56,7 +56,6 @@ function validateInput(body: Partial<ReturnRequest>): string | null {
     if (body[field] === undefined || body[field] === null || body[field] === "")
       return `Champ manquant ou invalide : ${field}`;
   }
-  if (body.Fraud_Score! < 0 || body.Fraud_Score! > 100)    return "Fraud_Score doit être entre 0 et 100";
   if (body.Customer_Satisfaction! < 1 || body.Customer_Satisfaction! > 5)
     return "Customer_Satisfaction doit être entre 1 et 5";
   if (body.Is_Suspicious !== 0 && body.Is_Suspicious !== 1) return "Is_Suspicious doit être 0 ou 1";

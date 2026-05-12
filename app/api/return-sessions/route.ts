@@ -28,13 +28,14 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma }           from '@/lib/prisma'
+import { env }              from '@/lib/env'
 import { validateApiKey }   from '@/lib/api-key-auth'
 import { randomBytes }      from 'node:crypto'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const HTML_RE  = /<[^>]*>/
 
-const BASE_URL = (process.env.NEXTAUTH_URL || 'http://localhost:3000').replace(/\/$/, '')
+const BASE_URL = env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '')
 
 function generateToken(): string {
   return 'ret_' + randomBytes(24).toString('base64url')

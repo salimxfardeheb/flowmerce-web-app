@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from './prisma'
 import { hashApiKey } from './utils'
+import { log } from './logger'
 
 async function _findKey(hash: string) {
   return prisma.apiKey.findUnique({
@@ -20,7 +21,19 @@ export async function validateApiKey(rawKey: string | null): Promise<ApiKeyResul
     return { ok: false, response: NextResponse.json({ error: 'Clé API manquante' }, { status: 401 }) }
   }
 
-  const keyRecord = await _findKey(hashApiKey(rawKey)).catch(() => null)
+  let keyRecord: KeyRecord | null
+  try {
+    keyRecord = await _findKey(hashApiKey(rawKey))
+  } catch (err) {
+    log.error('api-key-auth.db_error', { err: err instanceof Error ? err.message : String(err) })
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'Service temporairement indisponible' },
+        { status: 503, headers: { 'Retry-After': '30' } },
+      ),
+    }
+  }
 
   if (!keyRecord || !keyRecord.isActive) {
     return { ok: false, response: NextResponse.json({ error: 'Clé API invalide ou révoquée' }, { status: 401 }) }

@@ -3,10 +3,14 @@
 import { signIn } from "@/lib/auth";
 import { AuthError } from "next-auth";
 
-export async function loginAction(
-  email: string,
-  password: string
-): Promise<{ error?: string }> {
+export async function loginAction(formData: FormData): Promise<{ error?: string }> {
+  const email    = String(formData.get("email")    ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  if (!email || !password) {
+    return { error: "Email et mot de passe requis" };
+  }
+
   try {
     await signIn("credentials", { email, password, redirect: false });
     return {};

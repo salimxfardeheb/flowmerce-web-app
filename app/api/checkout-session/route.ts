@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { hashApiKey } from "@/lib/utils"
+import { env } from "@/lib/env"
+import { validateApiKey } from "@/lib/api-key-auth"
 import crypto from "crypto"
 
 export async function POST(req: NextRequest) {
-  const apiKeyValue = req.headers.get("x-api-key")
-  if (!apiKeyValue) {
-    return NextResponse.json({ error: "Clé API manquante" }, { status: 401 })
-  }
+  const rawKey =
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    req.headers.get("x-api-key") ??
+    null
 
-  const apiKey = await prisma.apiKey.findUnique({
-    where: { key: hashApiKey(apiKeyValue) },
-    include: { vendor: true },
-  }).catch(() => null)
-
-  if (!apiKey || !apiKey.isActive) {
-    return NextResponse.json({ error: "Clé API invalide ou révoquée" }, { status: 401 })
-  }
-  if (apiKey.vendor.status !== "APPROVED") {
-    return NextResponse.json({ error: "Compte vendeur non approuvé" }, { status: 403 })
-  }
+  const auth = await validateApiKey(rawKey)
+  if (!auth.ok) return auth.response
+  const { keyRecord } = auth
 
   let body: Record<string, unknown>
   try {
@@ -51,7 +44,7 @@ export async function POST(req: NextRequest) {
   await prisma.returnSession.create({
     data: {
       token,
-      vendorId:      apiKey.id,
+      vendorId:      keyRecord.id,
       orderId,
       customerEmail,
       productName,
@@ -63,7 +56,6 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
-    ?? `${req.headers.get("x-forwarded-proto") ?? "http"}://${req.headers.get("host")}`
+  const baseUrl = env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, "")
   return NextResponse.json({ url: `${baseUrl}/return/${token}` })
 }

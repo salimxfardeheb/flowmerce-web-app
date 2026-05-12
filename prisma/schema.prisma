@@ -171,13 +171,18 @@ model Claim {
   source        ClaimSource @default(API)
   fraudScore    Float?
   ipAddress     String?
+  mlFailed      Boolean     @default(false)
+  mlAttempts    Int         @default(0)
+  mlInput       Json?
   vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([vendorId, orderId])
   @@index([vendorId, createdAt(sort: Desc)])
+  @@index([vendorId, status])
   @@index([vendorId])
   @@index([status])
   @@index([orderId])
+  @@index([mlFailed])
 }
 
 model PredictionLog {
@@ -203,19 +208,37 @@ model ReturnRateLimit {
 }
 
 model CustomerFraudRecord {
-  id            String    @id @default(cuid())
-  customerEmail String?
-  customerPhone String?
-  totalClaims   Int       @default(0)
-  totalRefusals Int       @default(0)
-  lastClaimAt   DateTime?
-  lastRefusalAt DateTime?
-  matchedBy     String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  customerEmail   String?
+  customerPhone   String?
+  totalClaims     Int       @default(0)
+  totalRefusals   Int       @default(0)
+  distinctVendors Int       @default(0)
+  lastClaimAt     DateTime?
+  lastRefusalAt   DateTime?
+  matchedBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([customerEmail])
   @@index([customerPhone])
+}
+
+model RefusalReport {
+  id            String   @id @default(cuid())
+  vendorId      String
+  customerEmail String?
+  customerPhone String?
+  orderId       String
+  claimId       String?
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@unique([vendorId, orderId])
+  @@index([vendorId])
+  @@index([customerEmail])
+  @@index([customerPhone])
+  @@index([createdAt])
 }
 
 enum Role {

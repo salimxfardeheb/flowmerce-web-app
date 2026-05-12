@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { env, hasSmtp } from '@/lib/env'
 
 interface DecisionStyle {
   label:   string
@@ -26,12 +27,12 @@ interface SendDecisionEmailParams {
 
 function createTransporter() {
   return nodemailer.createTransport({
-    host:   process.env.SMTP_HOST,
-    port:   Number(process.env.SMTP_PORT) || 587,
+    host:   env.SMTP_HOST,
+    port:   env.SMTP_PORT ?? 587,
     secure: false,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS,
     },
   })
 }
@@ -263,7 +264,7 @@ function buildHtml(params: SendDecisionEmailParams): string {
 export async function sendDecisionEmail(params: SendDecisionEmailParams) {
   const { to, claimId, decision } = params
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  if (!hasSmtp()) {
     console.warn('[Email] Variables SMTP manquantes — envoi ignoré')
     return { ok: false, error: 'missing_config' }
   }
@@ -277,7 +278,7 @@ export async function sendDecisionEmail(params: SendDecisionEmailParams) {
   try {
     const transporter = createTransporter()
     await transporter.sendMail({
-      from: `"Flowmerce" <${process.env.SMTP_FROM ?? 'noreply@flowmerce.com'}>`,
+      from: `"Flowmerce" <${env.SMTP_FROM ?? 'noreply@flowmerce.com'}>`,
       to,
       subject,
       html,

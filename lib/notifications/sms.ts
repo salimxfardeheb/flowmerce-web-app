@@ -1,4 +1,5 @@
 import twilio from 'twilio'
+import { env, hasTwilio } from '@/lib/env'
 
 const DECISION_LABELS: Record<string, string> = {
   Refund:   'Remboursement approuvé',
@@ -17,16 +18,13 @@ interface SendDecisionSmsParams {
 }
 
 function createClient() {
-  return twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN,
-  )
+  return twilio(env.TWILIO_ACCOUNT_SID!, env.TWILIO_AUTH_TOKEN!)
 }
 
 export async function sendDecisionSms(params: SendDecisionSmsParams) {
   const { to, customerName, orderId, vendorName, decision, motif } = params
 
-  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM_NUMBER) {
+  if (!hasTwilio()) {
     console.warn('[SMS] Variables Twilio manquantes — envoi ignoré')
     return { ok: false, error: 'missing_config' }
   }
@@ -37,8 +35,7 @@ export async function sendDecisionSms(params: SendDecisionSmsParams) {
     return { ok: false, error: 'invalid_number' }
   }
   if (digits.startsWith('0')) {
-    const countryCode = process.env.TWILIO_DEFAULT_COUNTRY_CODE ?? '213'
-    digits = countryCode + digits.slice(1)
+    digits = env.TWILIO_DEFAULT_COUNTRY_CODE + digits.slice(1)
   }
   const normalizedTo = `+${digits}`
 
@@ -57,7 +54,7 @@ export async function sendDecisionSms(params: SendDecisionSmsParams) {
     const client = createClient()
     const message = await client.messages.create({
       body,
-      from: process.env.TWILIO_FROM_NUMBER!,
+      from: env.TWILIO_FROM_NUMBER!,
       to:   normalizedTo,
     })
     console.log(`[SMS] Envoyé à ${normalizedTo} — SID: ${message.sid}`)

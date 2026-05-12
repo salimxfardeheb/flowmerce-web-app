@@ -4,10 +4,11 @@ import { NextRequest, NextResponse }   from 'next/server'
 import { Prisma }                       from '@prisma/client'
 import { prisma }                       from '@/lib/prisma'
 import { checkRateLimit }               from '@/lib/rate-limit'
-import { findOrCreateFraudRecord, computeFraudScore } from '@/lib/fraud-score'
+import { findOrCreateFraudRecord, computeFraudScore, recomputeNetworkSignals } from '@/lib/fraud-score'
 import { callMLPredict }                from '@/lib/services/ml'
 import { checkReturnPolicy }            from '@/lib/services/return-policy'
 import { RETURN_REASONS, CLAIM_TYPES }  from '@/lib/constants'
+import { log }                          from '@/lib/logger'
 
 // ─────────────────────────────────────────────────────────────
 const VALID_REASONS     = new Set<string>(RETURN_REASONS)
@@ -139,7 +140,7 @@ export async function POST(
       })
       if (dup) throw Object.assign(new Error('DUPLICATE_CLAIM'), { code: 'DUPLICATE_CLAIM' })
 
-      return tx.claim.create({
+      const created = await tx.claim.create({
         data: {
           vendorId:      apiKey.vendorId,
           orderId,
@@ -165,23 +166,24 @@ export async function POST(
           },
         },
       })
+
+      await tx.customerFraudRecord.update({
+        where: { id: fraudRecord.id },
+        data:  { totalClaims: { increment: 1 }, lastClaimAt: new Date() },
+      })
+
+      return created
     })
+
+    // Recompute distinctVendors hors transaction (best-effort)
+    recomputeNetworkSignals(customerEmail, customerPhone || undefined)
+      .catch((e) => log.error('return.recompute_network_error', { err: String(e) }))
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code
     if (code === 'DUPLICATE_CLAIM' || code === 'P2002')
       return NextResponse.json({ error: 'Une demande de retour existe déjà pour cette commande.' }, { status: 409 })
     throw err
   }
-
-  // ── 7. Mise à jour compteur fraude (best-effort) ──────────────────────────
-  findOrCreateFraudRecord(customerEmail, customerPhone || undefined)
-    .then(({ record }) =>
-      prisma.customerFraudRecord.update({
-        where: { id: record.id },
-        data:  { totalClaims: { increment: 1 }, lastClaimAt: new Date() },
-      })
-    )
-    .catch((e) => console.error('[return] fraud record update error:', e))
 
   // ── 8. Prédiction ML (best-effort) ───────────────────────────────────────
   const mlInput = {
@@ -219,6 +221,8 @@ export async function POST(
       data: {
         aiDecision: resolution,
         aiScore:    confidence,
+        mlFailed:   false,
+        mlAttempts: { increment: 1 },
         prediction: {
           shopName: shopName || null, customerPhone: customerPhone || null,
           customerGender, customerAge, customerWilaya,
@@ -229,9 +233,17 @@ export async function POST(
           ...(mlPrediction as unknown as Prisma.InputJsonObject),
         },
       },
-    }).catch((e) => console.error('[return] ML claim update error:', e))
+    }).catch((e) => log.error('return.ml_claim_update_error', { err: String(e) }))
   } else {
-    console.warn('[return] ML server unreachable:', mlResult.error)
+    log.warn('return.ml_unreachable', {
+      error:    mlResult.error,
+      timedOut: mlResult.timedOut,
+      attempts: mlResult.attempts,
+    })
+    await prisma.claim.update({
+      where: { id: claim.id },
+      data:  { mlFailed: true, mlAttempts: { increment: mlResult.attempts } },
+    }).catch((e) => log.error('return.ml_failure_flag_error', { err: String(e) }))
   }
 
   // ── 9. Marquer session utilisée + mettre à jour clé API ──────────────────
@@ -240,10 +252,10 @@ export async function POST(
     prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } }).catch(() => null),
   ])
 
-  console.log(JSON.stringify({
-    event: 'return_submitted', claimId: claim.id, vendorId: apiKey.vendorId,
-    orderId, reason, fraudScore, source: 'HOSTED_PAGE', ip, timestamp: new Date().toISOString(),
-  }))
+  log.info('return_submitted', {
+    claimId: claim.id, vendorId: apiKey.vendorId,
+    orderId, reason, fraudScore, source: 'HOSTED_PAGE', ip,
+  })
 
   return NextResponse.json(
     { success: true, claimId: claim.id, message: 'Réclamation créée avec succès' },

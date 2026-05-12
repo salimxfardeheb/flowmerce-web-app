@@ -14,10 +14,11 @@ import { NextRequest, NextResponse }   from 'next/server'
 import { Prisma }                       from '@prisma/client'
 import { prisma }                       from '@/lib/prisma'
 import { validateApiKey }               from '@/lib/api-key-auth'
-import { evaluateFraud }                from '@/lib/fraud-score'
+import { evaluateFraud, recomputeNetworkSignals } from '@/lib/fraud-score'
 import { checkReturnPolicy }            from '@/lib/services/return-policy'
 import { EXTERNAL_RETURN_REASONS, AI_DECISIONS, type AIDecision } from '@/lib/constants'
 import { callMLPredict } from '@/lib/services/ml'
+import { log }           from '@/lib/logger'
 
 // ── GET — liste les claims du vendeur (auth par clé API) ──────────────────
 
@@ -191,28 +192,34 @@ export async function POST(req: NextRequest) {
     receivedAt:      new Date().toISOString(),
   } satisfies Prisma.InputJsonObject
 
-  const claim = await prisma.claim.create({
-    data: {
-      vendorId:      vendor.id,
-      apiKeyId:      keyRecord.id,               // ← clé API utilisée
-      customerName:  String(body.customer_name),
-      customerEmail,
-      productName:   String(body.product_name),
-      orderId:       String(body.order_id),
-      type:          claimType,
-      status:        'PENDING',
-      source:        'API',
-      description,
-      fraudScore:    score,
-      aiDecision,
-      prediction:    predictionData,
-    },
+  const claim = await prisma.$transaction(async (tx) => {
+    const created = await tx.claim.create({
+      data: {
+        vendorId:      vendor.id,
+        apiKeyId:      keyRecord.id,
+        customerName:  String(body.customer_name),
+        customerEmail,
+        productName:   String(body.product_name),
+        orderId:       String(body.order_id),
+        type:          claimType,
+        status:        'PENDING',
+        source:        'API',
+        description,
+        fraudScore:    score,
+        aiDecision,
+        prediction:    predictionData,
+      },
+    })
+    await tx.customerFraudRecord.update({
+      where: { id: fraudRecord.id },
+      data:  { totalClaims: { increment: 1 }, lastClaimAt: new Date() },
+    })
+    return created
   })
 
-  await prisma.customerFraudRecord.update({
-    where: { id: fraudRecord.id },
-    data:  { totalClaims: { increment: 1 } },
-  })
+  // Recompute distinctVendors hors transaction (best-effort)
+  recomputeNetworkSignals(customerEmail, customerPhone)
+    .catch((e) => log.error('claims_external.recompute_network_error', { err: String(e) }))
 
   // ── 8. Prédiction ML (best-effort, uniquement si pas de décision fournie) ─
   if (!aiDecision) {
@@ -250,15 +257,27 @@ export async function POST(req: NextRequest) {
         data: {
           aiDecision: resolution as AIDecision | null,
           aiScore:    confidence,
+          mlFailed:   false,
+          mlAttempts: { increment: 1 },
           prediction: { ...predictionData, aiDecision: resolution, aiConfidence: confidence },
         },
-      }).catch((e) => console.error('[External Claim] ML update error:', e))
+      }).catch((e) => log.error('claims_external.ml_update_error', { err: String(e) }))
     } else {
-      console.warn('[External Claim] ML server unreachable:', mlResult.error)
+      log.warn('claims_external.ml_unreachable', {
+        error:    mlResult.error,
+        timedOut: mlResult.timedOut,
+        attempts: mlResult.attempts,
+      })
+      await prisma.claim.update({
+        where: { id: claim.id },
+        data:  { mlFailed: true, mlAttempts: { increment: mlResult.attempts } },
+      }).catch((e) => log.error('claims_external.ml_failure_flag_error', { err: String(e) }))
     }
   }
 
-  console.log(`[External Claim] Créé ${claim.id} pour vendor ${vendor.id} | fraudAlert=${isFraudAlert} | forceExchange=${forceExchange}`)
+  log.info('claims_external.created', {
+    claimId: claim.id, vendorId: vendor.id, isFraudAlert, forceExchange,
+  })
 
   return NextResponse.json(
     {

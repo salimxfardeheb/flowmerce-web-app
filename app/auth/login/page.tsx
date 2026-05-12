@@ -22,7 +22,10 @@ function LoginForm() {
     setLoading(true);
     setError("");
 
-    const result = await loginAction(form.email, form.password);
+    const fd = new FormData();
+    fd.set("email",    form.email);
+    fd.set("password", form.password);
+    const result = await loginAction(fd);
 
     setLoading(false);
 

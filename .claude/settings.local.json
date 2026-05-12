@@ -32,7 +32,12 @@
       "PowerShell(git diff HEAD -- \"app/api/claims/[claimId]/route.ts\" \"lib/auth.ts\" 2>&1 | Select-Object -First 300)",
       "PowerShell(git diff HEAD -- \"app/api/claims/external/route.ts\" \"app/api/return-policy/advanced/route.ts\" 2>&1 | Select-Object -First 400)",
       "PowerShell(git diff HEAD -- \"prisma/schema.prisma\" 2>&1 | Select-Object -First 150)",
-      "PowerShell(git diff MERGE_HEAD HEAD -- \"prisma/schema.prisma\" \"components/claims/ClaimActions.tsx\" 2>&1 | Select-Object -First 200)"
+      "PowerShell(git diff MERGE_HEAD HEAD -- \"prisma/schema.prisma\" \"components/claims/ClaimActions.tsx\" 2>&1 | Select-Object -First 200)",
+      "PowerShell(npx prisma generate 2>&1 | Select-Object -Last 10)",
+      "PowerShell($bytes = New-Object byte[] 32; [System.Security.Cryptography.RandomNumberGenerator]::Create\\(\\).GetBytes\\($bytes\\); \\($bytes | ForEach-Object { $_.ToString\\('x2'\\) }\\) -join '')",
+      "PowerShell(npx prisma migrate status 2>&1 | Select-Object -Last 30)",
+      "PowerShell(npx prisma migrate deploy 2>&1 | Select-Object -Last 20)",
+      "PowerShell(npx prisma migrate status 2>&1 | Select-Object -Last 20)"
     ]
   }
 }
