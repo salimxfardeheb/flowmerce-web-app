@@ -16,7 +16,7 @@ import { prisma }                       from '@/lib/prisma'
 import { validateApiKey }               from '@/lib/api-key-auth'
 import { evaluateFraud, recomputeNetworkSignals } from '@/lib/fraud-score'
 import { checkReturnPolicy }            from '@/lib/services/return-policy'
-import { EXTERNAL_RETURN_REASONS, AI_DECISIONS, type AIDecision } from '@/lib/constants'
+import { EXTERNAL_RETURN_REASONS, RETURN_REASONS, AI_DECISIONS, type AIDecision } from '@/lib/constants'
 import { callMLPredict } from '@/lib/services/ml'
 import { log }           from '@/lib/logger'
 
@@ -78,6 +78,29 @@ export async function GET(req: NextRequest) {
 
 // ── POST — soumettre un claim (identique à l'original, inchangé) ──────────
 
+// Map des raisons françaises (RETURN_REASONS) vers les codes externes (EXTERNAL_RETURN_REASONS)
+const FR_TO_EXTERNAL: Record<string, typeof EXTERNAL_RETURN_REASONS[number]> = {
+  'Produit défectueux':          'DEFECTIVE',
+  'Panne après utilisation':     'DEFECTIVE',
+  'Produit contrefait':          'DEFECTIVE',
+  'Produit endommagé livraison': 'DEFECTIVE',
+  'Mauvaise taille':             'WRONG_ITEM',
+  'Erreur de commande vendeur':  'WRONG_ITEM',
+  'Ne correspond pas':           'DESCRIPTION',
+  "Changement d'avis":           'CHANGE_MIND',
+  'Allergie/Réaction':           'CHANGE_MIND',
+  'Pièces manquantes':           'WRONG_ITEM',
+}
+
+function normalizeReason(raw: string): string {
+  const upper = raw.trim().toUpperCase()
+  // Déjà un code externe valide
+  if ((EXTERNAL_RETURN_REASONS as readonly string[]).includes(upper)) return upper
+  // Raison française connue
+  if (raw.trim() in FR_TO_EXTERNAL) return FR_TO_EXTERNAL[raw.trim() as typeof RETURN_REASONS[number]]
+  return raw.trim()
+}
+
 function reasonToClaimType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
   if (reason === 'DEFECTIVE')  return 'REPAIR'
   if (reason === 'WRONG_ITEM') return 'EXCHANGE'
@@ -103,18 +126,27 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 }) }
 
+  // Normaliser la raison avant toute validation (accepte FR et EN)
+  if (body.reason) body.reason = normalizeReason(String(body.reason))
+
   const required = [
     'customer_name', 'customer_email', 'product_name', 'order_id',
     'reason', 'description', 'external_return_id', 'external_source',
   ]
   for (const field of required) {
-    if (!body[field] || String(body[field]).trim() === '')
+    if (!body[field] || String(body[field]).trim() === '') {
+      log.warn('claims_external.validation_failed', { field, vendorId: vendor.id })
       return NextResponse.json({ error: `Champ requis manquant : ${field}` }, { status: 400 })
+    }
   }
-  if (!(EXTERNAL_RETURN_REASONS as readonly string[]).includes(String(body.reason)))
-    return NextResponse.json({ error: 'Raison invalide' }, { status: 400 })
-  if (!EMAIL_RE.test(String(body.customer_email)))
+  if (!(EXTERNAL_RETURN_REASONS as readonly string[]).includes(String(body.reason))) {
+    log.warn('claims_external.invalid_reason', { reason: body.reason, vendorId: vendor.id, valid: EXTERNAL_RETURN_REASONS })
+    return NextResponse.json({ error: 'Raison invalide', valid_reasons: EXTERNAL_RETURN_REASONS }, { status: 400 })
+  }
+  if (!EMAIL_RE.test(String(body.customer_email))) {
+    log.warn('claims_external.invalid_email', { email: String(body.customer_email).slice(0, 50), vendorId: vendor.id })
     return NextResponse.json({ error: 'Email invalide' }, { status: 400 })
+  }
 
   const customerEmail    = String(body.customer_email).toLowerCase()
   const customerPhone    = body.customer_phone    ? String(body.customer_phone)    : null
@@ -131,7 +163,9 @@ export async function POST(req: NextRequest) {
       return Math.max(0, Math.floor((Date.now() - raw.getTime()) / 86_400_000))
     return typeof body.days_to_return === 'number' ? body.days_to_return : 0
   })()
-  const fraudScore = typeof body.fraud_score === 'number' ? body.fraud_score : 0
+  const fraudScore    = typeof body.fraud_score    === 'number' ? body.fraud_score    : 0
+  const productPrice  = typeof body.product_price  === 'number' ? body.product_price  : null
+  const productQty    = typeof body.product_quantity === 'number' ? body.product_quantity : null
 
   const returnPolicy = await prisma.returnPolicy.findUnique({ where: { vendorId: vendor.id } })
 
@@ -187,9 +221,11 @@ export async function POST(req: NextRequest) {
     aiDecision,
     aiConfidence:    typeof body.ai_confidence === 'number' ? body.ai_confidence : null,
     probabilities:   body.ai_probabilities ?? null,
-    orderDate:       body.order_date  ? String(body.order_date)  : null,
-    orderTotal:      typeof body.order_total === 'number' ? body.order_total : null,
-    receivedAt:      new Date().toISOString(),
+    orderDate:        body.order_date ? String(body.order_date) : null,
+    orderTotal:       typeof body.order_total === 'number' ? body.order_total : null,
+    productPrice,
+    productQuantity:  productQty,
+    receivedAt:       new Date().toISOString(),
   } satisfies Prisma.InputJsonObject
 
   const claim = await prisma.$transaction(async (tx) => {
@@ -230,8 +266,8 @@ export async function POST(req: NextRequest) {
       Customer_Past_Returns:   totalClaims,
       Shop_Name:               vendor.companyName,
       Product_Category:        productCategory  ?? 'Unknown',
-      Product_Price_DA:        typeof body.order_total === 'number' ? body.order_total : 1,
-      Order_Quantity:          1,
+      Product_Price_DA:        productPrice ?? (typeof body.order_total === 'number' ? body.order_total : 1),
+      Order_Quantity:          productQty ?? 1,
       Total_Amount_DA:         typeof body.order_total === 'number' ? body.order_total : 1,
       Payment_Method:          paymentMethod    ?? 'Unknown',
       Shipping_Method:         shippingMethod   ?? 'Standard',

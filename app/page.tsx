@@ -217,6 +217,7 @@ export default function HomePage() {
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-500">
             <a href="#features" className="hover:text-gray-900 transition-colors">Fonctionnalites</a>
             <a href="#how-it-works" className="hover:text-gray-900 transition-colors">Comment ca marche</a>
+            <Link href="/docs" className="hover:text-gray-900 transition-colors">Documentation</Link>
           </div>
 
           <div className="flex items-center gap-3">

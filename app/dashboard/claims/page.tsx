@@ -351,9 +351,9 @@ export default async function ClaimsPage({
                   : claim.aiDecision
                 const isOverridden = !!overrideData
 
-                const productPrice = prediction?.productPrice    as number | null
-                const productQty   = prediction?.productQuantity as number | null
-                const orderTotal   = prediction?.orderTotal       as number | null
+                const productPrice = typeof prediction?.productPrice    === 'number' ? prediction.productPrice    : null
+                const productQty   = typeof prediction?.productQuantity === 'number' ? prediction.productQuantity : null
+                const orderTotal   = typeof prediction?.orderTotal      === 'number' ? prediction.orderTotal      : null
 
                 const riskLevel =
                   fraudScore === null ? null
@@ -375,7 +375,7 @@ export default async function ClaimsPage({
                   : null
 
                 return (
-                  <tr key={claim.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={claim.id} className="hover:bg-gray-50/50 transition-colors relative group">
 
                     {/* Colonne vendeur — admin seulement */}
                     {isAdmin && (
@@ -395,7 +395,9 @@ export default async function ClaimsPage({
 
                     {/* Client / Commande */}
                     <td className="px-4 py-3">
-                      <p className="font-medium text-gray-900">{claim.customerName}</p>
+                      <a href={`/dashboard/claims/${claim.id}`} className="block hover:underline">
+                        <p className="font-medium text-gray-900">{claim.customerName}</p>
+                      </a>
                       <p className="text-xs text-gray-500">{claim.customerEmail}</p>
                       <p className="text-xs text-gray-400 font-mono mt-0.5">{claim.orderId}</p>
                       {source === 'HOSTED_PAGE' && (
@@ -409,17 +411,16 @@ export default async function ClaimsPage({
                         {productName ?? '—'}
                       </p>
                       <p className="text-xs text-gray-400 mt-0.5">{CLAIM_TYPE_LABELS[claim.type]}</p>
-                      {productPrice != null && (
+                      {productPrice != null ? (
                         <p className="text-xs text-gray-400">
                           {productPrice.toFixed(2)} DA
                           {productQty && productQty > 1 ? ` × ${productQty}` : ''}
                         </p>
-                      )}
-                      {orderTotal != null && (
-                        <p className="text-xs font-semibold text-gray-700">
-                          Total : {orderTotal.toFixed(2)} DA
+                      ) : orderTotal != null ? (
+                        <p className="text-xs text-gray-400">
+                          {orderTotal.toFixed(2)} DA
                         </p>
-                      )}
+                      ) : null}
                     </td>
 
                     {/* Décision recommandée */}
@@ -488,12 +489,20 @@ export default async function ClaimsPage({
 
                     {/* Actions */}
                     <td className="px-4 py-3">
-                      <ClaimActions
-                        claimId={claim.id}
-                        currentStatus={claim.status}
-                        aiDecision={claim.aiDecision}
-                        aiScore={claim.aiScore}
-                      />
+                      <div className="flex flex-col gap-1.5">
+                        <a
+                          href={`/dashboard/claims/${claim.id}`}
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors w-fit"
+                        >
+                          Voir le détail
+                        </a>
+                        <ClaimActions
+                          claimId={claim.id}
+                          currentStatus={claim.status}
+                          aiDecision={claim.aiDecision}
+                          aiScore={claim.aiScore}
+                        />
+                      </div>
                     </td>
 
                   </tr>

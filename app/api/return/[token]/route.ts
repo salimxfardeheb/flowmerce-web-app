@@ -65,9 +65,9 @@ export async function POST(
   const customerWilaya  = str('customer_wilaya')   || 'Alger'
   const productCategory = str('product_category')
   const orderAddress    = str('order_address')
-  const productPrice    = numPos('product_price')
-  const productQuantity = intPos('order_quantity') ?? numPos('product_quantity') ?? 1
-  const orderTotal      = numPos('order_total')
+  const productPrice    = session.productPrice    ?? numPos('product_price')
+  const productQuantity = session.productQuantity ?? intPos('order_quantity') ?? intPos('product_quantity') ?? 1
+  const orderTotal      = session.orderTotal      ?? numPos('order_total')
   const paymentMethod   = str('payment_method')  || 'Unknown'
   const shippingMethod  = str('shipping_method') || 'Standard'
   const shippingCost    = numGe0('shipping_cost') ?? 0

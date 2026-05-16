@@ -141,9 +141,12 @@ model ReturnSession {
   productName   String
   customerName  String
   customerPhone String    @default("")
-  orderDate     String    @default("")
-  shopName      String    @default("")
-  expiresAt     DateTime
+  orderDate       String    @default("")
+  shopName        String    @default("")
+  productPrice    Float?
+  productQuantity Int?
+  orderTotal      Float?
+  expiresAt       DateTime
   usedAt        DateTime?
   createdAt     DateTime  @default(now())
   vendor        ApiKey    @relation(fields: [vendorId], references: [id])

@@ -204,7 +204,6 @@ export async function GET() {
     },
     example_response: {
       resolution:           { prediction: "Refund", probabilities: { Exchange: 0.12, Refund: 0.71, Reject: 0.09, Repair: 0.08 } },
-      shipping_paid_by:     { prediction: "Vendeur", probabilities: { Client: 0.23, Vendeur: 0.77 } },
       vendor_policy_applied: { return_window_days: 14, within_policy: true, warnings: [] },
     },
   });

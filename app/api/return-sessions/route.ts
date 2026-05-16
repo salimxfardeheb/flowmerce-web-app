@@ -59,16 +59,21 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Corps JSON invalide' }, { status: 400 }) }
 
-  const str = (k: string) => String(body[k] ?? '').trim()
+  const str    = (k: string) => String(body[k] ?? '').trim()
+  const numPos = (k: string) => { const n = Number(body[k]); return Number.isFinite(n) && n > 0 ? n : null }
+  const intPos = (k: string) => { const n = parseInt(String(body[k]), 10); return Number.isFinite(n) && n > 0 ? n : null }
 
-  const orderId       = str('order_id')
-  const customerEmail = str('customer_email').toLowerCase()
-  const customerName  = str('customer_name')
-  const productName   = str('product_name')
-  const customerPhone = str('customer_phone')
-  const orderDate     = str('order_date')
-  const shopName      = str('shop_name') || vendor.companyName
-  const expiresIn     = Math.min(Math.max(Number(body.expires_in) || 72, 1), 720) // 1h–30j
+  const orderId         = str('order_id')
+  const customerEmail   = str('customer_email').toLowerCase()
+  const customerName    = str('customer_name')
+  const productName     = str('product_name')
+  const customerPhone   = str('customer_phone')
+  const orderDate       = str('order_date')
+  const shopName        = str('shop_name') || vendor.companyName
+  const productPrice    = numPos('product_price')
+  const productQuantity = intPos('product_quantity') ?? intPos('order_quantity')
+  const orderTotal      = numPos('order_total')
+  const expiresIn       = Math.min(Math.max(Number(body.expires_in) || 72, 1), 720) // 1h–30j
 
   // Champs obligatoires
   if (!orderId)       return NextResponse.json({ error: 'order_id est obligatoire' },       { status: 400 })
@@ -110,10 +115,13 @@ export async function POST(req: NextRequest) {
       orderId,
       customerEmail,
       customerName,
-      customerPhone: customerPhone || '',
+      customerPhone:   customerPhone || '',
       productName,
-      orderDate:     orderDate || '',
+      orderDate:       orderDate || '',
       shopName,
+      productPrice,
+      productQuantity,
+      orderTotal,
       expiresAt,
     },
   })
