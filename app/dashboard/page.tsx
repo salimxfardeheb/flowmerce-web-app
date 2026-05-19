@@ -44,15 +44,15 @@ export default async function DashboardPage() {
   // ── Admin sans profil vendeur ──
   if (!vendor && user?.role === "ADMIN") {
     return (
-      <div className="p-8 max-w-3xl">
-        <div className="mb-8">
+      <div className="p-4 sm:p-8 max-w-3xl w-full">
+        <div className="mb-6 sm:mb-8">
           <h1 className="text-xl font-semibold text-gray-900">{user.name}</h1>
           <p className="text-sm text-gray-500 mt-0.5">Compte administrateur</p>
         </div>
-        <div className="rounded-lg p-5 mb-5 border bg-indigo-50 border-indigo-200">
+        <div className="rounded-lg p-4 sm:p-5 mb-4 sm:mb-5 border bg-indigo-50 border-indigo-200">
           <div className="flex items-start gap-3">
             <Shield size={16} className="text-indigo-600 shrink-0 mt-0.5" />
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-semibold text-gray-800">
                 Vous n&apos;avez pas encore de profil vendeur
               </p>
@@ -69,12 +69,12 @@ export default async function DashboardPage() {
             </div>
           </div>
         </div>
-        <div className="rounded-lg p-5 border bg-white border-gray-200">
+        <div className="rounded-lg p-4 sm:p-5 border bg-white border-gray-200">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
             <Settings size={12} className="text-gray-400" />
             Administration
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link
               href="/admin/vendors"
               className="bg-orange-50 border border-orange-200 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-100 transition-colors"
@@ -156,10 +156,10 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-8 max-w-5xl w-full">
 
       {/* ── En-tête ── */}
-      <div className="mb-8">
+      <div className="mb-6 sm:mb-8">
         <h1 className="text-xl font-semibold text-gray-900">{user.name}</h1>
         <p className="text-sm text-gray-500 mt-0.5">{vendor.companyName}</p>
       </div>
@@ -257,39 +257,39 @@ export default async function DashboardPage() {
         <div className="space-y-6">
 
           {/* ─── A : Métriques enrichies ─── */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
             {/* Total */}
-            <div className="bg-white rounded-lg p-5 border border-gray-200">
+            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                 Total réclamations
               </p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1.5 tabular-nums">
+              <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1.5 tabular-nums">
                 {totalClaims}
               </p>
             </div>
 
             {/* En attente */}
-            <div className="bg-white rounded-lg p-5 border border-gray-200">
+            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                 En attente
               </p>
               <div className="flex items-end justify-between mt-1.5">
-                <p className={`text-2xl font-semibold tabular-nums ${pendingClaims > 0 ? "text-amber-500" : "text-gray-900"}`}>
+                <p className={`text-xl sm:text-2xl font-semibold tabular-nums ${pendingClaims > 0 ? "text-amber-500" : "text-gray-900"}`}>
                   {pendingClaims}
                 </p>
                 {pendingClaims > 0 && (
-                  <span className="text-xs text-amber-500 font-medium pb-0.5">Action requise</span>
+                  <span className="text-xs text-amber-500 font-medium pb-0.5 hidden sm:block">Action requise</span>
                 )}
               </div>
             </div>
 
             {/* Taux d'approbation */}
-            <div className="bg-white rounded-lg p-5 border border-gray-200">
+            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                 Taux d&apos;approbation
               </p>
               <div className="flex items-end gap-2 mt-1.5">
-                <p className="text-2xl font-semibold text-green-600 tabular-nums">
+                <p className="text-xl sm:text-2xl font-semibold text-green-600 tabular-nums">
                   {approvalRate !== null ? `${approvalRate}%` : "—"}
                 </p>
                 {approvalRate !== null && (
@@ -307,40 +307,40 @@ export default async function DashboardPage() {
             </div>
 
             {/* Approuvées */}
-            <div className="bg-white rounded-lg p-5 border border-gray-200">
+            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <CheckCircle2 size={12} className="text-green-500" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                   Approuvées
                 </p>
               </div>
-              <p className="text-2xl font-semibold text-gray-900 tabular-nums">
+              <p className="text-xl sm:text-2xl font-semibold text-gray-900 tabular-nums">
                 {approvedClaims}
               </p>
             </div>
 
             {/* Risque élevé */}
-            <div className="bg-white rounded-lg p-5 border border-gray-200">
+            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <ShieldAlert size={12} className={highRiskClaims > 0 ? "text-red-500" : "text-gray-400"} />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                   Risque élevé
                 </p>
               </div>
-              <p className={`text-2xl font-semibold tabular-nums ${highRiskClaims > 0 ? "text-red-600" : "text-gray-900"}`}>
+              <p className={`text-xl sm:text-2xl font-semibold tabular-nums ${highRiskClaims > 0 ? "text-red-600" : "text-gray-900"}`}>
                 {highRiskClaims}
               </p>
             </div>
 
             {/* Décisions automatiques */}
-            <div className="bg-white rounded-lg p-5 border border-gray-200">
+            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Cpu size={12} className="text-indigo-500" />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                   Décisions auto
                 </p>
               </div>
-              <p className="text-2xl font-semibold text-indigo-600 tabular-nums">
+              <p className="text-xl sm:text-2xl font-semibold text-indigo-600 tabular-nums">
                 {aiDecisions}
               </p>
             </div>
@@ -348,7 +348,7 @@ export default async function DashboardPage() {
 
           {/* ─── B : Distribution des statuts ─── */}
           {totalClaims > 0 && (
-            <div className="bg-white border border-gray-200 rounded-lg p-5">
+            <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-5">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Répartition des statuts
@@ -484,7 +484,7 @@ export default async function DashboardPage() {
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
               Navigation
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
 
               <Link
                 href="/dashboard/return-policy"

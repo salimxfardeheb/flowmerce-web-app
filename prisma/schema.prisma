@@ -62,7 +62,6 @@ model Vendor {
   id                 String         @id @default(cuid())
   userId             String         @unique
   companyName        String
-  siret              String?
   phone              String
   address            String
   website            String?

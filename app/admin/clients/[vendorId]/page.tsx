@@ -105,7 +105,7 @@ export default async function AdminVendorDetailPage({
 
   return (
     <div className="min-h-screen bg-gray-50/60">
-      <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-8 space-y-4 sm:space-y-6">
 
         {/* ── Breadcrumb ── */}
         <Link
@@ -118,36 +118,30 @@ export default async function AdminVendorDetailPage({
 
         {/* ── Header ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
               {/* Avatar initiales */}
-              <div className="w-12 h-12 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center shrink-0">
-                <span className="text-sm font-bold text-indigo-700">{initials}</span>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center shrink-0">
+                <span className="text-xs sm:text-sm font-bold text-indigo-700">{initials}</span>
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <h1 className="text-xl font-bold text-gray-900">{vendor.companyName}</h1>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${badge.cls}`}>
+                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{vendor.companyName}</h1>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border shrink-0 ${badge.cls}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
                     {badge.label}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 mt-1.5 text-xs text-gray-400 flex-wrap">
-                  <span className="flex items-center gap-1">
-                    <Mail className="w-3 h-3" />
-                    {vendor.user.email}
+                <div className="flex flex-wrap items-center gap-3 sm:gap-4 mt-1.5 text-xs text-gray-400">
+                  <span className="flex items-center gap-1 truncate">
+                    <Mail className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{vendor.user.email}</span>
                   </span>
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1 shrink-0">
                     <CalendarDays className="w-3 h-3" />
                     Inscrit le {formatDate(vendor.createdAt)}
                   </span>
-                  {vendor.siret && (
-                    <span className="flex items-center gap-1 font-mono">
-                      <Hash className="w-3 h-3" />
-                      {vendor.siret}
-                    </span>
-                  )}
                 </div>
               </div>
             </div>
@@ -255,17 +249,6 @@ export default async function AdminVendorDetailPage({
                   </div>
                 </div>
               )}
-              {vendor.siret && (
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Hash className="w-3.5 h-3.5 text-gray-500" />
-                  </div>
-                  <div>
-                    <dt className="text-xs text-gray-400 mb-0.5">SIRET</dt>
-                    <dd className="text-sm font-medium text-gray-800 font-mono">{vendor.siret}</dd>
-                  </div>
-                </div>
-              )}
             </dl>
           </div>
 
@@ -348,22 +331,22 @@ export default async function AdminVendorDetailPage({
         </div>
 
         {/* ── Stats réclamations ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 text-center">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5 text-center">
             <p className="text-xs font-medium text-gray-400 mb-1.5">Total</p>
-            <p className="text-3xl font-bold text-gray-900">{claimStats.total}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900">{claimStats.total}</p>
           </div>
-          <div className="bg-white rounded-2xl border border-yellow-100 shadow-sm p-5 text-center">
+          <div className="bg-white rounded-2xl border border-yellow-100 shadow-sm p-4 sm:p-5 text-center">
             <p className="text-xs font-medium text-yellow-600 mb-1.5">En attente</p>
-            <p className="text-3xl font-bold text-yellow-700">{claimStats.pending}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-yellow-700">{claimStats.pending}</p>
           </div>
-          <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-5 text-center">
+          <div className="bg-white rounded-2xl border border-green-100 shadow-sm p-4 sm:p-5 text-center">
             <p className="text-xs font-medium text-green-600 mb-1.5">Approuvées</p>
-            <p className="text-3xl font-bold text-green-700">{claimStats.approved}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-green-700">{claimStats.approved}</p>
           </div>
-          <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5 text-center">
+          <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-4 sm:p-5 text-center">
             <p className="text-xs font-medium text-red-500 mb-1.5">Rejetées</p>
-            <p className="text-3xl font-bold text-red-600">{claimStats.rejected}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-red-600">{claimStats.rejected}</p>
           </div>
         </div>
 
@@ -386,10 +369,10 @@ export default async function AdminVendorDetailPage({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-150">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/60">
-                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-6 py-3">Client</th>
+                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 sm:px-6 py-3">Client</th>
                     <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-6 py-3">Commande</th>
                     <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">Type</th>
                     <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">Statut</th>

@@ -138,11 +138,11 @@ export default async function ClaimsPage({
     : undefined
 
   return (
-    <div className="px-8 py-6 max-w-350">
+    <div className="px-4 sm:px-8 py-4 sm:py-6 max-w-full">
 
       {/* ── Header ── */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-5 sm:mb-6">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold text-gray-900">Réclamations</h1>
           <p className="text-sm text-gray-500 mt-1">
             {scopeLabel
@@ -154,7 +154,7 @@ export default async function ClaimsPage({
           {pending > 0 && (
             <a
               href={buildUrl({ status: 'PENDING' })}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+              className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
             >
               {pending} en attente
               <ArrowRight className="w-4 h-4" />
@@ -165,7 +165,7 @@ export default async function ClaimsPage({
 
       {/* ── Filtre par clé API (admin + vendeur multi-clés) ── */}
       {adminApiKeys.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5 mb-4 flex items-center gap-3 flex-wrap">
+        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5 mb-4 flex items-center gap-2 sm:gap-3 flex-wrap">
           <div className="flex items-center gap-2 text-sm font-medium text-gray-700 shrink-0">
             <Key className="w-4 h-4 text-indigo-500" />
             {isAdmin ? 'Filtrer par clé API' : 'Source'}
@@ -215,30 +215,30 @@ export default async function ClaimsPage({
       )}
 
       {/* ── KPIs ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-5 sm:mb-6">
+        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total</p>
-          <p className="text-2xl font-semibold text-gray-900 mt-1">{total}</p>
+          <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1">{total}</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5">
+        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">En attente</p>
-          <p className="text-2xl font-semibold text-gray-900 mt-1">{pending}</p>
+          <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1">{pending}</p>
           {pending > 0 && <p className="text-xs text-amber-500 mt-0.5">Action requise</p>}
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5">
+        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Décisions auto.</p>
-          <p className="text-2xl font-semibold text-gray-900 mt-1">{withML}</p>
+          <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1">{withML}</p>
           {total > 0 && <p className="text-xs text-gray-400 mt-0.5">{Math.round((withML / total) * 100)}% du total</p>}
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3.5">
+        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Risque élevé</p>
-          <p className="text-2xl font-semibold text-gray-900 mt-1">{highRisk}</p>
+          <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1">{highRisk}</p>
           {highRisk > 0 && <p className="text-xs text-red-500 mt-0.5">Vérification requise</p>}
         </div>
       </div>
 
       {/* ── Filtres statut / risque / ML + Toggle auto-approve ── */}
-      <div className="flex items-center justify-between gap-2 mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4 sm:mb-5">
         <div className="flex items-center gap-1 flex-wrap">
         <a
           href={buildUrl({ status: undefined, risk: undefined, ml: undefined })}

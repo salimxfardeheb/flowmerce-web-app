@@ -39,13 +39,13 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-6">
 
       {/* Card */}
-      <div className="w-full max-w-4xl bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex">
+      <div className="w-full max-w-4xl bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col sm:flex-row">
 
-        {/* Left panel */}
-        <div className="w-72 bg-indigo-700 p-8 flex flex-col shrink-0">
+        {/* Left panel — hidden on mobile */}
+        <div className="hidden sm:flex w-64 md:w-72 bg-indigo-700 p-8 flex-col shrink-0">
           <Link href="/" className="text-white font-bold tracking-tight text-base mb-10 block">
             Flowmerce
           </Link>
@@ -88,7 +88,7 @@ function LoginForm() {
         </div>
 
         {/* Right panel */}
-        <div className="flex-1 p-12 flex flex-col justify-center">
+        <div className="flex-1 p-6 sm:p-10 md:p-12 flex flex-col justify-center">
 
           <div className="mb-8">
             <p className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-1">
@@ -123,7 +123,7 @@ function LoginForm() {
                   value={form.email}
                   onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
                   className="w-full border border-gray-200 rounded-lg pl-10 pr-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-400"
-                  placeholder="jean@exemple.com"
+                  placeholder="Mohammed@exemple.com"
                 />
               </div>
             </div>
@@ -167,7 +167,7 @@ function LoginForm() {
         </div>
       </div>
 
-      <p className="text-base text-gray-500 mt-5">
+      <p className="text-sm sm:text-base text-gray-500 mt-4 sm:mt-5 text-center">
         Pas encore de compte ?{" "}
         <Link href="/auth/register" className="text-indigo-600 font-medium hover:text-indigo-800 transition-colors">
           S&apos;inscrire

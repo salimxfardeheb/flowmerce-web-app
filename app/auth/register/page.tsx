@@ -47,7 +47,6 @@ export default function RegisterPage() {
     email: "",
     password: "",
     companyName: "",
-    siret: "",
     phone: "",
     address: "",
     website: "",
@@ -114,13 +113,13 @@ export default function RegisterPage() {
   const currentStep = STEPS.find((s) => s.num === step)!;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-6">
 
       {/* Card */}
-      <div className="w-full max-w-4xl bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex">
+      <div className="w-full max-w-4xl bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col sm:flex-row">
 
-        {/* Left panel */}
-        <div className="w-72 bg-indigo-700 p-8 flex flex-col shrink-0">
+        {/* Left panel — hidden on mobile */}
+        <div className="hidden sm:flex w-64 md:w-72 bg-indigo-700 p-8 flex-col shrink-0">
           <Link href="/" className="text-white font-bold tracking-tight text-base mb-10 block">
             Flowmerce
           </Link>
@@ -167,7 +166,7 @@ export default function RegisterPage() {
         </div>
 
         {/* Right panel */}
-        <div className="flex-1 p-12 flex flex-col">
+        <div className="flex-1 p-6 sm:p-10 md:p-12 flex flex-col">
 
           {/* Step header */}
           <div className="mb-6">
@@ -228,7 +227,7 @@ export default function RegisterPage() {
           {/* Etape 2 */}
           {step === 2 && (
             <div className="flex flex-col gap-4 flex-1">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Nom de l&apos;entreprise <span className="text-red-400">*</span>
@@ -236,13 +235,8 @@ export default function RegisterPage() {
                   <input name="companyName" type="text" required value={form.companyName} onChange={handleChange}
                     className={INPUT} placeholder="Ma Boutique" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">SIRET</label>
-                  <input name="siret" type="text" value={form.siret} onChange={handleChange}
-                    className={INPUT} placeholder="12345678901234" />
-                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Telephone <span className="text-red-400">*</span>
@@ -269,7 +263,7 @@ export default function RegisterPage() {
           {/* Etape 3 */}
           {step === 3 && (
             <div className="flex flex-col gap-4 flex-1">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {SUGGESTED_CATEGORIES.map((cat) => {
                   const active = selectedCategories.includes(cat.value);
                   return (
@@ -381,7 +375,7 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      <p className="text-base text-gray-500 mt-5">
+      <p className="text-sm sm:text-base text-gray-500 mt-4 sm:mt-5 text-center">
         Deja un compte ?{" "}
         <Link href="/auth/login" className="text-indigo-600 font-medium hover:text-indigo-800 transition-colors">
           Se connecter

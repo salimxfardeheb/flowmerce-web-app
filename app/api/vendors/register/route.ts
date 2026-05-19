@@ -9,7 +9,6 @@ const registerSchema = z.object({
   email:       z.string().email(),
   password:    z.string().min(8),
   companyName: z.string().min(2),
-  siret:       z.string().optional(),
   phone:       z.string().min(8),
   address:     z.string().min(3),
   website:     z.preprocess(
@@ -41,7 +40,6 @@ export async function POST(req: NextRequest) {
         vendor: {
           create: {
             companyName: data.companyName,
-            siret:       data.siret || null,
             phone:       data.phone,
             address:     data.address,
             website:     data.website || null,

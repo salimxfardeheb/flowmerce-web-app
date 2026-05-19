@@ -96,7 +96,7 @@ function SectionCard({
 }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-100 flex items-start gap-2.5">
+      <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-gray-100 flex items-start gap-2.5">
         {Icon && <Icon size={14} className="text-gray-400 shrink-0 mt-0.5" />}
         <div>
           <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
@@ -105,7 +105,7 @@ function SectionCard({
           )}
         </div>
       </div>
-      <div className="px-6 py-5">{children}</div>
+      <div className="px-4 sm:px-6 py-4 sm:py-5">{children}</div>
     </div>
   );
 }
@@ -237,15 +237,15 @@ export default function ReturnPolicyPage() {
       <VendorAccessGuard />
 
       {/* ── En-tête de page ── */}
-      <div className="bg-white border-b border-gray-200 px-8 py-4">
-        <div className="flex items-center justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-3">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-8 py-3 sm:py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-sm font-semibold text-gray-900">
                 Politique de retours
               </h1>
               <span
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border ${
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border shrink-0 ${
                   isPolicyConfigured
                     ? "bg-green-50 text-green-700 border-green-200"
                     : "bg-gray-50 text-gray-500 border-gray-200"
@@ -263,23 +263,23 @@ export default function ReturnPolicyPage() {
               Définissez comment vous souhaitez gérer les demandes de retour de vos clients.
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {success && (
               <span className="flex items-center gap-1.5 text-xs text-green-700">
                 <CheckCircle2 size={13} />
-                Politique enregistrée
+                <span className="hidden sm:inline">Politique enregistrée</span>
               </span>
             )}
             <button
               type="button"
               onClick={handleSubmit}
               disabled={saving || policy.acceptedTypes.length === 0}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               {saving ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Enregistrement...
+                  <span className="hidden sm:inline">Enregistrement...</span>
                 </>
               ) : (
                 "Enregistrer"
@@ -291,7 +291,7 @@ export default function ReturnPolicyPage() {
 
       {/* ── Bannière d'erreur ── */}
       {error && (
-        <div className="px-8 pt-5">
+        <div className="px-4 sm:px-8 pt-4 sm:pt-5">
           <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm max-w-4xl">
             <AlertCircle size={14} className="shrink-0 mt-0.5" />
             <span>{error}</span>
@@ -300,10 +300,10 @@ export default function ReturnPolicyPage() {
       )}
 
       {/* ── Contenu principal ── */}
-      <div className="px-8 py-6 flex gap-6 items-start max-w-5xl">
+      <div className="px-4 sm:px-8 py-4 sm:py-6 flex flex-col lg:flex-row gap-6 items-start max-w-5xl">
 
         {/* ─── Colonne principale ─── */}
-        <div className="flex-1 min-w-0 space-y-4">
+        <div className="flex-1 min-w-0 space-y-4 w-full">
 
           {/* 1 — Ce que vous acceptez */}
           <SectionCard
@@ -311,7 +311,7 @@ export default function ReturnPolicyPage() {
             description="Choisissez les solutions que vous proposez à vos clients en cas de problème."
             icon={RefreshCw}
           >
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[
                 {
                   value: "EXCHANGE",
@@ -377,12 +377,12 @@ export default function ReturnPolicyPage() {
             description="Combien de temps vos clients ont-ils pour déposer une demande après réception ?"
             icon={Clock}
           >
-            <div className="flex items-end gap-4">
-              <div className="flex-1">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex-1 min-w-48">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Nombre de jours
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <input
                     type="number"
                     min={1}
@@ -398,7 +398,7 @@ export default function ReturnPolicyPage() {
                 </div>
                 <p className="text-xs text-gray-400 mt-2">Entre 1 et 90 jours.</p>
               </div>
-              <div className="shrink-0 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-lg text-center min-w-30">
+              <div className="shrink-0 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-lg text-center min-w-28">
                 <p className="text-2xl font-bold text-indigo-600 tabular-nums leading-none">
                   {policy.maxClaimDays}
                 </p>
@@ -490,7 +490,7 @@ export default function ReturnPolicyPage() {
             description="À quel point souhaitez-vous filtrer les demandes de retour inhabituelles ?"
             icon={ShieldCheck}
           >
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {FRAUD_LEVELS.map((level) => {
                 const active = currentFraudLevel === level.id;
                 return (
@@ -539,12 +539,12 @@ export default function ReturnPolicyPage() {
             description="Après combien de retours d'un même client le système doit-il signaler une suspicion de fraude ?"
             icon={ShieldCheck}
           >
-            <div className="flex items-end gap-4">
-              <div className="flex-1">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex-1 min-w-48">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Nombre de retours déclenchant l'alerte
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <input
                     type="number"
                     min={1}
@@ -562,7 +562,7 @@ export default function ReturnPolicyPage() {
                   Par défaut : 4 retours. Un client atteignant ce seuil sera automatiquement marqué comme suspect.
                 </p>
               </div>
-              <div className="shrink-0 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-center min-w-30">
+              <div className="shrink-0 px-4 py-3 bg-red-50 border border-red-100 rounded-lg text-center min-w-28">
                 <p className="text-2xl font-bold text-red-500 tabular-nums leading-none">
                   {policy.fraudReturnThreshold}
                 </p>
@@ -574,8 +574,8 @@ export default function ReturnPolicyPage() {
         </div>
 
         {/* ─── Colonne droite : résumé sticky ─── */}
-        <div className="w-60 shrink-0">
-          <div className="sticky top-6 space-y-3">
+        <div className="w-full lg:w-60 lg:shrink-0">
+          <div className="lg:sticky lg:top-6 space-y-3">
 
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100">

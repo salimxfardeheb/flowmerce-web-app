@@ -33,7 +33,7 @@ export default async function AdminClientsPage() {
   return (
     <>
       {/* ── En-tête de page ── */}
-      <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-8 py-3 sm:py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-sm font-semibold text-gray-900">Boutiques</h1>
@@ -49,10 +49,10 @@ export default async function AdminClientsPage() {
       </div>
 
       {/* ── Contenu ── */}
-      <div className="px-8 py-6 space-y-6">
+      <div className="px-4 sm:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
           {[
             { label: "Boutiques actives",  value: approved.length,  color: "text-green-600" },
             { label: "Suspendues",         value: suspended.length, color: "text-red-500"   },
@@ -72,8 +72,8 @@ export default async function AdminClientsPage() {
             <p className="text-sm text-gray-500 font-medium">Aucune boutique approuvée</p>
           </div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full">
+          <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
+            <table className="w-full min-w-175">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   {[
@@ -110,9 +110,7 @@ export default async function AdminClientsPage() {
                         <p className="text-sm font-semibold text-gray-800">
                           {vendor.companyName}
                         </p>
-                        {vendor.siret && (
-                          <p className="text-xs text-gray-400 mt-0.5">SIRET : {vendor.siret}</p>
-                        )}
+     
                       </td>
                       <td className="px-5 py-4">
                         <p className="text-sm text-gray-700">{vendor.user.name}</p>

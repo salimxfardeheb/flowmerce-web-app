@@ -8,7 +8,6 @@ import { z } from "zod";
 
 const profileSchema = z.object({
   companyName: z.string().min(2),
-  siret:       z.string().optional(),
   phone:       z.string().min(8),
   address:     z.string().min(5),
   website:     z.preprocess(
@@ -40,7 +39,6 @@ export async function POST(req: NextRequest) {
       data: {
         userId:           user.id,
         companyName:      data.companyName,
-        siret:            data.siret || null,
         phone:            data.phone,
         address:          data.address,
         website:          data.website || null,

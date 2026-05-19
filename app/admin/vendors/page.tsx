@@ -57,7 +57,7 @@ export default async function AdminVendorsPage() {
   return (
     <>
       {/* ── En-tête ── */}
-      <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-8 py-3 sm:py-4 sticky top-0 z-10">
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
@@ -81,10 +81,10 @@ export default async function AdminVendorsPage() {
       </div>
 
       {/* ── Contenu ── */}
-      <div className="px-8 py-6 space-y-5">
+      <div className="px-4 sm:px-8 py-4 sm:py-6 space-y-4 sm:space-y-5">
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           {[
             { label: "En attente",    value: counts.PENDING,             color: "text-amber-600",  Icon: Clock          },
             { label: "Docs à fournir", value: counts.DOCUMENTS_REQUESTED, color: "text-amber-600",  Icon: FileText       },
@@ -130,7 +130,6 @@ export default async function AdminVendorsPage() {
                 { label: "Contact",     value: vendor.user.name },
                 { label: "Email",       value: vendor.user.email },
                 { label: "Téléphone",   value: vendor.phone },
-                ...(vendor.siret ? [{ label: "SIRET", value: vendor.siret }] : []),
                 { label: "Adresse",     value: vendor.address },
                 { label: "Inscrit le",  value: formatDate(vendor.createdAt) },
               ];
@@ -145,7 +144,7 @@ export default async function AdminVendorsPage() {
                   }`}
                 >
                   {/* ── Ligne titre ── */}
-                  <div className="px-5 py-4 flex items-start justify-between gap-4">
+                  <div className="px-4 sm:px-5 py-3 sm:py-4 flex items-start justify-between gap-3 sm:gap-4">
                     <div className="flex items-center gap-2.5 flex-wrap min-w-0">
                       <p className="text-sm font-semibold text-gray-900">{vendor.companyName}</p>
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${statusClass}`}>
@@ -171,7 +170,7 @@ export default async function AdminVendorsPage() {
 
                   {/* ── Informations ── */}
                   <div className="px-5 pb-4 border-t border-gray-100 pt-4">
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
                       {infoRows.map(({ label, value }) => (
                         <div key={label}>
                           <p className="text-xs text-gray-400">{label}</p>
