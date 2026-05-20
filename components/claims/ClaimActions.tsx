@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Brain, X, CheckCircle } from "lucide-react";
+import { Edit2, X, CheckCircle } from "lucide-react";
 import type { AIDecision } from "@/lib/constants";
 
 type Resolution = AIDecision;
@@ -21,12 +21,12 @@ type Props = {
 };
 
 const RESOLUTION_OPTIONS: {
-  value: Resolution; label: string; emoji: string; dot: string; cls: string
+  value: Resolution; label: string; dot: string; cls: string
 }[] = [
-  { value: "Refund",   label: "Remboursement", emoji: "💰", dot: "bg-green-500", cls: "border-green-300 bg-green-50 text-green-800"  },
-  { value: "Exchange", label: "Échange",        emoji: "🔄", dot: "bg-blue-500",  cls: "border-blue-300 bg-blue-50 text-blue-800"    },
-  { value: "Repair",   label: "Réparation",     emoji: "🔧", dot: "bg-amber-400", cls: "border-amber-300 bg-amber-50 text-amber-800" },
-  { value: "Reject",   label: "Refus",           emoji: "❌", dot: "bg-red-500",   cls: "border-red-300 bg-red-50 text-red-800"       },
+  { value: "Refund",   label: "Remboursement", dot: "bg-green-500", cls: "border-green-300 bg-green-50 text-green-800"  },
+  { value: "Exchange", label: "Échange",        dot: "bg-blue-500",  cls: "border-blue-300 bg-blue-50 text-blue-800"    },
+  { value: "Repair",   label: "Réparation",     dot: "bg-amber-400", cls: "border-amber-300 bg-amber-50 text-amber-800" },
+  { value: "Reject",   label: "Refus",          dot: "bg-red-500",   cls: "border-red-300 bg-red-50 text-red-800"       },
 ];
 
 export function ClaimActions({ claimId, aiDecision, aiScore, currentStatus }: Props) {
@@ -141,7 +141,7 @@ export function ClaimActions({ claimId, aiDecision, aiScore, currentStatus }: Pr
           onClick={() => { setResolution((aiDecision as Resolution) ?? ""); setNote(""); setOpenDecision(true); }}
           className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-200 w-fit"
         >
-          <Brain className="w-3 h-3" />
+          <Edit2 className="w-3 h-3" />
           Modifier la décision
         </button>
       )}
@@ -151,7 +151,7 @@ export function ClaimActions({ claimId, aiDecision, aiScore, currentStatus }: Pr
         <DecisionModal
           title="Approuver la réclamation"
           subtitle="Confirmez ou modifiez la décision ML avant envoi au client."
-          confirmLabel={loading ? "Envoi…" : "✅ Approuver & notifier le client"}
+          confirmLabel={loading ? "Envoi…" : "Approuver & notifier le client"}
           confirmCls="bg-green-600 hover:bg-green-700 text-white"
           aiDecision={aiDecision}
           confidence={confidence}
@@ -264,7 +264,7 @@ function DecisionModal({
                     onChange={() => onResolution(opt.value)}
                     className="sr-only"
                   />
-                  <span className="text-base">{opt.emoji}</span>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
                   <span className="text-xs font-medium">{opt.label}</span>
                 </label>
               ))}

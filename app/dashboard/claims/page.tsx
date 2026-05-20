@@ -11,7 +11,7 @@ import { CLAIM_TYPE_LABELS, CLAIM_STATUS_LABELS, formatDate } from '@/lib/utils'
 import { ClaimActions }                           from '@/components/claims/ClaimActions'
 import { AutoApproveToggle }                      from '@/components/claims/AutoApproveToggle' 
 import { checkVendorAccess }                      from '@/lib/vendorGuard'
-import { AlertTriangle, ArrowRight, Brain, Inbox, Sparkles, Key } from 'lucide-react'
+import { AlertTriangle, ChevronRight, Cpu, Inbox, Edit2, KeyRound, Clock, TrendingUp, ShieldAlert } from 'lucide-react'
 
 export default async function ClaimsPage({
   searchParams,
@@ -138,15 +138,15 @@ export default async function ClaimsPage({
     : undefined
 
   return (
-    <div className="px-4 sm:px-8 py-4 sm:py-6 max-w-full">
+    <div className="px-4 sm:px-8 py-6 sm:py-8 max-w-full">
 
       {/* ── Header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-5 sm:mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6 sm:mb-8">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-gray-900">Réclamations</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Réclamations</h1>
+          <p className="text-sm text-gray-500 mt-1.5">
             {scopeLabel
-              ? <span>Scope : <span className="font-medium text-gray-700">{scopeLabel}</span></span>
+              ? <span>Filtré sur : <span className="font-semibold text-gray-700">{scopeLabel}</span></span>
               : 'Suivez et traitez les demandes clients, avec décisions automatiques et détection de fraude.'}
           </p>
         </div>
@@ -154,10 +154,10 @@ export default async function ClaimsPage({
           {pending > 0 && (
             <a
               href={buildUrl({ status: 'PENDING' })}
-              className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white text-xs sm:text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
             >
               {pending} en attente
-              <ArrowRight className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" />
             </a>
           )}
         </div>
@@ -165,9 +165,9 @@ export default async function ClaimsPage({
 
       {/* ── Filtre par clé API (admin + vendeur multi-clés) ── */}
       {adminApiKeys.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5 mb-4 flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3.5 mb-5 flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 text-sm font-medium text-gray-700 shrink-0">
-            <Key className="w-4 h-4 text-indigo-500" />
+            <KeyRound className="w-4 h-4 text-indigo-500" />
             {isAdmin ? 'Filtrer par clé API' : 'Source'}
           </div>
 
@@ -215,77 +215,89 @@ export default async function ClaimsPage({
       )}
 
       {/* ── KPIs ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-5 sm:mb-6">
-        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total</p>
-          <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1">{total}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 sm:mb-8">
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp className="w-4 h-4 text-indigo-400" />
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{total}</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">En attente</p>
-          <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1">{pending}</p>
-          {pending > 0 && <p className="text-xs text-amber-500 mt-0.5">Action requise</p>}
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className="w-4 h-4 text-amber-400" />
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">En attente</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{pending}</p>
+          {pending > 0 && <p className="text-xs text-amber-500 mt-1 font-medium">Action requise</p>}
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Décisions auto.</p>
-          <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1">{withML}</p>
-          {total > 0 && <p className="text-xs text-gray-400 mt-0.5">{Math.round((withML / total) * 100)}% du total</p>}
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Cpu className="w-4 h-4 text-purple-400" />
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Décisions auto.</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{withML}</p>
+          {total > 0 && <p className="text-xs text-gray-400 mt-1">{Math.round((withML / total) * 100)}% du total</p>}
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 px-3 sm:px-4 py-3 sm:py-3.5">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Risque élevé</p>
-          <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1">{highRisk}</p>
-          {highRisk > 0 && <p className="text-xs text-red-500 mt-0.5">Vérification requise</p>}
+        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-red-400" />
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Risque élevé</p>
+          </div>
+          <p className="text-2xl font-bold text-gray-900">{highRisk}</p>
+          {highRisk > 0 && <p className="text-xs text-red-500 mt-1 font-medium">Vérification requise</p>}
         </div>
       </div>
 
       {/* ── Filtres statut / risque / ML + Toggle auto-approve ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-4 sm:mb-5">
-        <div className="flex items-center gap-1 flex-wrap">
-        <a
-          href={buildUrl({ status: undefined, risk: undefined, ml: undefined })}
-          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            !activeFilter ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          Toutes
-        </a>
-
-        {(['PENDING', 'APPROVED', 'REJECTED', 'IN_PROGRESS'] as const).map(s => (
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-5 sm:mb-6">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <a
-            key={s}
-            href={buildUrl({ status: s, risk: undefined, ml: undefined })}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              params.status === s ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+            href={buildUrl({ status: undefined, risk: undefined, ml: undefined })}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              !activeFilter ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            {CLAIM_STATUS_LABELS[s]}
+            Toutes
           </a>
-        ))}
 
-        <div className="w-px h-5 bg-gray-200 mx-1" />
+          {(['PENDING', 'APPROVED', 'REJECTED', 'IN_PROGRESS'] as const).map(s => (
+            <a
+              key={s}
+              href={buildUrl({ status: s, risk: undefined, ml: undefined })}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                params.status === s ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {CLAIM_STATUS_LABELS[s]}
+            </a>
+          ))}
 
-        <a
-          href={buildUrl({ risk: params.risk === 'high' ? undefined : 'high', status: undefined, ml: undefined })}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            params.risk === 'high'
-              ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
-              : 'text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          <AlertTriangle className="w-3.5 h-3.5" />
-          Risque élevé
-        </a>
+          <div className="w-px h-5 bg-gray-200 mx-0.5" />
 
-        <a
-          href={buildUrl({ ml: params.ml === 'true' ? undefined : 'true', status: undefined, risk: undefined })}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            params.ml === 'true'
-              ? 'bg-purple-50 text-purple-700 ring-1 ring-purple-200'
-              : 'text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          <Brain className="w-3.5 h-3.5" />
-          Décisions auto.
-        </a>
+          <a
+            href={buildUrl({ risk: params.risk === 'high' ? undefined : 'high', status: undefined, ml: undefined })}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              params.risk === 'high'
+                ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Risque élevé
+          </a>
+
+          <a
+            href={buildUrl({ ml: params.ml === 'true' ? undefined : 'true', status: undefined, risk: undefined })}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              params.ml === 'true'
+                ? 'bg-purple-50 text-purple-700 ring-1 ring-purple-200'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            Décisions auto.
+          </a>
         </div>
 
         {/* Toggle auto-approve — visible uniquement pour les vendeurs (pas admin global) */}
@@ -300,18 +312,18 @@ export default async function ClaimsPage({
 
       {/* ── Table ── */}
       {claims.length === 0 ? (
-        <div className="bg-white rounded-lg border border-gray-200 py-16 flex flex-col items-center">
-          <Inbox className="w-10 h-10 text-gray-300 mb-3" />
-          <p className="text-sm font-medium text-gray-700">Aucune réclamation</p>
-          <p className="text-xs text-gray-400 mt-1">
+        <div className="bg-white rounded-xl border border-gray-200 py-20 flex flex-col items-center gap-2">
+          <Inbox className="w-10 h-10 text-gray-300" />
+          <p className="text-sm font-semibold text-gray-700 mt-1">Aucune réclamation</p>
+          <p className="text-xs text-gray-400">
             Les demandes clients apparaîtront ici une fois reçues.
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50/60">
+              <tr className="border-b border-gray-200 bg-gray-50">
                 {isAdmin && (
                   <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">
                     Vendeur
@@ -375,7 +387,7 @@ export default async function ClaimsPage({
                   : null
 
                 return (
-                  <tr key={claim.id} className="hover:bg-gray-50/50 transition-colors relative group">
+                  <tr key={claim.id} className="hover:bg-gray-50 transition-colors relative group">
 
                     {/* Colonne vendeur — admin seulement */}
                     {isAdmin && (
@@ -433,8 +445,8 @@ export default async function ClaimsPage({
                           </span>
                           <div className="flex items-center gap-1 text-xs text-gray-400">
                             {isOverridden
-                              ? <><Sparkles className="w-3 h-3" /> Modifiée manuellement</>
-                              : <><Brain className="w-3 h-3" /> Automatique</>}
+                              ? <><Edit2 className="w-3 h-3" /> Modifiée manuellement</>
+                              : <><Cpu className="w-3 h-3" /> Automatique</>}
                           </div>
                           {confidence !== null && (
                             <div className="flex items-center gap-1.5">
