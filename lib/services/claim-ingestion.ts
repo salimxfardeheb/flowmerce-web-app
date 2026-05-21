@@ -22,11 +22,12 @@ import { log } from '@/lib/logger'
 import type { AIDecision } from '@/lib/constants'
 
 // ─────────────────────────────────────────────────────────────
-// Structure canonique de `prediction` (15 champs, ordre fixe)
+// Structure canonique de `prediction` (14 champs de base, ordre fixe).
+// Si le ML est appelé avec succès, son résultat brut (resolution, risk_flag,
+// shipping_paid_by…) est mergé en plus à la racine.
 // ─────────────────────────────────────────────────────────────
 export interface CanonicalPrediction {
   shopName:        string
-  aiDecision:      AIDecision | null
   orderTotal:      number | null
   customerAge:     number | null
   orderAddress:    string | null
@@ -43,7 +44,6 @@ export interface CanonicalPrediction {
 
 function buildPrediction(input: {
   shopName:         string
-  aiDecision?:      AIDecision | null
   orderTotal?:      number | null
   customerAge?:     number | null
   orderAddress?:    string | null
@@ -59,7 +59,6 @@ function buildPrediction(input: {
 }): CanonicalPrediction {
   return {
     shopName:        input.shopName,
-    aiDecision:      input.aiDecision      ?? null,
     orderTotal:      input.orderTotal      ?? null,
     customerAge:     input.customerAge     ?? null,
     orderAddress:    input.orderAddress    ?? null,
@@ -97,9 +96,8 @@ export interface IngestClaimInput {
   ipAddress?:    string | null
   orderDate?:    Date | null
 
-  // Champs alimentant `prediction` (15 champs canoniques)
+  // Champs alimentant `prediction` (14 champs canoniques de base)
   prediction: {
-    aiDecision?:      AIDecision | null
     orderTotal?:      number | null
     customerAge?:     number | null
     orderAddress?:    string | null
@@ -112,6 +110,12 @@ export interface IngestClaimInput {
     productCategory?: string | null
     productQuantity?: number | null
   }
+
+  // Décision IA pré-fournie (ex: body.ai_decision côté /external).
+  // Stockée uniquement sur la colonne Claim.aiDecision — n'apparaît pas
+  // dans le JSON prediction (qui ne contient resolution que si le ML
+  // a été réellement appelé).
+  preFilledAiDecision?: AIDecision | null
 
   // Payload ML brut. Si fourni, on tente une prédiction synchrone et on
   // persiste mlInput pour reprise par le worker /api/cron/retry-ml.
@@ -148,7 +152,8 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   const fraudScore  = computeFraudScore(fraudRecord)
   const pastReturns = fraudRecord.totalClaims
 
-  // 2. Prediction canonique (avec aiDecision pré-fournie si présente)
+  // 2. Prediction canonique (14 champs de base, sans aiDecision plat).
+  // Le résultat ML sera mergé en plus si l'appel réussit (étape 5).
   const predictionData = buildPrediction({
     shopName:        input.vendor.companyName,
     customerPhone:   customerPhoneNorm,
@@ -186,7 +191,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
           status:        'PENDING',
           fraudScore,
           ipAddress:     input.ipAddress ?? null,
-          aiDecision:    input.prediction.aiDecision ?? null,
+          aiDecision:    input.preFilledAiDecision ?? null,
           prediction:    predictionData as unknown as Prisma.InputJsonValue,
           mlInput:       input.mlPayload
             ? (input.mlPayload as Prisma.InputJsonValue)
@@ -220,7 +225,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   }
 
   // 5. Appel ML (si payload fourni ET si aucune décision pré-fournie)
-  let finalAiDecision: AIDecision | null = input.prediction.aiDecision ?? null
+  let finalAiDecision: AIDecision | null = input.preFilledAiDecision ?? null
   if (input.mlPayload && !finalAiDecision) {
     const mlResult = await callMLPredict(input.mlPayload)
     if (mlResult.ok) {
@@ -229,12 +234,12 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
       const aiScore = Object.values(probs).length ? Math.max(...Object.values(probs)) : null
       const resolution = (pred.resolution?.prediction ?? null) as AIDecision | null
 
-      const updatedPrediction = buildPrediction({
-        shopName:      input.vendor.companyName,
-        customerPhone: customerPhoneNorm,
-        ...input.prediction,
-        aiDecision: resolution,
-      })
+      // Merge : 14 champs canoniques + tout ce que le ML a renvoyé
+      // (resolution, risk_flag, shipping_paid_by…). Pas de aiDecision plat.
+      const updatedPrediction = {
+        ...predictionData,
+        ...(pred as unknown as Prisma.JsonObject),
+      }
 
       claim = await prisma.claim.update({
         where: { id: claim.id },

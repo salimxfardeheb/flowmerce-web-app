@@ -252,7 +252,6 @@ export async function POST(req: NextRequest) {
     source:        'API',
     orderDate:     orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null,
     prediction: {
-      aiDecision,
       orderTotal,
       customerAge,
       orderAddress,
@@ -265,6 +264,7 @@ export async function POST(req: NextRequest) {
       productCategory,
       productQuantity,
     },
+    preFilledAiDecision: aiDecision,
     mlPayload,
   })
 
