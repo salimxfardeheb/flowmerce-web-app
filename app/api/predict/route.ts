@@ -15,6 +15,7 @@ import { validateApiKey }                from "@/lib/api-key-auth";
 import { findOrCreateFraudRecord, computeFraudScore } from "@/lib/fraud-score";
 import { callMLPredict }                 from "@/lib/services/ml";
 import { checkReturnPolicy }             from "@/lib/services/return-policy";
+import { log }                           from "@/lib/logger";
 
 // ─────────────────────────────────────────────────────────────
 // Types (miroir du schéma Pydantic FastAPI)
@@ -166,10 +167,10 @@ export async function POST(req: NextRequest) {
   await Promise.all([
     prisma.predictionLog.create({
       data: { vendorId: keyRecord.vendorId, input: mlInput as unknown as Prisma.InputJsonValue, output: mlResult.prediction as unknown as Prisma.InputJsonValue },
-    }).catch((e) => console.error("[predict] Log error:", e)),
+    }).catch((e) => log.error("predict.log_error", { err: String(e) })),
 
     prisma.apiKey.update({ where: { id: keyRecord.id }, data: { lastUsedAt: new Date() } })
-      .catch((e) => console.error("[predict] lastUsedAt update error:", e)),
+      .catch((e) => log.error("predict.api_key_update_error", { err: String(e) })),
   ]);
 
   return NextResponse.json(

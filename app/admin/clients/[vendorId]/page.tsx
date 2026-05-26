@@ -6,6 +6,7 @@ import {
   formatDate,
   CLAIM_STATUS_LABELS,
   CLAIM_TYPE_LABELS,
+  formatClaimType,
   DOCUMENT_TYPE_LABELS,
 } from "@/lib/utils";
 import {
@@ -393,7 +394,7 @@ export default async function AdminVendorDetailPage({
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className="text-xs text-gray-600">{CLAIM_TYPE_LABELS[claim.type]}</span>
+                        <span className="text-xs text-gray-600">{formatClaimType(claim.type)}</span>
                       </td>
                       <td className="px-4 py-3.5">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${claimStatusBadge[claim.status] ?? "bg-gray-100 text-gray-600"}`}>

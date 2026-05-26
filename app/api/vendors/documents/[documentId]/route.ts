@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 import { z } from "zod";
 
 const PatchDocumentSchema = z.object({
@@ -28,7 +29,7 @@ export async function PATCH(
   const { documentId } = await params;
   const parsed = PatchDocumentSchema.safeParse(await req.json());
   if (!parsed.success) {
-    console.error("[documents/patch] validation error:", parsed.error.flatten());
+    log.error("documents.patch_validation_error", { issues: parsed.error.flatten() });
     return NextResponse.json({ error: "Données invalides" }, { status: 400 });
   }
 

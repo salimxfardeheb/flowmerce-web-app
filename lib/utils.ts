@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -29,13 +29,6 @@ export function apiKeyPrefix(raw: string): string {
   return raw.slice(0, 12);
 }
 
-export function apiKeysEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
-}
-
 export function formatDate(date: Date | string): string {
   return new Date(date).toLocaleDateString("fr-FR", {
     day: "2-digit",
@@ -49,4 +42,5 @@ export {
   CLAIM_STATUS_LABELS,
   VENDOR_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
+  formatClaimType,
 } from './constants';

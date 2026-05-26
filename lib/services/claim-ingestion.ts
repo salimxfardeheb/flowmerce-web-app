@@ -1,13 +1,13 @@
 // lib/services/claim-ingestion.ts — Flowmerce
 //
-// Service unifié de création de claims (utilisé par /api/claims/create et
-// /api/claims/external). Garantit que :
-//   - La structure `prediction` JSONB est identique (15 champs canoniques).
+// Service unifié de création de claims (utilisé par /api/claims/create).
+// Garantit que :
+//   - La structure `prediction` JSONB est identique (14 champs canoniques).
 //   - La déduplication se fait sur (vendorId, orderId).
-//   - L'auto-approve AI_AUTO s'applique quelle que soit la source.
+//   - L'auto-approve / auto-reject AI_AUTO s'applique dès qu'une décision IA
+//     est disponible.
 //
-// Les validations spécifiques (rate limit, anti-HTML pour /create ;
-// normalisation FR→EN, return policy pour /external) restent dans les routes.
+// Les validations spécifiques (rate limit, anti-HTML) restent dans les routes.
 
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
@@ -91,7 +91,7 @@ export interface IngestClaimInput {
   customerPhone: string | null
   productName:   string
   description:   string
-  type:          'EXCHANGE' | 'REFUND' | 'REPAIR'
+  type:          'EXCHANGE' | 'REFUND' | 'REPAIR'  // choix client (desired_resolution)
   source:        'API' | 'HOSTED_PAGE'
   ipAddress?:    string | null
   orderDate?:    Date | null
@@ -111,15 +111,11 @@ export interface IngestClaimInput {
     productQuantity?: number | null
   }
 
-  // Décision IA pré-fournie (ex: body.ai_decision côté /external).
-  // Stockée uniquement sur la colonne Claim.aiDecision — n'apparaît pas
-  // dans le JSON prediction (qui ne contient resolution que si le ML
-  // a été réellement appelé).
-  preFilledAiDecision?: AIDecision | null
-
   // Payload ML brut. Si fourni, on tente une prédiction synchrone et on
   // persiste mlInput pour reprise par le worker /api/cron/retry-ml.
-  mlPayload?: Record<string, unknown> | null
+  // Typé `object` pour accepter à la fois MLPayload (interface fermée) et
+  // un Record générique sans avoir besoin de cast côté appelant.
+  mlPayload?: object | null
 }
 
 export type IngestClaimResult =
@@ -128,10 +124,12 @@ export type IngestClaimResult =
       claim: {
         id:           string
         status:       'PENDING' | 'APPROVED' | 'REJECTED' | 'IN_PROGRESS'
+        type:         'EXCHANGE' | 'REFUND' | 'REPAIR'
         createdAt:    Date
         aiDecision:   AIDecision | null
         fraudScore:   number
         autoApproved: boolean
+        autoRejected: boolean
       }
       customerPastReturns: number
     }
@@ -175,6 +173,9 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
         })
       }
 
+      // À la création, type = choix du client (input.type). Le ML peut
+      // recommander une autre résolution dans aiDecision, mais ne modifie
+      // jamais type. L'UI montre les deux côte à côte.
       const created = await tx.claim.create({
         data: {
           vendorId:      input.vendor.id,
@@ -191,7 +192,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
           status:        'PENDING',
           fraudScore,
           ipAddress:     input.ipAddress ?? null,
-          aiDecision:    input.preFilledAiDecision ?? null,
+          aiDecision:    null,
           prediction:    predictionData as unknown as Prisma.InputJsonValue,
           mlInput:       input.mlPayload
             ? (input.mlPayload as Prisma.InputJsonValue)
@@ -224,10 +225,25 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
       .catch((e) => log.error('claim_ingestion.api_key_update_error', { err: String(e) }))
   }
 
-  // 5. Appel ML (si payload fourni ET si aucune décision pré-fournie)
-  let finalAiDecision: AIDecision | null = input.preFilledAiDecision ?? null
-  if (input.mlPayload && !finalAiDecision) {
-    const mlResult = await callMLPredict(input.mlPayload)
+  // 5. Appel ML (si payload fourni)
+  //    On enrichit le payload avec les signaux que seul ingestClaim connaît
+  //    (fraud score, past returns, seuil suspicious) avant l'envoi au ML.
+  let finalAiDecision: AIDecision | null = null
+  if (input.mlPayload) {
+    const returnPolicyForML = await prisma.returnPolicy.findUnique({
+      where:  { vendorId: input.vendor.id },
+      select: { fraudReturnThreshold: true },
+    })
+    const suspiciousThreshold = returnPolicyForML?.fraudReturnThreshold ?? 4
+
+    const enrichedMlPayload = {
+      ...input.mlPayload,
+      Fraud_Score:           fraudScore,
+      Customer_Past_Returns: pastReturns,
+      Is_Suspicious:         pastReturns >= suspiciousThreshold ? 1 : 0,
+    }
+
+    const mlResult = await callMLPredict(enrichedMlPayload)
     if (mlResult.ok) {
       const pred  = mlResult.prediction as MLPredictionOutput
       const probs = pred.resolution?.probabilities ?? {}
@@ -268,49 +284,90 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
     }
   }
 
-  // 6. Auto-approve si validationMode = AI_AUTO
+  // 6. Décision automatique basée sur le ML
+  //    - Reject  → claim auto-rejeté quel que soit validationMode (le ML est
+  //                la seule source qui peut refuser, après que la return policy
+  //                vendeur a déjà été validée en amont par la route).
+  //    - Refund/Exchange/Repair + AI_AUTO → claim auto-approuvé.
+  //    - Sinon (ML absent/fail ou validationMode=MANUAL) → reste PENDING,
+  //      le vendeur traite manuellement.
   let autoApproved = false
-  const returnPolicy = await prisma.returnPolicy.findUnique({
-    where:  { vendorId: input.vendor.id },
-    select: { validationMode: true },
-  })
+  let autoRejected = false
 
-  if (returnPolicy?.validationMode === 'AI_AUTO') {
-    const decision: AIDecision = finalAiDecision ?? 'Refund'
-    const autoApprovedPrediction = {
+  if (finalAiDecision === 'Reject') {
+    const rejectedPrediction = {
       ...(claim.prediction as Prisma.JsonObject),
-      autoApprovedAt: new Date().toISOString(),
-      autoApprovedBy: 'auto_on_create',
+      autoRejectedAt: new Date().toISOString(),
+      autoRejectedBy: 'ml_decision',
     }
 
     claim = await prisma.claim.update({
       where: { id: claim.id },
       data: {
-        status:      'APPROVED',
+        status:      'REJECTED',
         processedAt: new Date(),
-        aiDecision:  decision,
-        prediction:  autoApprovedPrediction as unknown as Prisma.InputJsonValue,
+        prediction:  rejectedPrediction as unknown as Prisma.InputJsonValue,
       },
     })
-    autoApproved = true
-    finalAiDecision = decision
+    autoRejected = true
 
     notifyCustomer({
       customerName:  claim.customerName,
       customerEmail: claim.customerEmail,
       customerPhone: claim.customerPhone,
       orderId:       claim.orderId,
-      status:        'APPROVED',
-      aiDecision:    decision,
+      status:        'REJECTED',
+      aiDecision:    finalAiDecision,
       claimType:     claim.type,
       note:          null,
     }).catch((err) => log.error('claim_ingestion.notification_error', { err: String(err) }))
 
-    log.info('claim_ingestion.auto_approved', {
+    log.info('claim_ingestion.auto_rejected', {
       claimId:  claim.id,
       vendorId: input.vendor.id,
-      decision,
+      decision: finalAiDecision,
     })
+  } else if (finalAiDecision) {
+    const returnPolicy = await prisma.returnPolicy.findUnique({
+      where:  { vendorId: input.vendor.id },
+      select: { validationMode: true },
+    })
+
+    if (returnPolicy?.validationMode === 'AI_AUTO') {
+      const autoApprovedPrediction = {
+        ...(claim.prediction as Prisma.JsonObject),
+        autoApprovedAt: new Date().toISOString(),
+        autoApprovedBy: 'auto_on_create',
+      }
+
+      claim = await prisma.claim.update({
+        where: { id: claim.id },
+        data: {
+          status:      'APPROVED',
+          processedAt: new Date(),
+          aiDecision:  finalAiDecision,
+          prediction:  autoApprovedPrediction as unknown as Prisma.InputJsonValue,
+        },
+      })
+      autoApproved = true
+
+      notifyCustomer({
+        customerName:  claim.customerName,
+        customerEmail: claim.customerEmail,
+        customerPhone: claim.customerPhone,
+        orderId:       claim.orderId,
+        status:        'APPROVED',
+        aiDecision:    finalAiDecision,
+        claimType:     claim.type,
+        note:          null,
+      }).catch((err) => log.error('claim_ingestion.notification_error', { err: String(err) }))
+
+      log.info('claim_ingestion.auto_approved', {
+        claimId:  claim.id,
+        vendorId: input.vendor.id,
+        decision: finalAiDecision,
+      })
+    }
   }
 
   log.info('claim_ingestion.created', {
@@ -319,6 +376,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
     orderId:  input.orderId,
     source:   input.source,
     autoApproved,
+    autoRejected,
   })
 
   return {
@@ -326,10 +384,12 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
     claim: {
       id:           claim.id,
       status:       claim.status,
+      type:         input.type,
       createdAt:    claim.createdAt,
       aiDecision:   finalAiDecision,
       fraudScore,
       autoApproved,
+      autoRejected,
     },
     customerPastReturns: pastReturns,
   }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { cloudinary } from "@/lib/cloudinary";
 import { getSessionFromRequest } from "@/lib/getSession";
 import { DOCUMENT_TYPES } from "@/lib/constants";
+import { log } from "@/lib/logger";
 
 const VALID_TYPES: readonly string[] = DOCUMENT_TYPES;
 
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
     cloudinaryUrl      = result.secure_url;
     cloudinaryPublicId = result.public_id;
   } catch (err) {
-    console.error("Cloudinary upload error:", err);
+    log.error("documents.cloudinary_upload_error", { err: String(err) });
     return NextResponse.json(
       { error: "Erreur lors de l'upload du fichier" },
       { status: 500 }

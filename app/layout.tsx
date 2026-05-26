@@ -2,7 +2,7 @@
 //
 // Root layout SANS SessionProvider.
 // SessionProvider est maintenant dans app/dashboard/layout.tsx uniquement,
-// ce qui évite le ClientFetchError sur les pages publiques (/vendor-portal, /auth/*, ...).
+// ce qui évite le ClientFetchError sur les pages publiques (/auth/*, ...).
 
 import type { Metadata } from 'next'
 import './globals.css'

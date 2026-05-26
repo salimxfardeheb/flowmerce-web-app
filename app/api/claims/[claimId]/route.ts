@@ -5,6 +5,8 @@ import { prisma }                    from '@/lib/prisma'
 import { Prisma }                    from '@prisma/client'
 import { getSessionServer }          from '@/lib/getSession'
 import { notifyCustomer }            from '@/lib/services/notification'
+import { log }                       from '@/lib/logger'
+import type { AIDecision }           from '@/lib/constants'
 
 const ALLOWED_STATUSES = ['APPROVED', 'REJECTED', 'IN_PROGRESS'] as const
 type AllowedStatus = (typeof ALLOWED_STATUSES)[number]
@@ -90,10 +92,10 @@ export async function PATCH(
     customerPhone: claim.customerPhone,
     orderId:       claim.orderId,
     status:        newStatus as AllowedStatus,
-    aiDecision:    aiDecision as 'Refund' | 'Exchange' | 'Repair' | 'Reject' | null,
+    aiDecision:    aiDecision as AIDecision | null,
     claimType:     claim.type,
     note:          body.note ?? body.overrideNote ?? null,
-  }).catch(err => console.error('[Route/claims] Erreur notification :', err))
+  }).catch(err => log.error('claims.notification_error', { err: String(err) }))
 
   return NextResponse.json({ claim: updated })
 }

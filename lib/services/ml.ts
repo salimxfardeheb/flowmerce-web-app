@@ -63,6 +63,76 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Construction du payload ML à partir des données métier d'une réclamation.
+// Source unique de vérité du format ML — utilisé par /claims/create et
+// /return/[token]. Fraud_Score, Customer_Past_Returns et Is_Suspicious
+// sont des placeholders : ils sont recalculés à l'intérieur d'ingestClaim
+// avant l'envoi effectif (cf. claim-ingestion.ts).
+// ─────────────────────────────────────────────────────────────
+export interface BuildMLPayloadInput {
+  shopName:           string
+  productCategory:    string | null
+  productPrice:       number | null
+  productQuantity:    number | null
+  orderTotal:         number | null
+  paymentMethod:      string
+  shippingMethod:     string
+  shippingCost:       number
+  customerGender:     string
+  customerAge:        number | null
+  customerWilaya:     string
+  reason:             string
+  daysToReturn:       number
+  returnWindowDays:   number
+}
+
+export interface MLPayload {
+  Customer_Gender:         string
+  Customer_Age:            number
+  Customer_Wilaya:         string
+  Customer_Past_Returns:   number
+  Shop_Name:               string
+  Product_Category:        string
+  Product_Price_DA:        number
+  Order_Quantity:          number
+  Total_Amount_DA:         number
+  Payment_Method:          string
+  Shipping_Method:         string
+  Shipping_Cost_DA:        number
+  Return_Reason:           string
+  Days_to_Return:          number
+  Shop_Return_Window_Days: number
+  Within_Return_Policy:    1
+  Fraud_Score:             number
+  Customer_Satisfaction:   number
+  Is_Suspicious:           0 | 1
+}
+
+export function buildMLPayload(input: BuildMLPayloadInput): MLPayload {
+  return {
+    Customer_Gender:         input.customerGender,
+    Customer_Age:            input.customerAge ?? 0,
+    Customer_Wilaya:         input.customerWilaya,
+    Customer_Past_Returns:   0, // recalculé par ingestClaim
+    Shop_Name:               input.shopName,
+    Product_Category:        input.productCategory ?? 'Unknown',
+    Product_Price_DA:        input.productPrice ?? input.orderTotal ?? 1,
+    Order_Quantity:          input.productQuantity ?? 1,
+    Total_Amount_DA:         input.orderTotal ?? input.productPrice ?? 1,
+    Payment_Method:          input.paymentMethod,
+    Shipping_Method:         input.shippingMethod,
+    Shipping_Cost_DA:        input.shippingCost,
+    Return_Reason:           input.reason,
+    Days_to_Return:          input.daysToReturn,
+    Shop_Return_Window_Days: input.returnWindowDays,
+    Within_Return_Policy:    1,
+    Fraud_Score:             0, // recalculé par ingestClaim
+    Customer_Satisfaction:   3,
+    Is_Suspicious:           0, // recalculé par ingestClaim
+  }
+}
+
 export async function callMLPredict(
   input: object,
   opts:  CallOptions = {},

@@ -57,6 +57,13 @@ export const CLAIM_TYPE_LABELS: Record<ClaimTypeValue, string> = {
   REPAIR:   'Réparation',
 }
 
+// Le type d'un claim peut être null tant que le ML n'a pas répondu (la décision
+// du type est désormais déléguée au ML). Helper UI pour afficher proprement.
+export function formatClaimType(type: ClaimTypeValue | string | null | undefined): string {
+  if (!type) return 'En attente IA'
+  return CLAIM_TYPE_LABELS[type as ClaimTypeValue] ?? type
+}
+
 export const CLAIM_STATUS_LABELS: Record<ClaimStatusValue, string> = {
   PENDING:     'En attente',
   APPROVED:    'Approuvée',

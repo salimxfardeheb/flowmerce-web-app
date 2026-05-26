@@ -1,7 +1,7 @@
 // app/api/claims/create/route.ts — Flowmerce
 //
 // Création de claim "first-party" (page hébergée Flowmerce ou intégration
-// directe vendeur). Spécificités vs /api/claims/external :
+// directe vendeur). Spécificités :
 //   - Validation stricte (champs requis, longueur description, rejet HTML)
 //   - Rate limiting par IP+order et par client/jour
 //   - Auth via x-api-key uniquement (pas de Bearer)
@@ -10,10 +10,16 @@
 // AI_AUTO sont délégués à lib/services/claim-ingestion.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma }                    from '@/lib/prisma'
 import { checkRateLimit }            from '@/lib/rate-limit'
 import { validateApiKey }            from '@/lib/api-key-auth'
-import { EXTERNAL_RETURN_REASONS }   from '@/lib/constants'
+import { EXTERNAL_RETURN_REASONS, CLAIM_TYPES } from '@/lib/constants'
 import { ingestClaim }               from '@/lib/services/claim-ingestion'
+import { buildMLPayload }            from '@/lib/services/ml'
+import { checkReturnPolicy }         from '@/lib/services/return-policy'
+import { log }                       from '@/lib/logger'
+
+const VALID_RESOLUTIONS = new Set<string>(CLAIM_TYPES)
 
 // ─────────────────────────────────────────────────────────────
 // Validation stricte
@@ -26,6 +32,7 @@ function validatePayload(body: Record<string, unknown>): string | null {
     'order_id',
     'shop_id',
     'reason',
+    'desired_resolution',
     'description',
   ]
 
@@ -42,6 +49,10 @@ function validatePayload(body: Record<string, unknown>): string | null {
     return 'Raison invalide'
   }
 
+  if (!VALID_RESOLUTIONS.has(String(body.desired_resolution).toUpperCase())) {
+    return 'Résolution invalide (EXCHANGE, REFUND ou REPAIR)'
+  }
+
   const description = String(body.description)
   if (description.trim().length < 10)  return 'Description trop courte (minimum 10 caractères)'
   if (description.length > 2000)       return 'Description trop longue (maximum 2000 caractères)'
@@ -52,12 +63,6 @@ function validatePayload(body: Record<string, unknown>): string | null {
   }
 
   return null
-}
-
-function reasonToClaimType(reason: string): 'EXCHANGE' | 'REFUND' | 'REPAIR' {
-  if (reason === 'DEFECTIVE')  return 'REPAIR'
-  if (reason === 'WRONG_ITEM') return 'EXCHANGE'
-  return 'REFUND'
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -114,11 +119,65 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // 6. Délégation au service unifié
+  // 6. Return policy : refus si la politique du vendeur n'est pas respectée
+  //    (délai, catégorie non remboursable). Le type vient de desired_resolution
+  //    (choix client) ; le ML stocke sa recommandation à part dans aiDecision.
   const orderDateRaw = body.order_date ? new Date(String(body.order_date)) : null
-  const mlPayload = body.ml_payload && typeof body.ml_payload === 'object'
-    ? (body.ml_payload as Record<string, unknown>)
-    : null
+  const validOrderDate = orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null
+  const daysToReturn = validOrderDate
+    ? Math.max(0, Math.floor((Date.now() - validOrderDate.getTime()) / 86_400_000))
+    : 0
+  const productCategory = body.product_category ? String(body.product_category) : undefined
+
+  const returnPolicy = await prisma.returnPolicy.findUnique({
+    where: { vendorId: keyRecord.vendorId },
+  })
+  const policyCheck = checkReturnPolicy(returnPolicy, {
+    daysToReturn,
+    productCategory,
+  })
+  if (!policyCheck.ok) {
+    return NextResponse.json(
+      { error: policyCheck.message, code: policyCheck.code, ...policyCheck.extra },
+      { status: 422 },
+    )
+  }
+
+  // 7. Extraction des champs optionnels pour enrichir prediction + ML payload
+  const orderTotal      = typeof body.order_total      === 'number' ? body.order_total      : null
+  const productPrice    = typeof body.product_price    === 'number' ? body.product_price    : null
+  const productQuantity = typeof body.product_quantity === 'number' ? body.product_quantity : null
+  const customerAge     = typeof body.customer_age     === 'number' ? body.customer_age     : null
+  const shippingCost    = typeof body.shipping_cost    === 'number' ? body.shipping_cost    : 0
+  const customerGender  = body.customer_gender  ? String(body.customer_gender)  : 'Unknown'
+  const customerWilaya  = body.customer_wilaya  ? String(body.customer_wilaya)  : 'Unknown'
+  const paymentMethod   = body.payment_method   ? String(body.payment_method)   : 'Unknown'
+  const shippingMethod  = body.shipping_method  ? String(body.shipping_method)  : 'Standard'
+  const orderAddress    = body.order_address    ? String(body.order_address)    : null
+
+  // 8. Construction du payload ML enrichi (les champs non fournis prennent
+  //    des valeurs par défaut neutres). Fraud_Score / Past_Returns / Is_Suspicious
+  //    sont injectés par ingestClaim après calcul du fraud record.
+  const returnWindowDays = returnPolicy?.maxClaimDays ?? 14
+  const mlPayload = buildMLPayload({
+    shopName:         keyRecord.vendor.companyName,
+    productCategory:  productCategory ?? null,
+    productPrice,
+    productQuantity,
+    orderTotal,
+    paymentMethod,
+    shippingMethod,
+    shippingCost,
+    customerGender,
+    customerAge,
+    customerWilaya,
+    reason,
+    daysToReturn,
+    returnWindowDays,
+  })
+
+  // 9. Délégation au service unifié
+  const desiredResolution = String(body.desired_resolution).toUpperCase() as 'EXCHANGE' | 'REFUND' | 'REPAIR'
 
   const result = await ingestClaim({
     vendor:    { id: keyRecord.vendorId, companyName: keyRecord.vendor.companyName },
@@ -129,14 +188,22 @@ export async function POST(req: NextRequest) {
     customerPhone: customerPhoneNorm,
     productName:   String(body.product_name),
     description,
-    type:          reasonToClaimType(reason),
+    type:          desiredResolution,
     source:        body.source === 'hosted_page' ? 'HOSTED_PAGE' : 'API',
     ipAddress:     ip,
-    orderDate:     orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null,
+    orderDate:     validOrderDate,
     prediction: {
-      orderTotal:   typeof body.order_total      === 'number' ? body.order_total      : null,
-      productPrice: typeof body.product_price    === 'number' ? body.product_price    : null,
-      productQuantity: typeof body.product_quantity === 'number' ? body.product_quantity : null,
+      orderTotal,
+      productPrice,
+      productQuantity,
+      productCategory: productCategory ?? null,
+      customerAge,
+      customerGender,
+      customerWilaya,
+      paymentMethod,
+      shippingMethod,
+      shippingCost,
+      orderAddress,
     },
     mlPayload,
   })
@@ -148,9 +215,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // 7. Log structuré
-  console.log(JSON.stringify({
-    event:               'return_submitted',
+  // 8. Log structuré
+  log.info('return_submitted', {
     claimId:             result.claim.id,
     vendorId:            keyRecord.vendorId,
     orderId,
@@ -158,8 +224,13 @@ export async function POST(req: NextRequest) {
     customerPastReturns: result.customerPastReturns,
     source:              body.source === 'hosted_page' ? 'HOSTED_PAGE' : 'API',
     ip,
-    timestamp:           new Date().toISOString(),
-  }))
+  })
+
+  const message = result.claim.autoRejected
+    ? "Votre demande de retour a été refusée automatiquement par notre système d'analyse."
+    : result.claim.autoApproved
+      ? 'Votre demande de retour a été enregistrée et approuvée automatiquement.'
+      : 'Votre demande de retour a été enregistrée.'
 
   return NextResponse.json(
     {
@@ -167,9 +238,7 @@ export async function POST(req: NextRequest) {
       claim_id:              result.claim.id,
       status:                result.claim.status,
       customer_past_returns: result.customerPastReturns,
-      message: result.claim.autoApproved
-        ? 'Votre demande de retour a été enregistrée et approuvée automatiquement.'
-        : 'Votre demande de retour a été enregistrée.',
+      message,
     },
     { status: 201 },
   )

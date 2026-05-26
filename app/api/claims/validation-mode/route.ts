@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma }                    from '@/lib/prisma'
 import { getSessionServer }          from '@/lib/getSession'
 import { notifyCustomer }            from '@/lib/services/notification'
+import { log }                       from '@/lib/logger'
 
 export async function PATCH(req: NextRequest) {
   const session = await getSessionServer()
@@ -97,7 +98,7 @@ export async function PATCH(req: NextRequest) {
             aiDecision:    decision,
             claimType:     claim.type,
             note:          null,
-          }).catch(err => console.error('[validation-mode] Erreur notification :', err))
+          }).catch(err => log.error('validation_mode.notification_error', { err: String(err) }))
 
           approved++
         })

@@ -15,7 +15,7 @@
 //   "product_name":   "Nike Air Max",     // obligatoire
 //   "customer_phone": "0555123456",       // optionnel
 //   "order_date":     "2026-04-15",       // optionnel  ISO-8601
-//   "shop_name":      "CabaStore",        // optionnel
+//   "shop_name":      "Ma Boutique",      // optionnel
 //   "expires_in":     72                  // optionnel  heures (défaut : 72)
 // }
 //
@@ -30,6 +30,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma }           from '@/lib/prisma'
 import { env }              from '@/lib/env'
 import { validateApiKey }   from '@/lib/api-key-auth'
+import { log }              from '@/lib/logger'
 import { randomBytes }      from 'node:crypto'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -111,7 +112,7 @@ export async function POST(req: NextRequest) {
   await prisma.returnSession.create({
     data: {
       token,
-      vendorId:      keyRecord.id,   // FK vers ApiKey
+      vendorId:      keyRecord.id,
       orderId,
       customerEmail,
       customerName,
@@ -132,10 +133,7 @@ export async function POST(req: NextRequest) {
     data:  { lastUsedAt: new Date() },
   }).catch(() => null)
 
-  console.log(JSON.stringify({
-    event: 'return_session_created', token, vendorId: vendor.id,
-    orderId, timestamp: new Date().toISOString(),
-  }))
+  log.info('return_session_created', { token, vendorId: vendor.id, orderId })
 
   return NextResponse.json(
     {

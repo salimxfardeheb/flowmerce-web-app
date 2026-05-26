@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cloudinary } from "@/lib/cloudinary";
+import { log } from "@/lib/logger";
 
 const SIGNED_URL_TTL_SECONDS = 300; // 5 minutes
 
@@ -78,12 +79,12 @@ async function proxyAndServe(
       headers: { "User-Agent": "Flowmerce-Admin/1.0" },
     });
   } catch (err) {
-    console.error("[documents/view] fetch error:", err);
+    log.error("documents.view_fetch_error", { err: String(err) });
     return htmlPage("Erreur réseau", "Impossible de contacter Cloudinary.", "");
   }
 
   if (!res.ok) {
-    console.error("[documents/view] Cloudinary responded:", res.status, url);
+    log.error("documents.view_cloudinary_error", { status: res.status, url });
     return htmlPage(
       `Erreur ${res.status}`,
       "Impossible de récupérer ce fichier.",

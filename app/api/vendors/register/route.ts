@@ -1,6 +1,7 @@
 // src/app/api/vendors/register/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
@@ -55,10 +56,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, userId: user.id }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.error("[register] validation error:", error.errors);
+      log.error("vendors.register_validation_error", { issues: error.errors });
       return NextResponse.json({ error: "Données invalides" }, { status: 400 });
     }
-    console.error(error);
+    log.error("vendors.register_error", { err: String(error) });
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

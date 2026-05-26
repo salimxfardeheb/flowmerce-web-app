@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma }          from '@/lib/prisma'
 import { checkRateLimit }  from '@/lib/rate-limit'
+import { log }             from '@/lib/logger'
 
 // ── Masquage PII ──────────────────────────────────────────────────────────
 function maskEmail(email: string | null | undefined): string {
@@ -45,7 +46,7 @@ export async function GET(
   const session = await prisma.returnSession.findUnique({
     where:   { token },
     include: { vendor: { include: { vendor: { include: { returnPolicy: true } } } } },
-  }).catch((e) => { console.error('[vendor-info] DB error:', e); return null })
+  }).catch((e) => { log.error('vendor_info.db_error', { err: String(e) }); return null })
 
   if (!session) {
     return NextResponse.json(
@@ -75,13 +76,11 @@ export async function GET(
   }
 
   // ── 3. Log d'accès (sans PII) ─────────────────────────────────────────
-  console.log(JSON.stringify({
-    event:     'vendor_info_accessed',
+  log.info('vendor_info_accessed', {
     sessionId: session.id,
     vendorId:  apiKey.vendorId,
     ip,
-    timestamp: new Date().toISOString(),
-  }))
+  })
 
   // ── 4. Réponse avec PII masquées ──────────────────────────────────────
   return NextResponse.json(

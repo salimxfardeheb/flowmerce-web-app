@@ -19,20 +19,7 @@ const ServerSchema = z.object({
   CLOUDINARY_API_KEY:    z.string().min(1),
   CLOUDINARY_API_SECRET: z.string().min(1),
 
-  VENDOR_PORTAL_SECRET: z.string().min(32, 'VENDOR_PORTAL_SECRET must be at least 32 characters'),
-
   CRON_SECRET: z.string().min(32, 'CRON_SECRET must be at least 32 characters'),
-
-  SMTP_HOST: z.string().min(1).optional(),
-  SMTP_PORT: z.coerce.number().int().positive().optional(),
-  SMTP_USER: z.string().min(1).optional(),
-  SMTP_PASS: z.string().min(1).optional(),
-  SMTP_FROM: z.string().email().optional(),
-
-  TWILIO_ACCOUNT_SID:          z.string().min(1).optional(),
-  TWILIO_AUTH_TOKEN:           z.string().min(1).optional(),
-  TWILIO_FROM_NUMBER:          z.string().min(1).optional(),
-  TWILIO_DEFAULT_COUNTRY_CODE: z.string().regex(/^\d+$/).default('213'),
 })
 
 const ClientSchema = z.object({
@@ -85,8 +72,3 @@ export const env = new Proxy(merged, {
   },
 }) as Env
 
-export const hasSmtp = (): boolean =>
-  Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS)
-
-export const hasTwilio = (): boolean =>
-  Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER)

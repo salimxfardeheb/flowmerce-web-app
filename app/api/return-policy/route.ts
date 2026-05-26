@@ -2,6 +2,7 @@
 import { getSessionFromRequest } from "@/lib/getSession";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 import { z } from "zod";
 
 const ReturnPolicySchema = z.object({
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = ReturnPolicySchema.safeParse(await req.json());
   if (!parsed.success) {
-    console.error("[return-policy] validation error:", parsed.error.flatten());
+    log.error("return_policy.validation_error", { issues: parsed.error.flatten() });
     return NextResponse.json({ error: "Données invalides" }, { status: 400 });
   }
 

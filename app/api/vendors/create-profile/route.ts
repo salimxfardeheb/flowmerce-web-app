@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/getSession";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/logger";
 import { z } from "zod";
 
 const profileSchema = z.object({
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    console.error(error);
+    log.error("vendors.create_profile.error", { err: String(error) });
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

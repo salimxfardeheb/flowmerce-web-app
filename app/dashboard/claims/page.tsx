@@ -7,7 +7,7 @@
 import { getSessionServer }                       from '@/lib/getSession'
 import { prisma }                                 from '@/lib/prisma'
 import { redirect }                               from 'next/navigation'
-import { CLAIM_TYPE_LABELS, CLAIM_STATUS_LABELS, formatDate } from '@/lib/utils'
+import { CLAIM_STATUS_LABELS, formatClaimType, formatDate } from '@/lib/utils'
 import { ClaimActions }                           from '@/components/claims/ClaimActions'
 import { AutoApproveToggle }                      from '@/components/claims/AutoApproveToggle' 
 import { checkVendorAccess }                      from '@/lib/vendorGuard'
@@ -305,7 +305,6 @@ export default async function ClaimsPage({
           <AutoApproveToggle
             initialMode={validationMode}
             pendingCount={pending}
-            apiEndpoint="/api/claims/validation-mode"
           />
         ) : null}
       </div>
@@ -422,7 +421,7 @@ export default async function ClaimsPage({
                       <p className="text-gray-800 max-w-35 truncate" title={productName ?? undefined}>
                         {productName ?? '—'}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{CLAIM_TYPE_LABELS[claim.type]}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{formatClaimType(claim.type)}</p>
                       {productPrice != null ? (
                         <p className="text-xs text-gray-400">
                           {productPrice.toFixed(2)} DA

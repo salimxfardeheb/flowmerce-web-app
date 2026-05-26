@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   VENDOR_STATUS_LABELS,
-  CLAIM_TYPE_LABELS,
   CLAIM_STATUS_LABELS,
+  formatClaimType,
   formatDate,
 } from "@/lib/utils";
 import { DocumentUploadSection } from "@/components/vendor/DocumentUploadSection";
@@ -447,7 +447,7 @@ export default async function DashboardPage() {
                           </td>
                           <td className="px-5 py-3.5">
                             <span className="text-sm text-gray-600">
-                              {CLAIM_TYPE_LABELS[claim.type] ?? claim.type}
+                              {formatClaimType(claim.type)}
                             </span>
                           </td>
                           <td className="px-5 py-3.5">

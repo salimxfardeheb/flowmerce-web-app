@@ -12,13 +12,11 @@ import { Zap }      from 'lucide-react'
 interface Props {
   initialMode:    'MANUAL' | 'AI_AUTO'
   pendingCount:   number
-  apiEndpoint:    string                    // '/api/claims/validation-mode' ou '/api/vendor-portal/settings/validation-mode'
-  authToken?:     string                    // Bearer token (vendor-portal uniquement)
   onToggled?:     (newMode: 'MANUAL' | 'AI_AUTO', approved: number) => void
 }
 
 export function AutoApproveToggle({
-  initialMode, pendingCount, apiEndpoint, authToken, onToggled,
+  initialMode, pendingCount, onToggled,
 }: Props) {
   const [mode,    setMode]    = useState<'MANUAL' | 'AI_AUTO'>(initialMode)
   const [loading, setLoading] = useState(false)
@@ -37,12 +35,9 @@ export function AutoApproveToggle({
     setLoading(true)
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`
-
-      const res = await fetch(apiEndpoint, {
+      const res = await fetch('/api/claims/validation-mode', {
         method:  'PATCH',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ validationMode: nextMode }),
       })
 

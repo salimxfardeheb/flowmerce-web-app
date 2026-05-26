@@ -159,7 +159,7 @@ model Claim {
   customerName  String
   customerEmail String
   customerPhone String?
-  type          ClaimType
+  type          ClaimType?
   description   String
   status        ClaimStatus @default(PENDING)
   aiScore       Float?

@@ -13,19 +13,20 @@ import nodemailer from 'nodemailer'
 import path       from 'path'
 import fs         from 'fs'
 import { env }    from '@/lib/env'
+import { log }    from '@/lib/logger'
+import type { AIDecision } from '@/lib/constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ClaimStatus = 'APPROVED' | 'REJECTED' | 'IN_PROGRESS'
-export type AIDecision  = 'Refund' | 'Exchange' | 'Repair' | 'Reject' | null | undefined
+type NotificationStatus = 'APPROVED' | 'REJECTED' | 'IN_PROGRESS'
 
 export interface NotificationPayload {
   customerName:  string
   customerEmail: string
   customerPhone?: string | null
   orderId:        string
-  status:         ClaimStatus
-  aiDecision?:    AIDecision
+  status:         NotificationStatus
+  aiDecision?:    AIDecision | null
   claimType?:     string | null
   note?:          string | null
 }
@@ -238,7 +239,7 @@ async function sendEmail(p: NotificationPayload): Promise<boolean> {
   const logoExists = fs.existsSync(logoPath)
 
   if (!logoExists) {
-    console.warn('[Notification/Email] Logo introuvable : public/logo-mark.png')
+    log.warn('notification.logo_missing', { path: 'public/logo-mark.png' })
   }
 
   try {
@@ -262,10 +263,12 @@ async function sendEmail(p: NotificationPayload): Promise<boolean> {
       }] : [],
     })
 
-    console.log(`[Notification/Email] ✔ ${cfg.label} → ${p.customerEmail} (commande #${p.orderId})`)
+    log.info('notification.email_sent', {
+      decision: cfg.label, to: p.customerEmail, orderId: p.orderId,
+    })
     return true
   } catch (err) {
-    console.error('[Notification/Email] ✗ Erreur :', err)
+    log.error('notification.email_error', { err: String(err) })
     return false
   }
 }

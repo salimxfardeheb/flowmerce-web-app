@@ -4,7 +4,7 @@ import { prisma }             from '@/lib/prisma'
 import { redirect, notFound } from 'next/navigation'
 import { checkVendorAccess }  from '@/lib/vendorGuard'
 import { ClaimActions }       from '@/components/claims/ClaimActions'
-import { CLAIM_TYPE_LABELS, CLAIM_STATUS_LABELS, formatDate } from '@/lib/utils'
+import { CLAIM_STATUS_LABELS, formatClaimType, formatDate } from '@/lib/utils'
 import { ArrowLeft, Brain, Sparkles, AlertTriangle, User, Package, FileText, ShieldAlert } from 'lucide-react'
 
 export default async function ClaimDetailPage({
@@ -160,7 +160,7 @@ export default async function ClaimDetailPage({
             </div>
             <div>
               <p className="text-xs text-gray-400">Type de réclamation</p>
-              <p className="text-sm text-gray-700">{CLAIM_TYPE_LABELS[claim.type]}</p>
+              <p className="text-sm text-gray-700">{formatClaimType(claim.type)}</p>
             </div>
             {productPrice != null ? (
               <div>
