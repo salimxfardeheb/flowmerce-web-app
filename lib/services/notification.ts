@@ -31,25 +31,23 @@ export interface NotificationPayload {
   note?:          string | null
 }
 
-// ── Icônes SVG Lucide (inline — compatibles Gmail/Outlook/Apple Mail) ─────────
+// ── Icônes PNG inline via CID (compatibles Gmail/Outlook/Apple Mail) ──────────
+// Les SVG inline sont strippés par la plupart des clients mail — on passe par
+// des PNG attachés en CID, comme le logo.
 
-function icon(name: 'refund' | 'exchange' | 'repair' | 'reject' | 'clock' | 'note', color: string, size = 28): string {
-  const s = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"`
-  const paths: Record<string, string> = {
-    // Wallet — remboursement
-    refund:   `<svg ${s}><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>`,
-    // ArrowLeftRight — échange
-    exchange: `<svg ${s}><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>`,
-    // Wrench — réparation
-    repair:   `<svg ${s}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
-    // XCircle — refus
-    reject:   `<svg ${s}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>`,
-    // Clock — en cours
-    clock:    `<svg ${s}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
-    // FileText — note
-    note:     `<svg ${s}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`,
-  }
-  return paths[name] ?? ''
+type IconKey = 'refund' | 'exchange' | 'repair' | 'reject' | 'clock' | 'note'
+
+const ICON_CID: Record<IconKey, string> = {
+  refund:   'flowmerce-icon-refund',
+  exchange: 'flowmerce-icon-exchange',
+  repair:   'flowmerce-icon-repair',
+  reject:   'flowmerce-icon-reject',
+  clock:    'flowmerce-icon-clock',
+  note:     'flowmerce-icon-note',
+}
+
+function iconImg(name: IconKey, size = 28): string {
+  return `<img src="cid:${ICON_CID[name]}" alt="" width="${size}" height="${size}" style="display:inline-block;border:0;vertical-align:middle;" />`
 }
 
 // ── Config décision ML ────────────────────────────────────────────────────────
@@ -104,18 +102,18 @@ function buildEmailHtml(p: NotificationPayload): string {
   const key = p.aiDecision ?? p.status
   const cfg = DECISION_CONFIG[key] ?? DECISION_CONFIG['IN_PROGRESS']
 
-  // Icône SVG dans un cercle coloré (même taille que le badge décision)
+  // Icône PNG dans un cercle coloré (CID inline — compatible Gmail/Outlook)
   const decisionIcon = `
     <table cellpadding="0" cellspacing="0" style="margin:0 auto 8px;">
-      <tr><td style="background:${cfg.accent}18;border-radius:50%;width:56px;height:56px;text-align:center;vertical-align:middle;">
-        ${icon(cfg.iconKey, cfg.accent, 26)}
+      <tr><td style="background:${cfg.accent}18;border-radius:50%;width:56px;height:56px;text-align:center;vertical-align:middle;padding:14px;">
+        ${iconImg(cfg.iconKey, 28)}
       </td></tr>
     </table>`
 
   const noteBlock = p.note?.trim()
     ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
          <tr>
-           <td style="width:20px;vertical-align:top;padding-top:2px;">${icon('note', '#64748b', 15)}</td>
+           <td style="width:20px;vertical-align:top;padding-top:2px;">${iconImg('note', 15)}</td>
            <td style="padding-left:8px;background:#f8fafc;border-left:3px solid ${cfg.accent};border-radius:0 8px 8px 0;padding:12px 14px 12px 14px;">
              <p style="margin:0;font-size:13px;color:#475569;font-style:italic;">${p.note}</p>
            </td>
@@ -242,6 +240,18 @@ async function sendEmail(p: NotificationPayload): Promise<boolean> {
     log.warn('notification.logo_missing', { path: 'public/logo-mark.png' })
   }
 
+  // Icônes décision en PNG attachées via CID (les SVG inline sont strippés
+  // par Gmail/Outlook). On joint uniquement celles présentes sur disque.
+  const iconsDir = path.join(process.cwd(), 'public', 'email-icons')
+  const iconAttachments = (Object.entries(ICON_CID) as [IconKey, string][])
+    .map(([key, cid]) => ({
+      filename:           `${key}.png`,
+      path:               path.join(iconsDir, `${key}.png`),
+      cid,
+      contentDisposition: 'inline' as const,
+    }))
+    .filter(a => fs.existsSync(a.path))
+
   try {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
@@ -254,13 +264,17 @@ async function sendEmail(p: NotificationPayload): Promise<boolean> {
       to:      p.customerEmail,
       subject,
       html:    buildEmailHtml(p),
-      // Logo en pièce jointe inline CID — seule méthode acceptée par Gmail
-      attachments: logoExists ? [{
-        filename:           'logo-mark.png',
-        path:               logoPath,
-        cid:                'flowmerce-logo',
-        contentDisposition: 'inline',
-      }] : [],
+      // Logo + icônes décision en pièces jointes inline CID (seule méthode
+      // acceptée par Gmail pour l'affichage d'images embarquées).
+      attachments: [
+        ...(logoExists ? [{
+          filename:           'logo-mark.png',
+          path:               logoPath,
+          cid:                'flowmerce-logo',
+          contentDisposition: 'inline' as const,
+        }] : []),
+        ...iconAttachments,
+      ],
     })
 
     log.info('notification.email_sent', {
