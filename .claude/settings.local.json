@@ -40,7 +40,10 @@
       "PowerShell(npx prisma migrate status 2>&1 | Select-Object -Last 20)",
       "PowerShell(New-Item -ItemType Directory -Path \"prisma/migrations/20260513999999_schema_drift_catchup\")",
       "PowerShell(Move-Item catchup.sql \"prisma/migrations/20260513999999_schema_drift_catchup/migration.sql\")",
-      "PowerShell(npx prisma migrate resolve --applied 20260513999999_schema_drift_catchup)"
+      "PowerShell(npx prisma migrate resolve --applied 20260513999999_schema_drift_catchup)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\simou\\\\Bureau\\\\work\\\\Github\\\\FLOWMERCE\\\\flowmerce-web-app\" -Force)",
+      "Bash(Select-Object -Property Name, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)"
     ]
   }
 }
