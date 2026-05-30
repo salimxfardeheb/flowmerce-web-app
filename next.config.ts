@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  trailingSlash: true,   // ← recommandé pour Capacitor
   images: {
+    unoptimized: process.env.MOBILE_BUILD === "true", 
     remotePatterns: [
       {
         protocol: "https",
