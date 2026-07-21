@@ -28,9 +28,12 @@ export type ExternalReturnReason = (typeof EXTERNAL_RETURN_REASONS)[number]
 export const CLAIM_TYPES = ['EXCHANGE', 'REFUND', 'REPAIR'] as const
 export type ClaimTypeValue = (typeof CLAIM_TYPES)[number]
 
-// ── Décisions IA (sorties du modèle ML) ───────────────────────────────────────
-export const AI_DECISIONS = ['Refund', 'Exchange', 'Repair', 'Reject'] as const
+export const AI_DECISIONS = ['Exchange', 'Repair', 'Reject'] as const
 export type AIDecision = (typeof AI_DECISIONS)[number]
+
+export function isAIDecision(value: unknown): value is AIDecision {
+  return typeof value === 'string' && (AI_DECISIONS as readonly string[]).includes(value)
+}
 
 // ── Statuts de réclamation (enum Prisma ClaimStatus) ─────────────────────────
 export const CLAIM_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'IN_PROGRESS'] as const
@@ -62,6 +65,12 @@ export const CLAIM_TYPE_LABELS: Record<ClaimTypeValue, string> = {
 export function formatClaimType(type: ClaimTypeValue | string | null | undefined): string {
   if (!type) return 'En attente IA'
   return CLAIM_TYPE_LABELS[type as ClaimTypeValue] ?? type
+}
+
+export const AI_DECISION_LABELS: Record<AIDecision, string> = {
+  Exchange: 'Échange',
+  Repair:   'Réparation',
+  Reject:   'Refus',
 }
 
 export const CLAIM_STATUS_LABELS: Record<ClaimStatusValue, string> = {

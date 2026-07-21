@@ -102,11 +102,11 @@ export default async function ClaimsPage({
     IN_PROGRESS: { label: 'En cours',   cls: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'      },
   }
 
+  // Contrat 3 classes : la reco ML ne contient jamais 'Refund'.
   const resolutionConfig: Record<string, { label: string; cls: string; dot: string }> = {
-    Refund:   { label: 'Remboursement', cls: 'text-green-700 bg-green-50 ring-1 ring-green-200',  dot: 'bg-green-500'  },
-    Exchange: { label: 'Échange',       cls: 'text-blue-700 bg-blue-50 ring-1 ring-blue-200',     dot: 'bg-blue-500'   },
-    Repair:   { label: 'Réparation',    cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200',  dot: 'bg-amber-400'  },
-    Reject:   { label: 'Refus',         cls: 'text-red-700 bg-red-50 ring-1 ring-red-200',        dot: 'bg-red-500'    },
+    Exchange: { label: 'Échange',    cls: 'text-blue-700 bg-blue-50 ring-1 ring-blue-200',     dot: 'bg-blue-500'   },
+    Repair:   { label: 'Réparation', cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200',  dot: 'bg-amber-400'  },
+    Reject:   { label: 'Refus',      cls: 'text-red-700 bg-red-50 ring-1 ring-red-200',        dot: 'bg-red-500'    },
   }
 
   const activeFilter = params.status || params.risk || params.ml
@@ -366,6 +366,9 @@ export default async function ClaimsPage({
                 const productQty   = typeof prediction?.productQuantity === 'number' ? prediction.productQuantity : null
                 const orderTotal   = typeof prediction?.orderTotal      === 'number' ? prediction.orderTotal      : null
 
+                // Drapeau informatif calculé côté web app (jamais par le ML)
+                const refundEligible = prediction?.refundEligible === true
+
                 const riskLevel =
                   fraudScore === null ? null
                   : fraudScore >= 60  ? { label: 'Élevé',  cls: 'text-red-700 bg-red-50 ring-1 ring-red-200',       dot: 'bg-red-500'    }
@@ -459,6 +462,12 @@ export default async function ClaimsPage({
                             <p className="text-xs text-gray-400 italic truncate max-w-40" title={overrideData.note}>
                               {overrideData.note}
                             </p>
+                          )}
+                          {refundEligible && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              Remboursement recommandé — décision vendeur
+                            </span>
                           )}
                         </div>
                       ) : (

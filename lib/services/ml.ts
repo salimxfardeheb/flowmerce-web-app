@@ -1,9 +1,11 @@
 import { env } from '@/lib/env'
 import { log } from '@/lib/logger'
+import { isAIDecision, type AIDecision } from '@/lib/constants'
 
 export interface MLPredictionOutput {
   resolution: {
-    prediction:    string;
+    // Contrat 3 classes : l'API ML ne renvoie jamais 'Refund'.
+    prediction:    AIDecision;
     probabilities: Record<string, number>;
   };
   shipping_paid_by?: {
@@ -47,6 +49,25 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
     }
 
     const prediction = (await res.json()) as MLPredictionOutput
+
+    // Contrat 3 classes : toute autre valeur (dont 'Refund') est une violation
+    // du contrat ML → on traite la réponse comme un échec (mlFailed), sans
+    // retry immédiat (rejouer le même input renverrait la même classe).
+    const predicted = prediction?.resolution?.prediction
+    if (!isAIDecision(predicted)) {
+      log.error('ml.invalid_prediction_class', {
+        prediction: String(predicted),
+        expected:   'Exchange | Repair | Reject',
+      })
+      return {
+        ok:        false,
+        timedOut:  false,
+        error:     `invalid_prediction_class: ${String(predicted)}`,
+        retryable: false,
+        attempts:  1,
+      }
+    }
+
     return { ok: true, prediction }
   } catch (err: unknown) {
     const name     = (err as { name?: string })?.name

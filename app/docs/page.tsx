@@ -647,6 +647,18 @@ x-api-key: flk_votre_cle_api`}
   "message":               "Votre demande de retour a été enregistrée et approuvée automatiquement."
 }`}
                   />
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-900">
+                    <p className="font-semibold mb-1">Recommandation IA — contrat 3 classes</p>
+                    <p>
+                      La recommandation du moteur IA vaut toujours <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">Exchange</code>,{' '}
+                      <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">Repair</code> ou{' '}
+                      <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">Reject</code> — jamais un remboursement.
+                      Le remboursement est une <strong>décision vendeur</strong> : lorsque le client demande un remboursement
+                      (<code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">desired_resolution: REFUND</code>) et que la demande est
+                      éligible selon la politique de retour, le dashboard affiche un indicateur « Remboursement recommandé — décision vendeur ».
+                      Aucune action financière n&apos;est déclenchée automatiquement.
+                    </p>
+                  </div>
                 </div>
               </div>
             </section>

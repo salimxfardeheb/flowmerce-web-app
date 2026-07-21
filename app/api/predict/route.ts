@@ -204,7 +204,7 @@ export async function GET() {
       Customer_Satisfaction: 4, Is_Suspicious: 0,
     },
     example_response: {
-      resolution:           { prediction: "Refund", probabilities: { Exchange: 0.12, Refund: 0.71, Reject: 0.09, Repair: 0.08 } },
+      resolution:           { prediction: "Exchange", probabilities: { Exchange: 0.71, Repair: 0.17, Reject: 0.12 } },
       vendor_policy_applied: { return_window_days: 14, within_policy: true, warnings: [] },
     },
   });

@@ -35,10 +35,9 @@ export interface NotificationPayload {
 // Les SVG inline sont strippés par la plupart des clients mail — on passe par
 // des PNG attachés en CID, comme le logo.
 
-type IconKey = 'refund' | 'exchange' | 'repair' | 'reject' | 'clock' | 'note'
+type IconKey = 'exchange' | 'repair' | 'reject' | 'clock' | 'note'
 
 const ICON_CID: Record<IconKey, string> = {
-  refund:   'flowmerce-icon-refund',
   exchange: 'flowmerce-icon-exchange',
   repair:   'flowmerce-icon-repair',
   reject:   'flowmerce-icon-reject',
@@ -54,18 +53,11 @@ function iconImg(name: IconKey, size = 28): string {
 
 const DECISION_CONFIG: Record<string, {
   label:    string
-  iconKey:  'refund' | 'exchange' | 'repair' | 'reject' | 'clock'
+  iconKey:  'exchange' | 'repair' | 'reject' | 'clock'
   accent:   string
   bg:       string
   bodyText: string
 }> = {
-  Refund: {
-    label:    'Remboursement accordé',
-    iconKey:  'refund',
-    accent:   '#16a34a',
-    bg:       '#f0fdf4',
-    bodyText: 'Votre demande de retour a été examinée et un <strong style="color:#16a34a">remboursement</strong> a été accordé. Vous recevrez votre remboursement selon le mode de paiement initial dans les prochains jours ouvrés.',
-  },
   Exchange: {
     label:    'Échange accordé',
     iconKey:  'exchange',
@@ -86,6 +78,15 @@ const DECISION_CONFIG: Record<string, {
     accent:   '#dc2626',
     bg:       '#fef2f2',
     bodyText: "Après examen de votre dossier, votre demande de retour n'a malheureusement pas pu être acceptée. Si vous pensez qu'il s'agit d'une erreur, n'hésitez pas à contacter notre support.",
+  },
+  // Approbation sans décision ML (ex : remboursement accordé manuellement par
+  // le vendeur — le remboursement n'est jamais une sortie ML).
+  APPROVED: {
+    label:    'Demande approuvée',
+    iconKey:  'clock',
+    accent:   '#16a34a',
+    bg:       '#f0fdf4',
+    bodyText: 'Votre demande de retour a été examinée et <strong style="color:#16a34a">approuvée</strong>. Notre équipe vous contactera prochainement pour la suite du traitement.',
   },
   IN_PROGRESS: {
     label:    'En cours de traitement',

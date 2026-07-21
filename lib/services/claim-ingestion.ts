@@ -17,6 +17,7 @@ import {
   recomputeNetworkSignals,
 } from '@/lib/fraud-score'
 import { callMLPredict, type MLPredictionOutput } from '@/lib/services/ml'
+import { checkReturnPolicy } from '@/lib/services/return-policy'
 import { notifyCustomer } from '@/lib/services/notification'
 import { log } from '@/lib/logger'
 import type { AIDecision } from '@/lib/constants'
@@ -229,12 +230,12 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   //    On enrichit le payload avec les signaux que seul ingestClaim connaît
   //    (fraud score, past returns, seuil suspicious) avant l'envoi au ML.
   let finalAiDecision: AIDecision | null = null
+  let refundEligible = false
+  const returnPolicy = input.mlPayload
+    ? await prisma.returnPolicy.findUnique({ where: { vendorId: input.vendor.id } })
+    : null
   if (input.mlPayload) {
-    const returnPolicyForML = await prisma.returnPolicy.findUnique({
-      where:  { vendorId: input.vendor.id },
-      select: { fraudReturnThreshold: true },
-    })
-    const suspiciousThreshold = returnPolicyForML?.fraudReturnThreshold ?? 4
+    const suspiciousThreshold = returnPolicy?.fraudReturnThreshold ?? 4
 
     const enrichedMlPayload = {
       ...input.mlPayload,
@@ -248,13 +249,30 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
       const pred  = mlResult.prediction as MLPredictionOutput
       const probs = pred.resolution?.probabilities ?? {}
       const aiScore = Object.values(probs).length ? Math.max(...Object.values(probs)) : null
-      const resolution = (pred.resolution?.prediction ?? null) as AIDecision | null
+      // Garanti ∈ {Exchange, Repair, Reject} par la validation dans ml.ts.
+      const resolution: AIDecision = pred.resolution.prediction
+
+      // Drapeau "remboursement éligible" — calculé UNIQUEMENT côté web app.
+      // Purement informatif pour le vendeur : ne modifie ni le statut du claim,
+      // ni aiDecision, ni claim.type, et ne déclenche aucune action financière.
+      const daysToReturn = input.orderDate
+        ? Math.max(0, Math.floor((Date.now() - input.orderDate.getTime()) / 86_400_000))
+        : 0
+      refundEligible =
+        input.type === 'REFUND' &&
+        resolution !== 'Reject' &&
+        checkReturnPolicy(returnPolicy, {
+          daysToReturn,
+          productCategory: predictionData.productCategory ?? undefined,
+          claimType:       input.type,
+        }).ok
 
       // Merge : 14 champs canoniques + tout ce que le ML a renvoyé
       // (resolution, risk_flag, shipping_paid_by…). Pas de aiDecision plat.
       const updatedPrediction = {
         ...predictionData,
         ...(pred as unknown as Prisma.JsonObject),
+        refundEligible,
       }
 
       claim = await prisma.claim.update({
@@ -288,7 +306,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   //    - Reject  → claim auto-rejeté quel que soit validationMode (le ML est
   //                la seule source qui peut refuser, après que la return policy
   //                vendeur a déjà été validée en amont par la route).
-  //    - Refund/Exchange/Repair + AI_AUTO → claim auto-approuvé.
+  //    - Exchange/Repair + AI_AUTO → claim auto-approuvé.
   //    - Sinon (ML absent/fail ou validationMode=MANUAL) → reste PENDING,
   //      le vendeur traite manuellement.
   let autoApproved = false
@@ -328,11 +346,6 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
       decision: finalAiDecision,
     })
   } else if (finalAiDecision) {
-    const returnPolicy = await prisma.returnPolicy.findUnique({
-      where:  { vendorId: input.vendor.id },
-      select: { validationMode: true },
-    })
-
     if (returnPolicy?.validationMode === 'AI_AUTO') {
       const autoApprovedPrediction = {
         ...(claim.prediction as Prisma.JsonObject),

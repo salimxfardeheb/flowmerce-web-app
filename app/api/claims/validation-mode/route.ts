@@ -9,6 +9,7 @@ import { prisma }                    from '@/lib/prisma'
 import { getSessionServer }          from '@/lib/getSession'
 import { notifyCustomer }            from '@/lib/services/notification'
 import { log }                       from '@/lib/logger'
+import { isAIDecision }              from '@/lib/constants'
 
 export async function PATCH(req: NextRequest) {
   const session = await getSessionServer()
@@ -50,12 +51,14 @@ export async function PATCH(req: NextRequest) {
     create: { vendorId, validationMode: newMode },
   })
 
-  // Si activation AI_AUTO → approuver tous les claims PENDING
+  // Si activation AI_AUTO → approuver les claims PENDING ayant une
+  // recommandation ML approuvable (Exchange | Repair). Les claims sans
+  // décision ML (ou hors contrat) restent PENDING : le vendeur tranche.
   let approved = 0
 
   if (newMode === 'AI_AUTO') {
     const pendingClaims = await prisma.claim.findMany({
-      where:  { vendorId, status: 'PENDING' },
+      where:  { vendorId, status: 'PENDING', aiDecision: { in: ['Exchange', 'Repair'] } },
       select: {
         id:            true,
         aiDecision:    true,
@@ -73,7 +76,8 @@ export async function PATCH(req: NextRequest) {
 
       await Promise.all(
         pendingClaims.map(async (claim) => {
-          const decision = (claim.aiDecision ?? 'Refund') as 'Refund' | 'Exchange' | 'Repair' | 'Reject'
+          if (!isAIDecision(claim.aiDecision) || claim.aiDecision === 'Reject') return
+          const decision = claim.aiDecision
 
           await prisma.claim.update({
             where: { id: claim.id },

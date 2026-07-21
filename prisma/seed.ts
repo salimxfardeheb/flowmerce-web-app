@@ -29,7 +29,6 @@ loadEnv({ path: '.env.local' })
 loadEnv()
 
 if (!process.env.DATABASE_URL) {
-  console.error('[seed] DATABASE_URL manquant — ajoutez-le dans .env ou .env.local')
   process.exit(1)
 }
 
@@ -50,7 +49,7 @@ function hashPassword(plain: string): string {
 }
 
 async function main() {
-  console.log(`[seed] tag=${TAG}`)
+
 
   // ── 1. User vendeur + Vendor APPROVED ────────────────────────────────────
   const vendorUser = await prisma.user.create({
@@ -102,7 +101,7 @@ async function main() {
 
   // ── 4. Claims couvrant les cas testés par la page ────────────────────────
   // Cas couverts :
-  //   1. PENDING + ML automatique faible risque (Refund recommandé)
+  //   1. PENDING + ML automatique faible risque (Exchange recommandé, refundEligible)
   //   2. APPROVED + ML override manuel (Exchange forcé)
   //   3. REJECTED + risque fraude ÉLEVÉ (>=60)
   //   4. IN_PROGRESS + REPAIR + source HOSTED_PAGE
@@ -112,7 +111,9 @@ async function main() {
   const baseOrder = `SEED-${TAG}`
 
   const claims = [
-    // Cas 1 — PENDING, ML auto, Refund recommandé, faible fraude
+    // Cas 1 — PENDING, ML auto, Exchange recommandé, faible fraude.
+    // Le client souhaite un remboursement (type REFUND) → drapeau
+    // refundEligible affiché au vendeur, qui tranche à la main.
     {
       vendorId:      vendor.id,
       apiKeyId:      apiKey.id,
@@ -127,9 +128,9 @@ async function main() {
       productName:   'Smartphone Galaxy A54 128GB',
       orderDate:     new Date(Date.now() - 3 * 24 * 3600_000),
       aiScore:       0.92,
-      aiDecision:    'Refund',
+      aiDecision:    'Exchange',
       fraudScore:    12,
-      prediction:    { productPrice: 42000, productQuantity: 1, orderTotal: 42000 },
+      prediction:    { productPrice: 42000, productQuantity: 1, orderTotal: 42000, refundEligible: true },
     },
 
     // Cas 2 — APPROVED, ML override manuel (Exchange forcé)
@@ -147,7 +148,7 @@ async function main() {
       productName:   'T-shirt coton bio — Taille M',
       orderDate:     new Date(Date.now() - 7 * 24 * 3600_000),
       aiScore:       0.71,
-      aiDecision:    'Refund',
+      aiDecision:    'Repair',
       fraudScore:    24,
       processedAt:   new Date(),
       prediction: {
@@ -156,7 +157,7 @@ async function main() {
         orderTotal:      5000,
         override: {
           resolution: 'Exchange',
-          note:       'Client fidèle, on privilégie l\'échange même si IA dit Refund.',
+          note:       'Client fidèle, on privilégie l\'échange même si IA dit Réparation.',
           by:         'admin',
         },
       },
@@ -260,18 +261,10 @@ async function main() {
     },
   })
 
-  // ── Récap ────────────────────────────────────────────────────────────────
-  console.log(`[seed] ✓ Vendor créé   : ${vendor.companyName} (id=${vendor.id})`)
-  console.log(`[seed] ✓ User vendeur  : ${vendorUser.email}  (password=Seed1234!)`)
-  console.log(`[seed] ✓ ApiKey        : ${apiKey.name} (prefix=${apiKey.keyPrefix})`)
-  console.log(`[seed] ✓ Claims créés  : ${claims.length}`)
-  console.log(`[seed] ✓ FraudRecord   : 1`)
-  console.log(`[seed] terminé.`)
 }
 
 main()
   .catch(e => {
-    console.error('[seed] erreur :', e)
     process.exit(1)
   })
   .finally(async () => {

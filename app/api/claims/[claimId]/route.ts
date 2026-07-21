@@ -6,7 +6,7 @@ import { Prisma }                    from '@prisma/client'
 import { getSessionServer }          from '@/lib/getSession'
 import { notifyCustomer }            from '@/lib/services/notification'
 import { log }                       from '@/lib/logger'
-import type { AIDecision }           from '@/lib/constants'
+import { AI_DECISIONS, isAIDecision, type AIDecision } from '@/lib/constants'
 
 const ALLOWED_STATUSES = ['APPROVED', 'REJECTED', 'IN_PROGRESS'] as const
 type AllowedStatus = (typeof ALLOWED_STATUSES)[number]
@@ -31,7 +31,7 @@ export async function PATCH(
       vendorId:      true,
       status:        true,
       prediction:    true,
-      aiDecision:    true,   // ← décision ML stockée sur le claim
+      aiDecision:    true,
       customerName:  true,
       customerEmail: true,
       customerPhone: true,
@@ -59,6 +59,13 @@ export async function PATCH(
   if (!newStatus || !ALLOWED_STATUSES.includes(newStatus as AllowedStatus)) {
     return NextResponse.json(
       { error: `Statut invalide. Valeurs acceptées : ${ALLOWED_STATUSES.join(', ')}` },
+      { status: 400 },
+    )
+  }
+
+  if (body.aiDecision !== undefined && !isAIDecision(body.aiDecision)) {
+    return NextResponse.json(
+      { error: `Décision invalide. Valeurs acceptées : ${AI_DECISIONS.join(', ')}` },
       { status: 400 },
     )
   }
