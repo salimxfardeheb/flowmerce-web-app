@@ -1,0 +1,179 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('@/lib/env', () => ({
+  env: {
+    ML_API_URL: 'https://ml.example.com',
+    ML_INTERNAL_SECRET: 'test-secret-12345',
+  },
+}))
+
+const mockFetch = vi.fn()
+vi.stubGlobal('fetch', mockFetch)
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+describe('buildMLPayload', () => {
+  it('construit le payload ML avec les champs requis', async () => {
+    const { buildMLPayload } = await import('@/lib/services/ml')
+    const payload = buildMLPayload({
+      shopName: 'Ma Boutique',
+      productCategory: 'Electronics',
+      productPrice: 5000,
+      productQuantity: 2,
+      orderTotal: 10000,
+      paymentMethod: 'CCP',
+      shippingMethod: 'Yalidine',
+      shippingCost: 500,
+      customerGender: 'M',
+      customerAge: 30,
+      customerWilaya: '16',
+      reason: 'Produit défectueux',
+      daysToReturn: 5,
+      returnWindowDays: 14,
+    })
+
+    expect(payload.Shop_Name).toBe('Ma Boutique')
+    expect(payload.Product_Price_DA).toBe(5000)
+    expect(payload.Order_Quantity).toBe(2)
+    expect(payload.Total_Amount_DA).toBe(10000)
+    expect(payload.Within_Return_Policy).toBe(1)
+    expect(payload.Is_Suspicious).toBe(0)
+  })
+
+  it('utilise des valeurs par défaut pour les champs optionnels', async () => {
+    const { buildMLPayload } = await import('@/lib/services/ml')
+    const payload = buildMLPayload({
+      shopName: 'Test',
+      productCategory: null,
+      productPrice: null,
+      productQuantity: null,
+      orderTotal: null,
+      paymentMethod: 'CCP',
+      shippingMethod: 'Standard',
+      shippingCost: 0,
+      customerGender: 'F',
+      customerAge: null,
+      customerWilaya: '31',
+      reason: 'Test',
+      daysToReturn: 0,
+      returnWindowDays: 14,
+    })
+
+    expect(payload.Product_Category).toBe('Unknown')
+    expect(payload.Customer_Age).toBe(0)
+    expect(payload.Product_Price_DA).toBe(1)
+    expect(payload.Order_Quantity).toBe(1)
+  })
+})
+
+describe('callMLPredict', () => {
+  it('retourne ok:true en cas de prédiction valide', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        resolution: {
+          prediction: 'Exchange',
+          probabilities: { Exchange: 0.85, Repair: 0.1, Reject: 0.05 },
+        },
+      }),
+    })
+
+    const { callMLPredict } = await import('@/lib/services/ml')
+    const result = await callMLPredict({ test: true })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.prediction.resolution.prediction).toBe('Exchange')
+    }
+  })
+
+  it('retourne ok:false en cas de HTTP 500 (retryable)', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ detail: 'Internal error' }),
+    })
+
+    const { callMLPredict } = await import('@/lib/services/ml')
+    const result = await callMLPredict({ test: true }, { retries: 0 })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.retryable).toBe(true)
+    }
+  })
+
+  it('retry en cas d\'échec retryable', async () => {
+    mockFetch
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          resolution: {
+            prediction: 'Repair',
+            probabilities: { Repair: 0.9, Exchange: 0.1, Reject: 0 },
+          },
+        }),
+      })
+
+    const { callMLPredict } = await import('@/lib/services/ml')
+    const result = await callMLPredict({ test: true })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.prediction.resolution.prediction).toBe('Repair')
+    }
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejette une classe de prédiction invalide', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        resolution: {
+          prediction: 'Refund',
+          probabilities: {},
+        },
+      }),
+    })
+
+    const { callMLPredict } = await import('@/lib/services/ml')
+    const result = await callMLPredict({ test: true }, { retries: 0 })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.retryable).toBe(false)
+      expect(result.error).toContain('invalid_prediction_class')
+    }
+  })
+
+  it('timeout après le délai configuré', async () => {
+    vi.useFakeTimers()
+    mockFetch.mockImplementationOnce((_url: string, options?: RequestInit) => {
+      const signal = (options as any)?.signal as AbortSignal | undefined
+      return new Promise((_resolve, reject) => {
+        if (signal) {
+          signal.addEventListener('abort', () => {
+            const err = new Error('The operation was aborted')
+            err.name = 'AbortError'
+            reject(err)
+          })
+        }
+      })
+    })
+
+    const { callMLPredict } = await import('@/lib/services/ml')
+    const promise = callMLPredict({ test: true }, { retries: 0, timeoutMs: 100 })
+
+    vi.advanceTimersByTime(150)
+    const result = await promise
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.timedOut).toBe(true)
+    }
+    vi.useRealTimers()
+  })
+})
