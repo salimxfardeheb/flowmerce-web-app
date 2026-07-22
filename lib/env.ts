@@ -1,26 +1,34 @@
 import { z } from 'zod'
 
 const ServerSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
 
   DATABASE_URL: z.string().url(),
+  DIRECT_URL: z.string().url(),
 
-  NEXTAUTH_SECRET: z.string().min(32, 'NEXTAUTH_SECRET must be at least 32 characters'),
-  AUTH_SECRET:     z.string().min(32, 'AUTH_SECRET must be at least 32 characters'),
-  NEXTAUTH_URL:    z.string().url().optional(),
+  NEXTAUTH_SECRET: z
+    .string()
+    .min(32, "NEXTAUTH_SECRET must be at least 32 characters"),
+  AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
 
-  ML_API_URL:         z.string().url(),
-  ML_INTERNAL_SECRET: z.string().min(8, 'ML_INTERNAL_SECRET must be at least 8 characters'),
+  SUPABASE_URL: z.string().url(),
+  SUPABASE_SERVICE_ROLE_KEY: z
+    .string()
+    .min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
+  CRON_SECRET: z.string().min(32, "CRON_SECRET must be at least 32 characters"),
 
-  GMAIL_USER:         z.string().email(),
-  GMAIL_APP_PASSWORD: z.string().min(16, 'GMAIL_APP_PASSWORD must be at least 16 characters'),
+  ML_API_URL: z.string().url(),
+  ML_INTERNAL_SECRET: z
+    .string()
+    .min(8, "ML_INTERNAL_SECRET must be at least 8 characters"),
 
-  CLOUDINARY_CLOUD_NAME: z.string().min(1),
-  CLOUDINARY_API_KEY:    z.string().min(1),
-  CLOUDINARY_API_SECRET: z.string().min(1),
-
-  CRON_SECRET: z.string().min(32, 'CRON_SECRET must be at least 32 characters'),
-})
+  GMAIL_USER: z.string().email(),
+  GMAIL_APP_PASSWORD: z
+    .string()
+    .min(16, "GMAIL_APP_PASSWORD must be at least 16 characters"),
+});
 
 const ClientSchema = z.object({
   NEXT_PUBLIC_BASE_URL: z.string().url(),
@@ -71,4 +79,3 @@ export const env = new Proxy(merged, {
     return target[prop as keyof Env]
   },
 }) as Env
-

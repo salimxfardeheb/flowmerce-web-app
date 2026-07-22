@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { cloudinary } from "@/lib/cloudinary";
+import { getSignedUrl } from "@/lib/storage";
 import { log } from "@/lib/logger";
 
 const SIGNED_URL_TTL_SECONDS = 300; // 5 minutes
@@ -20,93 +20,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Paramètre id requis" }, { status: 400 });
 
   const doc = await prisma.document.findUnique({
-    where:  { id: documentId },
-    select: { url: true, name: true, id: true, cloudinaryPublicId: true },
+    where: { id: documentId },
+    select: { storagePath: true, name: true, id: true },
   });
 
   if (!doc)
-    return NextResponse.json({ error: "Document introuvable" }, { status: 404 });
-
-  const storedUrl = doc.url;
-
-  // ── Anciens fichiers locaux (avant Cloudinary) ────────────────
-  if (!storedUrl.startsWith("http")) {
-    return htmlPage(
-      "⚠️ Fichier ancien",
-      "Ce document a été soumis avant la migration vers Cloudinary.",
-      "Demandez au vendeur de le re-soumettre."
+    return NextResponse.json(
+      { error: "Document introuvable" },
+      { status: 404 },
     );
-  }
 
-  const isPdf =
-    storedUrl.includes("/raw/") ||
-    storedUrl.toLowerCase().endsWith(".pdf");
-
-  // ── Nouveaux docs (authenticated) : signed URL courte durée ──
-  if (doc.cloudinaryPublicId) {
-    const resourceType: "image" | "raw" = storedUrl.includes("/raw/") ? "raw" : "image";
-    const expiresAt = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL_SECONDS;
-
-    const signedUrl = cloudinary.utils.url(doc.cloudinaryPublicId, {
-      sign_url:      true,
-      type:          "authenticated",
-      resource_type: resourceType,
-      expires_at:    expiresAt,
-      secure:        true,
-    });
-
-    return proxyAndServe(signedUrl, doc.name, isPdf);
-  }
-
-  // ── Anciens docs (public, accès direct) : proxy direct ───────
-  return proxyAndServe(storedUrl, doc.name, isPdf);
-}
-
-const CLOUDINARY_URL_RE = /^https:\/\/res\.cloudinary\.com\//;
-
-async function proxyAndServe(
-  url: string,
-  filename: string | null,
-  isPdf: boolean
-): Promise<NextResponse> {
-  if (!CLOUDINARY_URL_RE.test(url)) {
-    return htmlPage("Accès refusé", "URL de document invalide.", "");
-  }
-
-  let res: Response;
+  let signedUrl: string;
   try {
-    res = await fetch(url, {
-      headers: { "User-Agent": "Flowmerce-Admin/1.0" },
-    });
+    signedUrl = await getSignedUrl(doc.storagePath, SIGNED_URL_TTL_SECONDS);
   } catch (err) {
-    log.error("documents.view_fetch_error", { err: String(err) });
-    return htmlPage("Erreur réseau", "Impossible de contacter Cloudinary.", "");
-  }
-
-  if (!res.ok) {
-    log.error("documents.view_cloudinary_error", { status: res.status, url });
+    log.error("documents.view_signed_url_error", {
+      err: String(err),
+      documentId,
+    });
     return htmlPage(
-      `Erreur ${res.status}`,
-      "Impossible de récupérer ce fichier.",
-      "Vérifiez que le fichier existe sur Cloudinary ou demandez au vendeur de le re-soumettre."
+      "Erreur",
+      "Impossible de générer le lien du document.",
+      "Vérifiez que le fichier existe dans Supabase Storage.",
     );
   }
 
-  const contentType = isPdf
-    ? "application/pdf"
-    : res.headers.get("content-type") ?? "application/octet-stream";
-
-  const safeFilename = encodeURIComponent(filename ?? "document");
-  const body = await res.arrayBuffer();
-
-  return new NextResponse(body, {
-    status: 200,
-    headers: {
-      "Content-Type":        contentType,
-      "Content-Disposition": `inline; filename="${safeFilename}"`,
-      "Cache-Control":       "private, no-store",
-    },
-  });
+  return NextResponse.redirect(signedUrl);
 }
 
 function escapeHtml(str: string): string {
@@ -119,7 +58,7 @@ function escapeHtml(str: string): string {
 }
 
 function htmlPage(title: string, line1: string, line2: string): NextResponse {
-  const t  = escapeHtml(title);
+  const t = escapeHtml(title);
   const l1 = escapeHtml(line1);
   const l2 = escapeHtml(line2);
   return new NextResponse(
@@ -139,6 +78,6 @@ function htmlPage(title: string, line1: string, line2: string): NextResponse {
       <p>${l1}</p>
       ${l2 ? `<p>${l2}</p>` : ""}
     </div></body></html>`,
-    { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+    { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
 }

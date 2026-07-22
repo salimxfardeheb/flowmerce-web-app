@@ -146,15 +146,20 @@ export default async function AdminVendorsPage() {
                   {/* ── Ligne titre ── */}
                   <div className="px-4 sm:px-5 py-3 sm:py-4 flex items-start justify-between gap-3 sm:gap-4">
                     <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">{vendor.companyName}</p>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${statusClass}`}>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {vendor.companyName}
+                      </p>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${statusClass}`}
+                      >
                         <StatusIconComp size={10} />
                         {statusLabel}
                       </span>
                       {hasDocsToReview && pendingDocs > 0 && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-500 text-white border border-amber-400">
                           <Bell size={10} />
-                          {pendingDocs} doc{pendingDocs > 1 ? "s" : ""} à réviser
+                          {pendingDocs} doc{pendingDocs > 1 ? "s" : ""} à
+                          réviser
                         </span>
                       )}
                     </div>
@@ -163,7 +168,9 @@ export default async function AdminVendorsPage() {
                         vendorId={vendor.id}
                         vendorStatus={vendor.status}
                         isSuspended={isSuspended}
-                        submittedDocTypes={vendor.documents.map((d) => d.type as string)}
+                        submittedDocTypes={vendor.documents.map(
+                          (d) => d.type as string,
+                        )}
                       />
                     </div>
                   </div>
@@ -174,26 +181,38 @@ export default async function AdminVendorsPage() {
                       {infoRows.map(({ label, value }) => (
                         <div key={label}>
                           <p className="text-xs text-gray-400">{label}</p>
-                          <p className="text-xs font-medium text-gray-800 mt-0.5 break-all">{value}</p>
+                          <p className="text-xs font-medium text-gray-800 mt-0.5 break-all">
+                            {value}
+                          </p>
                         </div>
                       ))}
                     </div>
 
                     {/* Note rejet ou suspension */}
-                    {(vendor.rejectionReason && !isSuspended) && (
+                    {vendor.rejectionReason && !isSuspended && (
                       <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
-                        <AlertTriangle size={12} className="text-red-500 shrink-0 mt-0.5" />
+                        <AlertTriangle
+                          size={12}
+                          className="text-red-500 shrink-0 mt-0.5"
+                        />
                         <p className="text-xs text-red-700">
-                          <span className="font-semibold">Motif de rejet : </span>
+                          <span className="font-semibold">
+                            Motif de rejet :{" "}
+                          </span>
                           {vendor.rejectionReason}
                         </p>
                       </div>
                     )}
                     {isSuspended && (
                       <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
-                        <AlertTriangle size={12} className="text-red-500 shrink-0 mt-0.5" />
+                        <AlertTriangle
+                          size={12}
+                          className="text-red-500 shrink-0 mt-0.5"
+                        />
                         <p className="text-xs text-red-700">
-                          <span className="font-semibold">Motif de suspension : </span>
+                          <span className="font-semibold">
+                            Motif de suspension :{" "}
+                          </span>
                           {vendor.rejectionReason?.replace("[SUSPENDU] ", "")}
                         </p>
                       </div>
@@ -203,24 +222,36 @@ export default async function AdminVendorsPage() {
                     {requestedTypes.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mt-3">
                         {requestedTypes.map((docType) => {
-                          const submitted = vendor.documents.find((d) => d.type === docType);
-                          const accepted  = submitted?.status === "ACCEPTED";
-                          const rejected  = submitted?.status === "REJECTED";
+                          const submitted = vendor.documents.find(
+                            (d) => d.type === docType,
+                          );
+                          const accepted = submitted?.status === "ACCEPTED";
+                          const rejected = submitted?.status === "REJECTED";
                           return (
                             <span
                               key={docType}
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${
-                                accepted  ? "bg-green-50 text-green-700 border-green-200"
-                              : rejected  ? "bg-red-50 text-red-700 border-red-200"
-                              : submitted ? "bg-amber-50 text-amber-700 border-amber-200"
-                              :             "bg-gray-50 text-gray-500 border-gray-200"
+                                accepted
+                                  ? "bg-green-50 text-green-700 border-green-200"
+                                  : rejected
+                                  ? "bg-red-50 text-red-700 border-red-200"
+                                  : submitted
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : "bg-gray-50 text-gray-500 border-gray-200"
                               }`}
                             >
-                              {accepted  ? <CheckCircle2 size={10} />
-                             : rejected  ? <XCircle size={10} />
-                             : submitted ? <Clock size={10} />
-                             :             <div className="w-2 h-2 rounded-full border border-gray-300" />}
-                              {DOCUMENT_TYPE_LABELS[docType as keyof typeof DOCUMENT_TYPE_LABELS] ?? docType}
+                              {accepted ? (
+                                <CheckCircle2 size={10} />
+                              ) : rejected ? (
+                                <XCircle size={10} />
+                              ) : submitted ? (
+                                <Clock size={10} />
+                              ) : (
+                                <div className="w-2 h-2 rounded-full border border-gray-300" />
+                              )}
+                              {DOCUMENT_TYPE_LABELS[
+                                docType as keyof typeof DOCUMENT_TYPE_LABELS
+                              ] ?? docType}
                             </span>
                           );
                         })}
@@ -246,13 +277,16 @@ export default async function AdminVendorsPage() {
                         vendorStatus={vendor.status}
                         requestedDocuments={requestedTypes}
                         documents={vendor.documents.map((d) => ({
-                          id:              d.id,
-                          type:            d.type as string,
-                          name:            d.name,
-                          url:             d.url,
-                          status:          d.status as "PENDING" | "ACCEPTED" | "REJECTED",
+                          id: d.id,
+                          type: d.type as string,
+                          name: d.name,
+                          url: `/api/vendors/documents/view?id=${d.id}`,
+                          status: d.status as
+                            | "PENDING"
+                            | "ACCEPTED"
+                            | "REJECTED",
                           rejectionReason: d.rejectionReason,
-                          createdAt:       d.createdAt.toISOString(),
+                          createdAt: d.createdAt.toISOString(),
                         }))}
                         alreadySubmittedTypes={vendor.documents
                           .map((d) => d.type as string)

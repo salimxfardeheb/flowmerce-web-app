@@ -157,7 +157,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-8 max-w-5xl w-full">
-
       {/* ── En-tête ── */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-xl font-semibold text-gray-900">{user.name}</h1>
@@ -176,7 +175,10 @@ export default async function DashboardPage() {
           }`}
         >
           <div className="flex items-start gap-3">
-            <BlockedIcon size={16} className={`${blockedIconColor} shrink-0 mt-0.5`} />
+            <BlockedIcon
+              size={16}
+              className={`${blockedIconColor} shrink-0 mt-0.5`}
+            />
             <div className="flex-1">
               <p className="text-sm font-semibold text-gray-800">
                 {isSuspended
@@ -224,7 +226,7 @@ export default async function DashboardPage() {
           uploadedDocuments={vendor.documents.map((d) => ({
             type: d.type as string,
             name: d.name,
-            url: d.url,
+            url: `/api/vendors/documents/view?id=${d.id}`,
           }))}
         />
       )}
@@ -237,7 +239,11 @@ export default async function DashboardPage() {
             <div>
               <p className="text-sm font-semibold text-gray-800">
                 Statut :{" "}
-                <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusColors[vendor.status]}`}>
+                <span
+                  className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                    statusColors[vendor.status]
+                  }`}
+                >
                   {VENDOR_STATUS_LABELS[vendor.status]}
                 </span>
               </p>
@@ -255,7 +261,6 @@ export default async function DashboardPage() {
       {/* ── Dashboard actif ── */}
       {vendor.status === "APPROVED" && (
         <div className="space-y-6">
-
           {/* ─── A : Métriques enrichies ─── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
             {/* Total */}
@@ -274,11 +279,17 @@ export default async function DashboardPage() {
                 En attente
               </p>
               <div className="flex items-end justify-between mt-1.5">
-                <p className={`text-xl sm:text-2xl font-semibold tabular-nums ${pendingClaims > 0 ? "text-amber-500" : "text-gray-900"}`}>
+                <p
+                  className={`text-xl sm:text-2xl font-semibold tabular-nums ${
+                    pendingClaims > 0 ? "text-amber-500" : "text-gray-900"
+                  }`}
+                >
                   {pendingClaims}
                 </p>
                 {pendingClaims > 0 && (
-                  <span className="text-xs text-amber-500 font-medium pb-0.5 hidden sm:block">Action requise</span>
+                  <span className="text-xs text-amber-500 font-medium pb-0.5 hidden sm:block">
+                    Action requise
+                  </span>
                 )}
               </div>
             </div>
@@ -322,12 +333,21 @@ export default async function DashboardPage() {
             {/* Risque élevé */}
             <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <ShieldAlert size={12} className={highRiskClaims > 0 ? "text-red-500" : "text-gray-400"} />
+                <ShieldAlert
+                  size={12}
+                  className={
+                    highRiskClaims > 0 ? "text-red-500" : "text-gray-400"
+                  }
+                />
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                   Risque élevé
                 </p>
               </div>
-              <p className={`text-xl sm:text-2xl font-semibold tabular-nums ${highRiskClaims > 0 ? "text-red-600" : "text-gray-900"}`}>
+              <p
+                className={`text-xl sm:text-2xl font-semibold tabular-nums ${
+                  highRiskClaims > 0 ? "text-red-600" : "text-gray-900"
+                }`}
+              >
                 {highRiskClaims}
               </p>
             </div>
@@ -370,18 +390,20 @@ export default async function DashboardPage() {
                       title={`${s.label} : ${s.count}`}
                     />
                   ))}
-                {totalClaims === 0 && (
-                  <div className="bg-gray-100 w-full" />
-                )}
+                {totalClaims === 0 && <div className="bg-gray-100 w-full" />}
               </div>
 
               {/* Légende */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {segments.map((s) => (
                   <div key={s.label} className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-sm shrink-0 ${s.color}`} />
+                    <span
+                      className={`w-2.5 h-2.5 rounded-sm shrink-0 ${s.color}`}
+                    />
                     <div className="min-w-0">
-                      <p className="text-xs text-gray-500 truncate">{s.label}</p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {s.label}
+                      </p>
                       <p className="text-sm font-semibold text-gray-900 tabular-nums">
                         {s.count}
                         <span className="text-xs font-normal text-gray-400 ml-1">
@@ -413,18 +435,30 @@ export default async function DashboardPage() {
             {recentClaims.length === 0 ? (
               <div className="px-5 py-10 text-center">
                 <Inbox size={24} className="mx-auto text-gray-300 mb-2" />
-                <p className="text-sm text-gray-500">Aucune réclamation pour le moment</p>
+                <p className="text-sm text-gray-500">
+                  Aucune réclamation pour le moment
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">Client</th>
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">Type</th>
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">Statut</th>
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">Risque</th>
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">Date</th>
+                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
+                        Client
+                      </th>
+                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
+                        Type
+                      </th>
+                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
+                        Statut
+                      </th>
+                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
+                        Risque
+                      </th>
+                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
+                        Date
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -434,16 +468,35 @@ export default async function DashboardPage() {
                         fraudScore === null
                           ? null
                           : fraudScore >= 60
-                          ? { label: "Élevé",  cls: "text-red-600",    dot: "bg-red-500"    }
+                          ? {
+                              label: "Élevé",
+                              cls: "text-red-600",
+                              dot: "bg-red-500",
+                            }
                           : fraudScore >= 35
-                          ? { label: "Modéré", cls: "text-amber-600",  dot: "bg-amber-500"  }
-                          : { label: "Faible", cls: "text-green-600",  dot: "bg-green-500"  };
+                          ? {
+                              label: "Modéré",
+                              cls: "text-amber-600",
+                              dot: "bg-amber-500",
+                            }
+                          : {
+                              label: "Faible",
+                              cls: "text-green-600",
+                              dot: "bg-green-500",
+                            };
 
                       return (
-                        <tr key={claim.id} className="hover:bg-gray-50 transition-colors">
+                        <tr
+                          key={claim.id}
+                          className="hover:bg-gray-50 transition-colors"
+                        >
                           <td className="px-5 py-3.5">
-                            <p className="text-sm font-medium text-gray-800">{claim.customerName}</p>
-                            <p className="text-xs text-gray-400">{claim.customerEmail}</p>
+                            <p className="text-sm font-medium text-gray-800">
+                              {claim.customerName}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {claim.customerEmail}
+                            </p>
                           </td>
                           <td className="px-5 py-3.5">
                             <span className="text-sm text-gray-600">
@@ -451,14 +504,24 @@ export default async function DashboardPage() {
                             </span>
                           </td>
                           <td className="px-5 py-3.5">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${claimStatusStyle[claim.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}>
-                              {CLAIM_STATUS_LABELS[claim.status] ?? claim.status}
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+                                claimStatusStyle[claim.status] ??
+                                "bg-gray-50 text-gray-600 border-gray-200"
+                              }`}
+                            >
+                              {CLAIM_STATUS_LABELS[claim.status] ??
+                                claim.status}
                             </span>
                           </td>
                           <td className="px-5 py-3.5">
                             {riskLevel ? (
-                              <span className={`flex items-center gap-1.5 text-xs font-medium ${riskLevel.cls}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${riskLevel.dot}`} />
+                              <span
+                                className={`flex items-center gap-1.5 text-xs font-medium ${riskLevel.cls}`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${riskLevel.dot}`}
+                                />
                                 {riskLevel.label}
                               </span>
                             ) : (
@@ -485,7 +548,6 @@ export default async function DashboardPage() {
               Navigation
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-
               <Link
                 href="/dashboard/return-policy"
                 className="group flex items-center gap-4 bg-white border border-gray-200 hover:border-indigo-300 rounded-lg p-4 transition-all hover:shadow-sm"
@@ -499,11 +561,18 @@ export default async function DashboardPage() {
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">
                     {vendor.returnPolicy
-                      ? `Délai ${vendor.returnPolicy.maxClaimDays}j · ${vendor.returnPolicy.validationMode === "AI_AUTO" ? "Automatique" : "Manuel"}`
+                      ? `Délai ${vendor.returnPolicy.maxClaimDays}j · ${
+                          vendor.returnPolicy.validationMode === "AI_AUTO"
+                            ? "Automatique"
+                            : "Manuel"
+                        }`
                       : "Non configurée"}
                   </p>
                 </div>
-                <ChevronRight size={15} className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors" />
+                <ChevronRight
+                  size={15}
+                  className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors"
+                />
               </Link>
 
               <Link
@@ -518,18 +587,34 @@ export default async function DashboardPage() {
                     Clés API
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {vendor.apiKeys.length} clé{vendor.apiKeys.length !== 1 ? "s" : ""} active{vendor.apiKeys.length !== 1 ? "s" : ""}
+                    {vendor.apiKeys.length} clé
+                    {vendor.apiKeys.length !== 1 ? "s" : ""} active
+                    {vendor.apiKeys.length !== 1 ? "s" : ""}
                   </p>
                 </div>
-                <ChevronRight size={15} className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors" />
+                <ChevronRight
+                  size={15}
+                  className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors"
+                />
               </Link>
 
               <Link
                 href="/dashboard/claims"
                 className="group flex items-center gap-4 bg-white border border-gray-200 hover:border-indigo-300 rounded-lg p-4 transition-all hover:shadow-sm"
               >
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${pendingClaims > 0 ? "bg-amber-50 group-hover:bg-amber-100" : "bg-indigo-50 group-hover:bg-indigo-100"}`}>
-                  <Inbox size={16} className={pendingClaims > 0 ? "text-amber-500" : "text-indigo-600"} />
+                <div
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                    pendingClaims > 0
+                      ? "bg-amber-50 group-hover:bg-amber-100"
+                      : "bg-indigo-50 group-hover:bg-indigo-100"
+                  }`}
+                >
+                  <Inbox
+                    size={16}
+                    className={
+                      pendingClaims > 0 ? "text-amber-500" : "text-indigo-600"
+                    }
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -548,12 +633,13 @@ export default async function DashboardPage() {
                       : `${totalClaims} au total`}
                   </p>
                 </div>
-                <ChevronRight size={15} className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors" />
+                <ChevronRight
+                  size={15}
+                  className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors"
+                />
               </Link>
-
             </div>
           </div>
-
         </div>
       )}
     </div>
