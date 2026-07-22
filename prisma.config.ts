@@ -9,8 +9,11 @@ export default defineConfig({
     seed: "node node_modules/jiti/lib/jiti-cli.mjs prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
-    shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"],
+    url:
+      process.env["DIRECT_URL"] ??
+      process.env["DATABASE_URL"] ??
+      (() => {
+        throw new Error("DATABASE_URL or DIRECT_URL must be set");
+      })(),
   },
 });
-
