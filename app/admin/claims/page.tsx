@@ -12,6 +12,7 @@ import {
   Loader2,
   AlertTriangle,
   RefreshCw,
+  CloudUpload,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -48,8 +49,14 @@ interface MlInput {
 
 interface ClaimRow {
   id: string;
+  orderId: string;
+  productName: string | null;
+  orderDate: string | null;
+  type: "EXCHANGE" | "REFUND" | "REPAIR" | null;
   aiDecision: string | null;
   mlInput: MlInput | null;
+  exportedToML: boolean;
+  exportedAt: string | null;
   vendor: { companyName: string };
 }
 
@@ -82,6 +89,16 @@ interface FlatRow {
   Fraud_Score: string;
   Is_Suspicious: string;
   Customer_Satisfaction: string;
+}
+
+type ExportFilter = "all" | "pending" | "exported";
+
+interface ExportProgress {
+  processed: number;
+  total: number;
+  exported: number;
+  failed: number;
+  ignored: number;
 }
 
 // ── Column definitions ───────────────────────────────────────────────────────
@@ -117,6 +134,12 @@ const COLUMNS: { key: keyof FlatRow; label: string; minW?: string }[] = [
 ];
 
 const PAGE_SIZE = 25;
+
+const FILTERS: { key: ExportFilter; label: string }[] = [
+  { key: "all", label: "Toutes" },
+  { key: "pending", label: "Non exportées" },
+  { key: "exported", label: "Exportées" },
+];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -164,14 +187,31 @@ function flattenClaim(claim: ClaimRow): FlatRow {
 
 export default function AdminClaimsPage() {
   const [rows, setRows] = useState<FlatRow[]>([]);
+  const [claims, setClaims] = useState<ClaimRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    msg: string;
+    type: "success" | "error";
+  } | null>(null);
+
+  // Export state
+  const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(
+    null
+  );
 
   // Table state
   const [search, setSearch] = useState("");
+  const [exportFilter, setExportFilter] = useState<ExportFilter>("pending");
   const [sortKey, setSortKey] = useState<keyof FlatRow | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
+
+  function showToast(msg: string, type: "success" | "error") {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -185,7 +225,9 @@ export default function AdminClaimsPage() {
         throw new Error(body.error ?? `Erreur ${res.status}`);
       }
       const data = await res.json();
-      setRows((data.claims as ClaimRow[]).map(flattenClaim));
+      const raw = data.claims as ClaimRow[];
+      setClaims(raw);
+      setRows(raw.map(flattenClaim));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
@@ -197,15 +239,103 @@ export default function AdminClaimsPage() {
     fetchClaims();
   }, [fetchClaims]);
 
+  // ── Stats ──────────────────────────────────────────────────────────────────
+
+  const toExport = useMemo(
+    () => claims.filter((c) => !c.exportedToML).length,
+    [claims]
+  );
+  const exportedCount = useMemo(
+    () => claims.filter((c) => c.exportedToML).length,
+    [claims]
+  );
+
+  // ── Export vers le dataset ML ──────────────────────────────────────────────
+
+  async function exportToML() {
+    if (exporting || toExport === 0) return;
+
+    setExporting(true);
+    setExportProgress({
+      processed: 0,
+      total: toExport,
+      exported: 0,
+      failed: 0,
+      ignored: 0,
+    });
+
+    let summary: ExportProgress | null = null;
+    try {
+      const res = await fetch("/api/admin/claims/export", {
+        method: "POST",
+      });
+
+      if (!res.ok || !res.body) {
+        const body = await res.json().catch(() => ({}));
+        showToast(body.error ?? `Erreur ${res.status}`, "error");
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line) as { type: string } & ExportProgress;
+            if (msg.type === "progress") {
+              setExportProgress(msg);
+            } else if (msg.type === "done") {
+              summary = msg;
+            }
+          } catch {
+            // Ligne malformée du stream — ignorée.
+          }
+        }
+      }
+    } catch {
+      showToast("Erreur réseau. Veuillez réessayer.", "error");
+    } finally {
+      setExporting(false);
+      setExportProgress(null);
+      await fetchClaims();
+
+      if (summary) {
+        showToast(
+          `Export terminé : ${summary.exported} exportée${summary.exported > 1 ? "s" : ""}, ${summary.failed} échec${summary.failed > 1 ? "s" : ""}, ${summary.ignored} ignorée${summary.ignored > 1 ? "s" : ""}`,
+          summary.failed > 0 ? "error" : "success"
+        );
+      }
+    }
+  }
+
   // ── Filter, sort, paginate ─────────────────────────────────────────────────
 
+  const exportFiltered = useMemo(() => {
+    if (exportFilter === "all") return rows;
+    const target = exportFilter === "exported";
+    return rows.filter((r) => {
+      const claim = claims.find((c) => c.id === r.id);
+      return claim ? claim.exportedToML === target : false;
+    });
+  }, [rows, claims, exportFilter]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return rows;
+    if (!search.trim()) return exportFiltered;
     const q = search.toLowerCase();
-    return rows.filter((r) =>
+    return exportFiltered.filter((r) =>
       COLUMNS.some((c) => r[c.key].toLowerCase().includes(q))
     );
-  }, [rows, search]);
+  }, [exportFiltered, search]);
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered;
@@ -228,10 +358,10 @@ export default function AdminClaimsPage() {
     (safePage + 1) * PAGE_SIZE
   );
 
-  // Reset to first page when search changes
+  // Reset to first page when search/filter changes
   useEffect(() => {
     setPage(0);
-  }, [search]);
+  }, [search, exportFilter]);
 
   // ── Sort handler ───────────────────────────────────────────────────────────
 
@@ -270,7 +400,8 @@ export default function AdminClaimsPage() {
           <div className="flex items-center gap-1.5 text-xs text-gray-400">
             <FileWarning size={12} />
             <span>
-              {rows.length} réclamation{rows.length !== 1 ? "s" : ""} au total
+              {claims.length} réclamation{claims.length !== 1 ? "s" : ""} au
+              total
             </span>
           </div>
         </div>
@@ -278,45 +409,85 @@ export default function AdminClaimsPage() {
 
       {/* ── Content ── */}
       <div className="px-4 sm:px-8 py-4 sm:py-6 space-y-4 sm:space-y-5">
-        {/* Stats */}
+        {/* Stats + Export */}
         {!loading && !error && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-            {[
-              {
-                label: "Total",
-                value: rows.length,
-                color: "text-indigo-600",
-              },
-              {
-                label: "Avec mlInput",
-                value: rows.filter((r) => r.Order_ID !== "—").length,
-                color: "text-green-600",
-              },
-              {
-                label: "Sans mlInput",
-                value: rows.filter((r) => r.Order_ID === "—").length,
-                color: "text-amber-600",
-              },
-              {
-                label: "Suspectes",
-                value: rows.filter(
-                  (r) => r.Is_Suspicious === "Yes" || r.Is_Suspicious === "true"
-                ).length,
-                color: "text-red-500",
-              },
-            ].map(({ label, value, color }) => (
-              <div
-                key={label}
-                className="bg-white border border-gray-200 rounded-lg px-4 py-3"
-              >
-                <p className="text-xs text-gray-500">{label}</p>
-                <p
-                  className={`text-2xl font-bold mt-1 tabular-nums ${color}`}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-5">
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                {
+                  label: "Réclamations totales",
+                  value: claims.length,
+                  color: "text-indigo-600",
+                },
+                {
+                  label: "À exporter",
+                  value: toExport,
+                  color: "text-amber-600",
+                },
+                {
+                  label: "Déjà exportées",
+                  value: exportedCount,
+                  color: "text-green-600",
+                },
+              ].map(({ label, value, color }) => (
+                <div key={label}>
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <p
+                    className={`text-2xl font-bold mt-1 tabular-nums ${color}`}
+                  >
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              {exporting ? (
+                <div className="flex items-center gap-3">
+                  <Loader2
+                    size={16}
+                    className="text-indigo-500 animate-spin shrink-0"
+                  />
+                  <div className="text-sm">
+                    <p className="font-medium text-gray-700">
+                      Exportation…
+                      {exportProgress &&
+                        exportProgress.total > 0 && (
+                          <>
+                            {" "}
+                            <span className="tabular-nums">
+                              {exportProgress.processed} /{" "}
+                              {exportProgress.total}
+                            </span>
+                          </>
+                        )}
+                    </p>
+                    {exportProgress && (
+                      <p className="text-xs text-gray-400 mt-0.5 tabular-nums">
+                        {exportProgress.exported} exportée
+                        {exportProgress.exported > 1 ? "s" : ""} ·{" "}
+                        {exportProgress.failed} échec
+                        {exportProgress.failed > 1 ? "s" : ""}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={exportToML}
+                  disabled={toExport === 0}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {value}
-                </p>
-              </div>
-            ))}
+                  <CloudUpload size={14} />
+                  Exporter vers le dataset ML
+                  {toExport > 0 && (
+                    <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-semibold tabular-nums">
+                      {toExport}
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -355,7 +526,7 @@ export default function AdminClaimsPage() {
         )}
 
         {/* ── Empty ── */}
-        {!loading && !error && rows.length === 0 && (
+        {!loading && !error && claims.length === 0 && (
           <div className="bg-white rounded-lg border border-dashed border-gray-200 py-16 text-center">
             <FileWarning size={24} className="mx-auto text-gray-300 mb-2" />
             <p className="text-sm font-medium text-gray-500">
@@ -369,23 +540,40 @@ export default function AdminClaimsPage() {
         )}
 
         {/* ── Table ── */}
-        {!loading && !error && rows.length > 0 && (
+        {!loading && !error && claims.length > 0 && (
           <>
-            {/* Search + pagination info */}
+            {/* Search + filter + pagination info */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="relative w-full sm:w-72">
-                <Search
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-                />
-                <input
-                  id="claims-search"
-                  type="text"
-                  placeholder="Rechercher…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-colors"
-                />
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+                  {FILTERS.map((f) => (
+                    <button
+                      key={f.key}
+                      onClick={() => setExportFilter(f.key)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        exportFilter === f.key
+                          ? "bg-indigo-50 text-indigo-700"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                  />
+                  <input
+                    id="claims-search"
+                    type="text"
+                    placeholder="Rechercher…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-colors"
+                  />
+                </div>
               </div>
               <p className="text-xs text-gray-400 tabular-nums whitespace-nowrap">
                 Page {safePage + 1} / {totalPages} · {sorted.length} ligne
@@ -431,7 +619,11 @@ export default function AdminClaimsPage() {
                         colSpan={COLUMNS.length}
                         className="px-4 py-12 text-center text-sm text-gray-400"
                       >
-                        Aucun résultat pour &quot;{search}&quot;
+                        {exportFilter === "all"
+                          ? `Aucun résultat pour "${search}"`
+                          : exportFilter === "exported"
+                            ? "Aucune réclamation exportée pour le moment."
+                            : "Toutes les réclamations ont été exportées."}
                       </td>
                     </tr>
                   ) : (
@@ -481,6 +673,22 @@ export default function AdminClaimsPage() {
           </>
         )}
       </div>
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className={`
+            fixed right-4 top-4 z-50
+            px-3 py-2 rounded-lg text-xs font-medium shadow-lg
+            ${toast.type === "success"
+              ? "bg-green-50 text-green-700 border border-green-200"
+              : "bg-red-50 text-red-700 border border-red-200"
+            }
+          `}
+        >
+          {toast.msg}
+        </div>
+      )}
     </>
   );
 }

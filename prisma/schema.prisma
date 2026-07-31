@@ -175,6 +175,8 @@ model Claim {
   mlFailed      Boolean     @default(false)
   mlAttempts    Int         @default(0)
   mlInput       Json?
+  exportedToML  Boolean     @default(false)
+  exportedAt    DateTime?
   vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([vendorId, orderId])
