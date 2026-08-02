@@ -388,6 +388,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
     vendorId: input.vendor.id,
     orderId:  input.orderId,
     source:   input.source,
+    type:     claim.type,
     autoApproved,
     autoRejected,
   })
