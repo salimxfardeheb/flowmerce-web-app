@@ -7,6 +7,7 @@ Plateforme SaaS B2B de gestion des retours et détection de fraude pour e-commer
 ## Fonctionnalités
 
 - **Gestion des réclamations** — Création, suivi et résolution de réclamations via API ou portail client white-label
+- **Formulaire de retour embarqué** — API JSON générique (`GET /api/v1/return-form` + `POST /api/v1/returns`) permettant à toute boutique e-commerce (Shopify, WooCommerce, Magento, PrestaShop…) d'embarquer le formulaire de retour Flowmerce sans dupliquer de logique métier
 - **Détection de fraude** — Score de fraude cross-vendeur (0–100) basé sur l'historique client
 - **Intégration ML** — Décisions automatiques via un modèle Python hébergé séparément
 - **Portail white-label** — Page de dépôt de réclamation brandée, accessible via lien token
@@ -23,10 +24,10 @@ Plateforme SaaS B2B de gestion des retours et détection de fraude pour e-commer
 | Framework | Next.js 16 (App Router) + React 19 |
 | Langage | TypeScript 5 |
 | Style | Tailwind CSS 4 |
-| Base de données | PostgreSQL (Neon serverless) |
+| Base de données | PostgreSQL (Supabase) |
 | ORM | Prisma 7 |
 | Auth | NextAuth v5 (beta) |
-| Stockage fichiers | Cloudinary |
+| Stockage fichiers | Supabase Storage |
 | Email | Nodemailer (Gmail) |
 | ML backend | API HTTP externe (Render) |
 | Déploiement | Vercel |
@@ -37,8 +38,7 @@ Plateforme SaaS B2B de gestion des retours et détection de fraude pour e-commer
 
 - Node.js ≥ 20
 - npm ≥ 10
-- Une base de données PostgreSQL (ou compte [Neon](https://neon.tech))
-- Compte Cloudinary (upload de documents)
+- Une base de données PostgreSQL (ou compte [Supabase](https://supabase.com) — base + Storage documents)
 - Compte Gmail avec mot de passe applicatif (notifications)
 - ML backend déployé séparément (optionnel pour dev local)
 
@@ -73,18 +73,16 @@ L'application est accessible sur `http://localhost:3000`.
 
 | Variable | Description |
 |---|---|
-| `DATABASE_URL` | URL de connexion PostgreSQL (Neon) |
+| `DATABASE_URL` | URL de connexion PostgreSQL (Supabase) |
+| `DIRECT_URL` | URL directe PostgreSQL pour Prisma (migrations) |
 | `NEXTAUTH_SECRET` | Secret de session NextAuth (32+ caractères) |
 | `AUTH_SECRET` | Secret alternatif pour l'auth |
-| `NEXTAUTH_URL` | URL de base pour les callbacks auth |
+| `SUPABASE_URL` | URL du projet Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clé service Supabase (Storage documents) |
 | `ML_API_URL` | Endpoint du modèle ML |
 | `ML_INTERNAL_SECRET` | Clé secrète pour les appels ML internes |
 | `GMAIL_USER` | Adresse Gmail pour les notifications |
 | `GMAIL_APP_PASSWORD` | Mot de passe applicatif Gmail (16 caractères) |
-| `CLOUDINARY_CLOUD_NAME` | Nom du cloud Cloudinary |
-| `CLOUDINARY_API_KEY` | Clé API Cloudinary |
-| `CLOUDINARY_API_SECRET` | Secret API Cloudinary |
-| `CLOUDINARY_URL` | URL complète Cloudinary |
 | `CRON_SECRET` | Secret d'autorisation pour les cron Vercel |
 | `NEXT_PUBLIC_BASE_URL` | URL publique de base (côté client) |
 | `LOG_LEVEL` | Niveau de log (`debug`/`info`/`warn`/`error`) |
@@ -122,11 +120,15 @@ flowmerce-web-app/
 │   │   └── clients/[vendorId]/   # Vue analytique par vendeur
 │   ├── return/[token]/           # Portail client white-label
 │   └── api/                      # Routes API REST
+│       ├── v1/
+│       │   ├── return-form/      # GET — définition JSON du formulaire embarqué
+│       │   └── returns/          # POST — soumission des réponses du formulaire
 │       ├── claims/               # CRUD réclamations
 │       ├── vendors/              # Gestion vendeurs & documents
 │       ├── api-keys/             # Cycle de vie des clés API
 │       ├── return-policy/        # Politique de retour
 │       ├── return-sessions/      # Génération de liens portail
+│       ├── checkout-session/     # Génération de lien portail (version simple)
 │       ├── fraud/                # Rapports de refus
 │       ├── predict/              # Appel direct ML
 │       ├── cron/                 # Jobs planifiés (retry ML)
@@ -135,6 +137,7 @@ flowmerce-web-app/
 ├── lib/
 │   ├── services/
 │   │   ├── claim-ingestion.ts    # Service unifié de création de réclamation
+│   │   ├── return-form-builder.ts# Vendor + ReturnPolicy → formulaire JSON générique
 │   │   ├── ml.ts                 # Intégration modèle ML
 │   │   ├── notification.ts       # Notifications email
 │   │   └── return-policy.ts      # Logique politique de retour
@@ -144,6 +147,7 @@ flowmerce-web-app/
 ├── prisma/
 │   ├── schema.prisma             # Schéma de base de données
 │   └── seed.ts                   # Données de test
+├── android/                      # Application mobile Capacitor (Android)
 └── docs/                         # Documentation interne
 ```
 
@@ -171,7 +175,7 @@ Les modèles principaux de la base de données :
 
 ### Cycle de vie d'une réclamation
 
-Une réclamation peut être soumise par deux canaux : l'**API REST** (depuis la plateforme du vendeur) ou le **portail white-label** (directement par le client final). Dans les deux cas, le traitement passe par le même service central `ingestClaim`.
+Une réclamation peut être soumise par **trois canaux** : l'**API REST** (depuis la plateforme du vendeur), le **formulaire embarqué** (`POST /api/v1/returns`, formulaire JSON généré par `GET /api/v1/return-form`) ou le **portail white-label** (directement par le client final). Dans tous les cas, le traitement passe par le même service central `ingestClaim`. Le choix du canal n'affecte que l'authentification et le mapping des champs ; la validation de politique, le score de fraude, la déduplication et l'appel ML sont identiques.
 
 ```
 Client / API vendeur
@@ -312,6 +316,60 @@ Le modèle ML reçoit un payload de 19 champs structurés décrivant la réclama
 
 ---
 
+## Formulaire de retour embarqué
+
+Flowmerce est la **source de vérité unique** pour les retours : le formulaire (champs, motifs, résolutions, règles de validation) est **généré dynamiquement** à partir du compte vendeur et de sa `ReturnPolicy`, puis embarqué dans la boutique partenaire. La boutique ne code jamais en dur les champs ni les motifs — elle restitue le JSON tel quel.
+
+### Flux en deux étapes
+
+```
+1. GET  /api/v1/return-form      → définition du formulaire (JSON générique)
+                                     → rendu dynamique côté boutique
+2. POST /api/v1/returns          → soumission { orderId, productId, answers }
+                                     → Flowmerce valide et répond claim_id + statut
+```
+
+- **`GET /api/v1/return-form`** — identifie le vendeur par sa clé API (Bearer **ou** `x-api-key`), construit le formulaire via `buildReturnForm(vendor, returnPolicy)` (`lib/services/return-form-builder.ts`) : sections `order` / `reason` / `resolution` / `description`, options de motifs et de résolutions **filtrées** par la politique (`acceptedReturnReasons`, `acceptedTypes`), règles de validation pilotées par le JSON, et `meta.policy` résumé (délai, catégories non remboursables, échange seul…). Le JSON n'expose **jamais** les données sensibles de la politique.
+- **`POST /api/v1/returns`** — reçoit un body générique `{ orderId, productId, answers: { fieldId: valeur } }`. Chaque réponse est **revalidée côté serveur contre la définition du formulaire** (champs requis, types, longueurs, HTML, options valides), puis mappée vers `checkReturnPolicy` → `ingestClaim` (score de fraude, déduplication sur `vendorId + orderId`, appel ML, auto-approve `AI_AUTO`). Aucune règle de politique n'est dupliquée dans la route.
+
+### Exemple de soumission
+
+```json
+POST /api/v1/returns
+x-api-key: <VOTRE_CLE_API_FLOWMERCE>
+{
+  "orderId": "CMD-1234",
+  "productId": "PROD-5678",
+  "answers": {
+    "customer_name": "Ahmed Benali",
+    "customer_email": "client@exemple.com",
+    "customer_phone": "0555123456",
+    "product_name": "Nike Air Max",
+    "order_date": "2026-07-15",
+    "reason": "Produit défectueux",
+    "desired_resolution": "REFUND",
+    "description": "Le produit est arrivé endommagé."
+  }
+}
+```
+
+Réponse `201` : `{ success, claim_id, status, message }` — `status` ∈ `PENDING` / `APPROVED` / `REJECTED` / `IN_PROGRESS`.
+
+### Erreurs possibles
+
+| Code | Signification |
+|---|---|
+| `400` | Réponse invalide par rapport à la définition du formulaire (requis, type, option, HTML, longueur) |
+| `401` | Clé API manquante, invalide ou révoquée |
+| `403` | Compte vendeur non approuvé |
+| `409` | Une demande de retour existe déjà pour cette commande |
+| `422` | Refus par la politique du vendeur (`DELAY_EXCEEDED`, `CLAIM_TYPE_NOT_ACCEPTED`…) |
+| `429` | Rate limit dépassé (par IP+commande, ou par client sur 24 h) |
+
+> 📄 Guide d'intégration complet pour les plateformes partenaires : `integration-formulaire-retour-flowmerce.md`.
+
+---
+
 ### Onboarding vendeur
 
 Un vendeur suit ce parcours avant de pouvoir utiliser la plateforme :
@@ -330,7 +388,7 @@ Revue admin → APPROVED / REJECTED / DOCUMENTS_REQUESTED
 Accès dashboard + génération clés API
 ```
 
-Les documents sont stockés sur Cloudinary. L'admin peut demander des compléments (`DOCUMENTS_REQUESTED`) sans rejeter définitivement le dossier.
+Les documents sont stockés sur Supabase Storage. L'admin peut demander des compléments (`DOCUMENTS_REQUESTED`) sans rejeter définitivement le dossier.
 
 ---
 
@@ -342,6 +400,14 @@ Les appels API externes (ingestion de réclamations) s'authentifient via une cl�
 Authorization: Bearer <api_key>
 ```
 
+ou, pour les endpoints publics (`GET /api/v1/return-form`, `POST /api/v1/returns`), également via :
+
+```
+x-api-key: <api_key>
+```
+
+**NB :** l'endpoint `POST /api/claims/create` n'accepte **que** `x-api-key`. Pour rester compatible partout, utilisez systématiquement `x-api-key`.
+
 Les clés API sont générées depuis le dashboard vendeur (`/dashboard/api-keys`). Chaque clé trace sa dernière utilisation (`lastUsedAt`) et peut être révoquée individuellement.
 
 ---
@@ -351,8 +417,7 @@ Les clés API sont générées depuis le dashboard vendeur (`/dashboard/api-keys
 Pour peupler la base avec des données de démonstration :
 
 ```bash
-npm run db:studio   # Vérifier l'état de la base
 npx ts-node prisma/seed.ts
 ```
 
-Voir `docs/seed-discussion.md` pour le détail des données générées.
+Le seed crée un vendeur de démonstration approuvé (politique MANUAL) et des réclamations couvrant toutes les combinaisons statut × type × source × ML × fraude.
