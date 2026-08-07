@@ -1,0 +1,50 @@
+# ─── Dépendances (réinstallées dans l'image via npm ci) ───────────
+node_modules
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# ─── Artefacts de build (regénérés dans l'image) ──────────────────
+.next
+out
+build
+*.tsbuildinfo
+next-env.d.ts
+
+# ─── Secrets — JAMAIS dans l'image ────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+
+# ─── Git / CI ─────────────────────────────────────────────────────
+.git
+.gitignore
+.github
+.vercel
+
+# ─── Tests & couverture ───────────────────────────────────────────
+__tests__
+coverage
+vitest.config.ts
+
+# ─── Build mobile Capacitor (inutile au serveur Next.js) ──────────
+android
+capacitor.config.ts
+assets
+
+# ─── Docker ───────────────────────────────────────────────────────
+Dockerfile
+.dockerignore
+
+# ─── Logs ─────────────────────────────────────────────────────────
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── Documentation & IDE / OS ─────────────────────────────────────
+*.md
+.claude
+.vscode
+.idea
+**/.DS_Store
