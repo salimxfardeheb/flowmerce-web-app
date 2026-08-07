@@ -159,6 +159,25 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
     ...input.prediction,
   })
 
+  // 2 bis. Enrichissement du payload ML avec les signaux que seul ingestClaim
+  // connaît (fraud score, past returns, seuil suspicious). Fait AVANT la
+  // création pour que `mlInput` persisté soit exactement le payload envoyé au
+  // ML — sinon les placeholders à 0 de buildMLPayload restent en base et
+  // repartent tels quels à l'export /save_claim et au worker retry-ml.
+  const returnPolicy = input.mlPayload
+    ? await prisma.returnPolicy.findUnique({ where: { vendorId: input.vendor.id } })
+    : null
+
+  const enrichedMlPayload = input.mlPayload
+    ? {
+        ...input.mlPayload,
+        Fraud_Score:           fraudScore,
+        Customer_Past_Returns: pastReturns,
+        Is_Suspicious:
+          pastReturns >= (returnPolicy?.fraudReturnThreshold ?? 4) ? 1 : 0,
+      }
+    : null
+
   // 3. Création atomique : dédup (vendorId, orderId) + incrément fraud record
   let claim
   try {
@@ -195,8 +214,8 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
           ipAddress:     input.ipAddress ?? null,
           aiDecision:    null,
           prediction:    predictionData as unknown as Prisma.InputJsonValue,
-          mlInput:       input.mlPayload
-            ? (input.mlPayload as Prisma.InputJsonValue)
+          mlInput:       enrichedMlPayload
+            ? (enrichedMlPayload as Prisma.InputJsonValue)
             : Prisma.JsonNull,
         },
       })
@@ -226,24 +245,10 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
       .catch((e) => log.error('claim_ingestion.api_key_update_error', { err: String(e) }))
   }
 
-  // 5. Appel ML (si payload fourni)
-  //    On enrichit le payload avec les signaux que seul ingestClaim connaît
-  //    (fraud score, past returns, seuil suspicious) avant l'envoi au ML.
+  // 5. Appel ML (si payload fourni) — sur le payload enrichi persisté en 2 bis.
   let finalAiDecision: AIDecision | null = null
   let refundEligible = false
-  const returnPolicy = input.mlPayload
-    ? await prisma.returnPolicy.findUnique({ where: { vendorId: input.vendor.id } })
-    : null
-  if (input.mlPayload) {
-    const suspiciousThreshold = returnPolicy?.fraudReturnThreshold ?? 4
-
-    const enrichedMlPayload = {
-      ...input.mlPayload,
-      Fraud_Score:           fraudScore,
-      Customer_Past_Returns: pastReturns,
-      Is_Suspicious:         pastReturns >= suspiciousThreshold ? 1 : 0,
-    }
-
+  if (enrichedMlPayload) {
     const mlResult = await callMLPredict(enrichedMlPayload)
     if (mlResult.ok) {
       const pred  = mlResult.prediction as MLPredictionOutput

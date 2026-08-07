@@ -206,13 +206,16 @@ export interface BuildReclamationInputFromClaimInput {
   orderId: string
   productName: string | null
   orderDate: Date | null
+  // Date de dépôt de la réclamation — sert de Return_Date quand le mlInput
+  // persisté n'en contient pas (le formulaire ne collecte pas ce champ).
+  createdAt?: Date | null
   type: 'EXCHANGE' | 'REFUND' | 'REPAIR' | null
   aiDecision: string | null
   vendor: { companyName: string }
   mlInput: Record<string, unknown> | null
 }
 
-const TYPE_TO_RESOLUTION = {
+export const TYPE_TO_RESOLUTION = {
   EXCHANGE: 'Exchange',
   REFUND:   'Refund',
   REPAIR:   'Repair',
@@ -276,7 +279,10 @@ export function buildReclamationInputFromClaim(
       mlv.Order_Date,
       claim.orderDate ? toDateStr(claim.orderDate.toISOString(), today) : today,
     ),
-    Return_Date:               toDateStr(mlv.Return_Date, today),
+    Return_Date:               toDateStr(
+      mlv.Return_Date,
+      claim.createdAt ? toDateStr(claim.createdAt.toISOString(), today) : today,
+    ),
     Days_to_Return:            toNum(mlv.Days_to_Return, 0),
     Shop_Return_Window_Days:   toNum(mlv.Shop_Return_Window_Days, 14),
     Within_Return_Policy:      toFlag(mlv.Within_Return_Policy, 1),

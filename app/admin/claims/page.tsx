@@ -17,47 +17,17 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface MlInput {
-  Order_ID?: string;
-  Customer_ID?: string;
-  Customer_Age?: number;
-  Customer_Gender?: string;
-  Customer_Wilaya?: string;
-  Customer_Past_Returns?: number;
-  Shop_Name?: string;
-  Product_Category?: string;
-  Product_Name?: string;
-  Product_Price_DA?: number;
-  Order_Quantity?: number;
-  Total_Amount_DA?: number;
-  Payment_Method?: string;
-  Shipping_Method?: string;
-  Shipping_Cost_DA?: number;
-  Order_Date?: string;
-  Return_Date?: string;
-  Days_to_Return?: number;
-  Shop_Return_Window_Days?: number;
-  Within_Return_Policy?: boolean | string;
-  Return_Reason?: string;
-  Resolution?: string;
-  Return_Shipping_Paid_By?: string;
-  Refund_Amount_DA?: number;
-  Fraud_Score?: number;
-  Is_Suspicious?: boolean | string;
-  Customer_Satisfaction?: number | string;
-}
+// Ligne ML telle que dérivée côté serveur par buildReclamationInputFromClaim
+// (cf. /api/admin/claims) : c'est le payload exact envoyé à /save_claim.
+// Les clés absentes correspondent aux claims sans mlInput persisté.
+type MlRow = Partial<Record<MlField, unknown>>;
 
 interface ClaimRow {
   id: string;
-  orderId: string;
-  productName: string | null;
-  orderDate: string | null;
-  type: "EXCHANGE" | "REFUND" | "REPAIR" | null;
-  aiDecision: string | null;
-  mlInput: MlInput | null;
   exportedToML: boolean;
   exportedAt: string | null;
-  vendor: { companyName: string };
+  hasMlInput: boolean;
+  row: MlRow;
 }
 
 interface FlatRow {
@@ -91,6 +61,9 @@ interface FlatRow {
   Customer_Satisfaction: string;
 }
 
+// Toutes les colonnes ML, hors clé technique `id`.
+type MlField = Exclude<keyof FlatRow, "id">;
+
 type ExportFilter = "all" | "pending" | "exported";
 
 interface ExportProgress {
@@ -103,7 +76,7 @@ interface ExportProgress {
 
 // ── Column definitions ───────────────────────────────────────────────────────
 
-const COLUMNS: { key: keyof FlatRow; label: string; minW?: string }[] = [
+const COLUMNS: { key: MlField; label: string; minW?: string }[] = [
   { key: "Order_ID", label: "Order ID", minW: "120px" },
   { key: "Customer_ID", label: "Customer ID", minW: "120px" },
   { key: "Customer_Age", label: "Age", minW: "60px" },
@@ -144,43 +117,17 @@ const FILTERS: { key: ExportFilter; label: string }[] = [
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function str(v: unknown): string {
-  if (v === null || v === undefined) return "—";
+  if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "boolean") return v ? "Yes" : "No";
   return String(v);
 }
 
+// La ligne arrive déjà dérivée du serveur : on ne fait que la mettre en
+// chaînes pour l'affichage, colonne par colonne.
 function flattenClaim(claim: ClaimRow): FlatRow {
-  const ml = claim.mlInput ?? ({} as MlInput);
-  return {
-    id: claim.id,
-    Order_ID: str(ml.Order_ID),
-    Customer_ID: str(ml.Customer_ID),
-    Customer_Age: str(ml.Customer_Age),
-    Customer_Gender: str(ml.Customer_Gender),
-    Customer_Wilaya: str(ml.Customer_Wilaya),
-    Customer_Past_Returns: str(ml.Customer_Past_Returns),
-    Shop_Name: str(ml.Shop_Name),
-    Product_Category: str(ml.Product_Category),
-    Product_Name: str(ml.Product_Name),
-    Product_Price_DA: str(ml.Product_Price_DA),
-    Order_Quantity: str(ml.Order_Quantity),
-    Total_Amount_DA: str(ml.Total_Amount_DA),
-    Payment_Method: str(ml.Payment_Method),
-    Shipping_Method: str(ml.Shipping_Method),
-    Shipping_Cost_DA: str(ml.Shipping_Cost_DA),
-    Order_Date: str(ml.Order_Date),
-    Return_Date: str(ml.Return_Date),
-    Days_to_Return: str(ml.Days_to_Return),
-    Shop_Return_Window_Days: str(ml.Shop_Return_Window_Days),
-    Within_Return_Policy: str(ml.Within_Return_Policy),
-    Return_Reason: str(ml.Return_Reason),
-    Resolution: str(claim.aiDecision ?? ml.Resolution),
-    Return_Shipping_Paid_By: str(ml.Return_Shipping_Paid_By),
-    Refund_Amount_DA: str(ml.Refund_Amount_DA),
-    Fraud_Score: str(ml.Fraud_Score),
-    Is_Suspicious: str(ml.Is_Suspicious),
-    Customer_Satisfaction: str(ml.Customer_Satisfaction),
-  };
+  const flat = { id: claim.id } as FlatRow;
+  for (const col of COLUMNS) flat[col.key] = str(claim.row[col.key]);
+  return flat;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -241,12 +188,21 @@ export default function AdminClaimsPage() {
 
   // ── Stats ──────────────────────────────────────────────────────────────────
 
+  const byId = useMemo(
+    () => new Map(claims.map((c) => [c.id, c])),
+    [claims]
+  );
   const toExport = useMemo(
     () => claims.filter((c) => !c.exportedToML).length,
     [claims]
   );
   const exportedCount = useMemo(
     () => claims.filter((c) => c.exportedToML).length,
+    [claims]
+  );
+  // Ignorées par l'export : aucune donnée ML persistée sur la claim.
+  const noMlDataCount = useMemo(
+    () => claims.filter((c) => !c.hasMlInput).length,
     [claims]
   );
 
@@ -323,11 +279,8 @@ export default function AdminClaimsPage() {
   const exportFiltered = useMemo(() => {
     if (exportFilter === "all") return rows;
     const target = exportFilter === "exported";
-    return rows.filter((r) => {
-      const claim = claims.find((c) => c.id === r.id);
-      return claim ? claim.exportedToML === target : false;
-    });
-  }, [rows, claims, exportFilter]);
+    return rows.filter((r) => byId.get(r.id)?.exportedToML === target);
+  }, [rows, byId, exportFilter]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return exportFiltered;
@@ -412,7 +365,7 @@ export default function AdminClaimsPage() {
         {/* Stats + Export */}
         {!loading && !error && (
           <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-5">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 {
                   label: "Réclamations totales",
@@ -428,6 +381,11 @@ export default function AdminClaimsPage() {
                   label: "Déjà exportées",
                   value: exportedCount,
                   color: "text-green-600",
+                },
+                {
+                  label: "Sans données ML",
+                  value: noMlDataCount,
+                  color: "text-gray-400",
                 },
               ].map(({ label, value, color }) => (
                 <div key={label}>
@@ -627,21 +585,33 @@ export default function AdminClaimsPage() {
                       </td>
                     </tr>
                   ) : (
-                    paginated.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="hover:bg-gray-50 transition-colors"
-                      >
-                        {COLUMNS.map((col) => (
-                          <td
-                            key={col.key}
-                            className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap"
-                          >
-                            {row[col.key]}
-                          </td>
-                        ))}
-                      </tr>
-                    ))
+                    paginated.map((row) => {
+                      const noMlData = byId.get(row.id)?.hasMlInput === false;
+                      return (
+                        <tr
+                          key={row.id}
+                          className={`hover:bg-gray-50 transition-colors ${
+                            noMlData ? "bg-gray-50/60" : ""
+                          }`}
+                          title={
+                            noMlData
+                              ? "Aucune donnée ML enregistrée — cette réclamation sera ignorée par l'export."
+                              : undefined
+                          }
+                        >
+                          {COLUMNS.map((col) => (
+                            <td
+                              key={col.key}
+                              className={`px-4 py-3 text-sm whitespace-nowrap ${
+                                noMlData ? "text-gray-400 italic" : "text-gray-700"
+                              }`}
+                            >
+                              {row[col.key]}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
