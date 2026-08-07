@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Store, LayoutDashboard } from "lucide-react";
+import { ClipboardList, Store, LayoutDashboard, FileWarning } from "lucide-react";
 
 const adminLinks = [
   {
@@ -16,6 +16,12 @@ const adminLinks = [
     label: "Boutiques",
     sublabel: "Vendeurs approuvés",
     Icon: Store,
+  },
+  {
+    href: "/admin/claims",
+    label: "Réclamations",
+    sublabel: "Données ML & vendeurs",
+    Icon: FileWarning,
   },
 ];
 
