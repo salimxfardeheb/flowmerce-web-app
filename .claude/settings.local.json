@@ -44,7 +44,8 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\simou\\\\Bureau\\\\work\\\\Github\\\\FLOWMERCE\\\\flowmerce-web-app\" -Force)",
       "Bash(Select-Object -Property Name, PSIsContainer)",
       "Bash(Format-Table -AutoSize)",
-      "Bash(node --env-file=.env.local \"/private/tmp/claude-502/-Users-salim-github-flowmerce-flowmerce-web-app/cb8e1d08-bff7-4c4b-9460-3270faa2bb48/scratchpad/remap-refund.mjs\")"
+      "Bash(node --env-file=.env.local \"/private/tmp/claude-502/-Users-salim-github-flowmerce-flowmerce-web-app/cb8e1d08-bff7-4c4b-9460-3270faa2bb48/scratchpad/remap-refund.mjs\")",
+      "Bash(npx vitest *)"
     ]
   }
 }
