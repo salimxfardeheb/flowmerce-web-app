@@ -346,7 +346,12 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
       decision: finalAiDecision,
     })
   } else if (finalAiDecision) {
-    if (returnPolicy?.validationMode === 'AI_AUTO') {
+    // Le remboursement (type REFUND) n'est JAMAIS auto-approuvé : c'est un
+    // choix du client stocké dans claim.type, distinct de aiDecision — le
+    // vendeur doit valider chaque remboursement manuellement, même en
+    // validationMode AI_AUTO. Les échanges/réparations (EXCHANGE/REPAIR)
+    // conservent le comportement auto-approve existant.
+    if (returnPolicy?.validationMode === 'AI_AUTO' && input.type !== 'REFUND') {
       const autoApprovedPrediction = {
         ...(claim.prediction as Prisma.JsonObject),
         autoApprovedAt: new Date().toISOString(),

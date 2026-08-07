@@ -80,7 +80,7 @@ export default async function ClaimsPage({
 
   const [claims, allScopedClaims] = await Promise.all([
     prisma.claim.findMany({ where, orderBy: { createdAt: 'desc' } }),
-    prisma.claim.findMany({ where: scopeWhere, select: { id: true, status: true, aiDecision: true, fraudScore: true, apiKeyId: true } }),
+    prisma.claim.findMany({ where: scopeWhere, select: { id: true, status: true, type: true, aiDecision: true, fraudScore: true, apiKeyId: true } }),
   ])
 
   // Lire le validationMode du vendeur (pour le toggle auto-approve)
@@ -91,6 +91,9 @@ export default async function ClaimsPage({
 
   const total    = allScopedClaims.length
   const pending  = allScopedClaims.filter(c => c.status === 'PENDING').length
+  const pendingRefunds = allScopedClaims.filter(
+    c => c.status === 'PENDING' && c.type === 'REFUND'
+  ).length
   const withML   = allScopedClaims.filter(c => c.aiDecision !== null).length
   const highRisk = allScopedClaims.filter(c => (c.fraudScore ?? 0) >= 60).length
 
@@ -157,6 +160,15 @@ export default async function ClaimsPage({
               className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
             >
               {pending} en attente
+              <ChevronRight className="w-4 h-4" />
+            </a>
+          )}
+          {pendingRefunds > 0 && (
+            <a
+              href={buildUrl({ status: 'PENDING', type: 'REFUND' })}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+            >
+              {pendingRefunds} remboursement{pendingRefunds > 1 ? 's' : ''} en attente
               <ChevronRight className="w-4 h-4" />
             </a>
           )}
