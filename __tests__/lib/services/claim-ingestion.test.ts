@@ -206,6 +206,59 @@ describe('ingestClaim', () => {
       }
     })
 
+    it("n'auto-approuve JAMAIS un remboursement (type=REFUND), même en AI_AUTO", async () => {
+      mockPrisma.returnPolicy.findUnique.mockResolvedValue({ ...mockPolicyData, validationMode: 'AI_AUTO' })
+      mockReturnPolicy.checkReturnPolicy.mockReturnValue({ ok: true, forceExchange: false })
+      mockML.callMLPredict.mockResolvedValue({
+        ok: true,
+        prediction: {
+          resolution: {
+            prediction: 'Repair',
+            probabilities: { Repair: 0.8, Exchange: 0.2, Reject: 0 },
+          },
+        },
+      })
+      mockPrisma.claim.update.mockResolvedValue({ ...mockClaim, status: 'PENDING', aiDecision: 'Repair' })
+
+      const { ingestClaim } = await import('@/lib/services/claim-ingestion')
+      const result = await ingestClaim({ ...baseInput, type: 'REFUND', mlPayload: { some: 'data' } })
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.claim.status).toBe('PENDING')
+        expect(result.claim.aiDecision).toBe('Repair')
+        expect(result.claim.autoApproved).toBe(false)
+        expect(result.claim.autoRejected).toBe(false)
+        expect(mockPrisma.claim.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ aiDecision: 'Repair' }) }),
+        )
+      }
+    })
+
+    it('auto-rejette un ref (REFUND) si ML prédit Reject', async () => {
+      mockPrisma.returnPolicy.findUnique.mockResolvedValue({ ...mockPolicyData, validationMode: 'AI_AUTO' })
+      mockML.callMLPredict.mockResolvedValue({
+        ok: true,
+        prediction: {
+          resolution: {
+            prediction: 'Reject',
+            probabilities: { Reject: 0.95, Exchange: 0.05, Repair: 0 },
+          },
+        },
+      })
+      mockPrisma.claim.update.mockResolvedValue({ ...mockClaim, status: 'REJECTED', aiDecision: 'Reject' })
+
+      const { ingestClaim } = await import('@/lib/services/claim-ingestion')
+      const result = await ingestClaim({ ...baseInput, type: 'REFUND', mlPayload: { some: 'data' } })
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.claim.status).toBe('REJECTED')
+        expect(result.claim.autoRejected).toBe(true)
+        expect(result.claim.aiDecision).toBe('Reject')
+      }
+    })
+
     it('auto-rejette si ML prédit Reject', async () => {
       mockPrisma.returnPolicy.findUnique.mockResolvedValue(mockPolicyData)
       mockML.callMLPredict.mockResolvedValue({

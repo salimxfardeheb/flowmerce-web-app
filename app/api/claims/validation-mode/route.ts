@@ -54,11 +54,13 @@ export async function PATCH(req: NextRequest) {
   // Si activation AI_AUTO → approuver les claims PENDING ayant une
   // recommandation ML approuvable (Exchange | Repair). Les claims sans
   // décision ML (ou hors contrat) restent PENDING : le vendeur tranche.
+  // Les remboursements (type REFUND) sont TOUJOURS exclus : le vendeur doit
+  // valider chaque remboursement manuellement, même en mode AI_AUTO.
   let approved = 0
 
   if (newMode === 'AI_AUTO') {
     const pendingClaims = await prisma.claim.findMany({
-      where:  { vendorId, status: 'PENDING', aiDecision: { in: ['Exchange', 'Repair'] } },
+      where:  { vendorId, status: 'PENDING', type: { not: 'REFUND' }, aiDecision: { in: ['Exchange', 'Repair'] } },
       select: {
         id:            true,
         aiDecision:    true,

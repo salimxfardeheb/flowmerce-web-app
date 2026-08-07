@@ -120,8 +120,11 @@ export async function POST(req: NextRequest) {
   }
 
   // 6. Return policy : refus si la politique du vendeur n'est pas respectée
-  //    (délai, catégorie non remboursable). Le type vient de desired_resolution
-  //    (choix client) ; le ML stocke sa recommandation à part dans aiDecision.
+  //    (délai, catégorie non remboursable, type non accepté). Le type vient de
+  //    desired_resolution (choix client) ; le ML stocke sa recommandation à
+  //    part dans aiDecision et ne modifie jamais claim.type.
+  const desiredResolution = String(body.desired_resolution).toUpperCase() as 'EXCHANGE' | 'REFUND' | 'REPAIR'
+
   const orderDateRaw = body.order_date ? new Date(String(body.order_date)) : null
   const validOrderDate = orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null
   const daysToReturn = validOrderDate
@@ -135,6 +138,7 @@ export async function POST(req: NextRequest) {
   const policyCheck = checkReturnPolicy(returnPolicy, {
     daysToReturn,
     productCategory,
+    claimType: desiredResolution,
   })
   if (!policyCheck.ok) {
     return NextResponse.json(
@@ -177,8 +181,6 @@ export async function POST(req: NextRequest) {
   })
 
   // 9. Délégation au service unifié
-  const desiredResolution = String(body.desired_resolution).toUpperCase() as 'EXCHANGE' | 'REFUND' | 'REPAIR'
-
   const result = await ingestClaim({
     vendor:    { id: keyRecord.vendorId, companyName: keyRecord.vendor.companyName },
     apiKeyId:  keyRecord.id,
@@ -221,6 +223,7 @@ export async function POST(req: NextRequest) {
     vendorId:            keyRecord.vendorId,
     orderId,
     reason,
+    desiredResolution,
     customerPastReturns: result.customerPastReturns,
     source:              body.source === 'hosted_page' ? 'HOSTED_PAGE' : 'API',
     ip,

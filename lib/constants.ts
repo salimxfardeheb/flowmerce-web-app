@@ -18,6 +18,20 @@ export const RETURN_REASONS = [
 ] as const
 export type ReturnReason = (typeof RETURN_REASONS)[number]
 
+// ── Descriptions des raisons (page hébergée + formulaire API) ────────────────
+export const RETURN_REASON_DESCRIPTIONS: Record<ReturnReason, string> = {
+  'Produit défectueux':          'Le produit est endommagé ou ne fonctionne pas',
+  'Produit contrefait':          'Le produit semble être une contrefaçon',
+  'Produit endommagé livraison': 'Le produit a été abîmé pendant le transport',
+  "Changement d'avis":           "Je n'ai plus besoin de ce produit",
+  'Panne après utilisation':     'Le produit est tombé en panne rapidement',
+  'Mauvaise taille':             'La taille ou la couleur ne correspond pas',
+  'Allergie/Réaction':           'Réaction allergique au produit',
+  'Ne correspond pas':           'Le produit reçu est différent de la commande',
+  'Erreur de commande vendeur':  'Mauvais produit envoyé par la boutique',
+  'Pièces manquantes':           'Des éléments manquent dans le colis',
+}
+
 // ── Raisons externes (anglais — API partenaires) ──────────────────────────────
 export const EXTERNAL_RETURN_REASONS = [
   'DEFECTIVE', 'WRONG_ITEM', 'DESCRIPTION', 'CHANGE_MIND',
@@ -58,6 +72,12 @@ export const CLAIM_TYPE_LABELS: Record<ClaimTypeValue, string> = {
   EXCHANGE: 'Échange',
   REFUND:   'Remboursement',
   REPAIR:   'Réparation',
+}
+
+export const CLAIM_TYPE_DESCRIPTIONS: Record<ClaimTypeValue, string> = {
+  EXCHANGE: 'Je souhaite un produit de remplacement',
+  REFUND:   'Je souhaite être remboursé(e)',
+  REPAIR:   'Je souhaite que le produit soit réparé',
 }
 
 // Le type d'un claim peut être null tant que le ML n'a pas répondu (la décision
