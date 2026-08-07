@@ -257,18 +257,41 @@ export async function POST(req: NextRequest) {
   }
 
   // 7. Payload ML + ingestion unifiée (fraud score, dédup, auto-approve)
+  //    Champs optionnels du formulaire : lus depuis `ans` quand la plateforme
+  //    cliente les fournit, avec repli sur les défauts si absents.
+
+  const numOrNull = (v: unknown) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  const strOrNull = (v: unknown) => {
+    const s = String(v ?? '').trim()
+    return s ? s : null
+  }
+
+  const productPrice     = numOrNull(ans.product_price)
+  const productQuantity  = numOrNull(ans.order_quantity)
+  const orderTotal       = numOrNull(ans.order_total)
+  const paymentMethod    = strOrNull(ans.payment_method)  ?? 'Unknown'
+  const shippingMethod   = strOrNull(ans.shipping_method) ?? 'Standard'
+  const shippingCost     = numOrNull(ans.shipping_cost)   ?? 0
+  const customerGender   = strOrNull(ans.customer_gender) ?? 'Unknown'
+  const customerAge      = numOrNull(ans.customer_age)
+  const customerWilaya   = strOrNull(ans.customer_wilaya) ?? 'Unknown'
+  const productCategory  = strOrNull(ans.product_category)
+
   const mlPayload = buildMLPayload({
     shopName:           vendor.companyName,
-    productCategory:    null,
-    productPrice:       null,
-    productQuantity:    null,
-    orderTotal:         null,
-    paymentMethod:      'Unknown',
-    shippingMethod:     'Standard',
-    shippingCost:       0,
-    customerGender:     'Unknown',
-    customerAge:        null,
-    customerWilaya:     'Unknown',
+    productCategory,
+    productPrice,
+    productQuantity,
+    orderTotal,
+    paymentMethod,
+    shippingMethod,
+    shippingCost,
+    customerGender,
+    customerAge,
+    customerWilaya,
     reason,
     daysToReturn,
     returnWindowDays:   vendor.returnPolicy?.maxClaimDays ?? 14,
@@ -293,7 +316,18 @@ export async function POST(req: NextRequest) {
     source:        'API',
     ipAddress:     ip,
     orderDate,
-    prediction:    {},
+    prediction: {
+      orderTotal,
+      customerAge,
+      productPrice,
+      shippingCost,
+      paymentMethod,
+      customerGender,
+      customerWilaya,
+      shippingMethod,
+      productCategory,
+      productQuantity,
+    },
     mlPayload,
   })
 
