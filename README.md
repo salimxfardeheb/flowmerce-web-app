@@ -12,8 +12,9 @@ Plateforme SaaS B2B de gestion des retours et détection de fraude pour e-commer
 - **Intégration ML** — Décisions automatiques via un modèle Python hébergé séparément
 - **Portail white-label** — Page de dépôt de réclamation brandée, accessible via lien token
 - **Dashboard vendeur** — Gestion des politiques de retour, clés API, et suivi des réclamations
-- **Panel admin** — Approbation des vendeurs, revue des documents, vue par client
+- **Panel admin** — Approbation des vendeurs, revue des documents, vue par client, export du dataset ML
 - **Notifications email** — Alertes automatiques (soumission, approbation, rejet)
+- **Garde-fou remboursement** — Les demandes de remboursement ne sont jamais auto-approuvées : elles restent soumises à une validation vendeur explicite
 
 ---
 
@@ -27,10 +28,13 @@ Plateforme SaaS B2B de gestion des retours et détection de fraude pour e-commer
 | Base de données | PostgreSQL (Supabase) |
 | ORM | Prisma 7 |
 | Auth | NextAuth v5 (beta) |
-| Stockage fichiers | Supabase Storage |
+| Validation | Zod 3 (schémas d'environnement et de payload) |
+| Stockage fichiers | Supabase Storage (bucket `documents`) |
 | Email | Nodemailer (Gmail) |
 | ML backend | API HTTP externe (Render) |
-| Déploiement | Vercel |
+| Tests | Vitest 4 (+ couverture V8) |
+| Mobile | Capacitor 8 (Android) |
+| Déploiement | Vercel (cron inclus) |
 
 ---
 
@@ -52,11 +56,13 @@ cd flowmerce-web-app
 npm install
 ```
 
-Copier et remplir le fichier d'environnement :
+Créer un fichier `.env.local` à la racine et y renseigner **toutes** les variables listées dans la section [Variables d'environnement](#variables-denvironnement) :
 
 ```bash
-cp .env.example .env.local
+touch .env.local
 ```
+
+> ⚠️ La configuration est validée au démarrage par Zod (`lib/env.ts`). Si une variable est manquante ou malformée (URL invalide, secret trop court…), **l'application refuse de démarrer** avec un message détaillant chaque champ fautif. Il n'y a volontairement pas de `.env.example` versionné.
 
 Appliquer le schéma Prisma et lancer le serveur :
 
@@ -71,21 +77,25 @@ L'application est accessible sur `http://localhost:3000`.
 
 ## Variables d'environnement
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | URL de connexion PostgreSQL (Supabase) |
-| `DIRECT_URL` | URL directe PostgreSQL pour Prisma (migrations) |
-| `NEXTAUTH_SECRET` | Secret de session NextAuth (32+ caractères) |
-| `AUTH_SECRET` | Secret alternatif pour l'auth |
-| `SUPABASE_URL` | URL du projet Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Clé service Supabase (Storage documents) |
-| `ML_API_URL` | Endpoint du modèle ML |
-| `ML_INTERNAL_SECRET` | Clé secrète pour les appels ML internes |
-| `GMAIL_USER` | Adresse Gmail pour les notifications |
-| `GMAIL_APP_PASSWORD` | Mot de passe applicatif Gmail (16 caractères) |
-| `CRON_SECRET` | Secret d'autorisation pour les cron Vercel |
-| `NEXT_PUBLIC_BASE_URL` | URL publique de base (côté client) |
-| `LOG_LEVEL` | Niveau de log (`debug`/`info`/`warn`/`error`) |
+Toutes les variables ci-dessous sont **obligatoires** sauf mention contraire — elles sont validées par Zod au boot (`lib/env.ts`), avec les contraintes indiquées.
+
+| Variable | Contrainte | Description |
+|---|---|---|
+| `DATABASE_URL` | URL | Connexion PostgreSQL (Supabase, pooler) |
+| `DIRECT_URL` | URL | Connexion directe PostgreSQL pour Prisma (migrations) |
+| `NEXTAUTH_SECRET` | ≥ 32 car. | Secret de session NextAuth |
+| `AUTH_SECRET` | ≥ 32 car. | Secret NextAuth v5 (les deux sont requis) |
+| `SUPABASE_URL` | URL | URL du projet Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | non vide | Clé service Supabase (Storage documents) |
+| `ML_API_URL` | URL | Base du modèle ML (`/predict`, `/save_claim`) |
+| `ML_INTERNAL_SECRET` | ≥ 8 car. | Envoyée en en-tête `X-Internal-Key` au ML |
+| `GMAIL_USER` | email | Adresse Gmail pour les notifications |
+| `GMAIL_APP_PASSWORD` | ≥ 16 car. | Mot de passe applicatif Gmail |
+| `CRON_SECRET` | ≥ 32 car. | Autorisation des jobs cron Vercel |
+| `NEXT_PUBLIC_BASE_URL` | URL | URL publique de base (exposée au client) |
+| `LOG_LEVEL` | *optionnel* | Niveau de log (`debug`/`info`/`warn`/`error`) |
+
+`env` est exposé via un Proxy qui **lève une erreur si une variable serveur est lue depuis le bundle client** — seules les clés `NEXT_PUBLIC_*` y sont accessibles.
 
 ---
 
@@ -93,14 +103,19 @@ L'application est accessible sur `http://localhost:3000`.
 
 ```bash
 npm run dev           # Serveur de développement (localhost:3000)
-npm run build         # Build de production
+npm run build         # Build de production (lance `prisma generate` au préalable)
+npm run build:mobile  # Build en mode mobile (MOBILE_BUILD=true, pour Capacitor)
 npm run start         # Démarre le serveur de production
 npm run lint          # Analyse ESLint
-npm run typecheck     # Vérification TypeScript
+npm run typecheck     # Vérification TypeScript (tsc --noEmit)
+npm run test          # Vitest en mode watch
+npm run test:run      # Vitest en une passe (CI)
 npm run db:push       # Applique le schéma Prisma à la base
 npm run db:studio     # Ouvre Prisma Studio (GUI base de données)
 npm run db:generate   # Régénère le client Prisma
 ```
+
+> `postinstall` exécute automatiquement `prisma generate` après chaque `npm install`.
 
 ---
 
@@ -117,17 +132,22 @@ flowmerce-web-app/
 │   │   └── return-policy/        # Configuration politique de retour
 │   ├── admin/                    # Panel administrateur
 │   │   ├── vendors/              # Approbation des vendeurs
+│   │   ├── claims/               # Vue globale des réclamations + export ML
 │   │   └── clients/[vendorId]/   # Vue analytique par vendeur
+│   ├── docs/                     # Documentation d'intégration (page publique)
 │   ├── return/[token]/           # Portail client white-label
 │   └── api/                      # Routes API REST
 │       ├── v1/
 │       │   ├── return-form/      # GET — définition JSON du formulaire embarqué
 │       │   └── returns/          # POST — soumission des réponses du formulaire
+│       ├── admin/claims/         # Vue admin, export dataset ML, save-claim
 │       ├── claims/               # CRUD réclamations
+│       │   └── validation-mode/  # PATCH — bascule MANUAL ↔ AI_AUTO
 │       ├── vendors/              # Gestion vendeurs & documents
 │       ├── api-keys/             # Cycle de vie des clés API
-│       ├── return-policy/        # Politique de retour
+│       ├── return-policy/        # Politique de retour (+ `advanced/`)
 │       ├── return-sessions/      # Génération de liens portail
+│       ├── return/[token]/       # Lecture session + infos vendeur (portail)
 │       ├── checkout-session/     # Génération de lien portail (version simple)
 │       ├── fraud/                # Rapports de refus
 │       ├── predict/              # Appel direct ML
@@ -141,14 +161,18 @@ flowmerce-web-app/
 │   │   ├── ml.ts                 # Intégration modèle ML
 │   │   ├── notification.ts       # Notifications email
 │   │   └── return-policy.ts      # Logique politique de retour
+│   ├── constants.ts              # Source de vérité unique des chaînes métier
+│   ├── env.ts                    # Validation Zod de l'environnement (boot)
 │   ├── fraud-score.ts            # Calcul du score de fraude
+│   ├── rate-limit.ts             # Rate limiting persistant (table dédiée)
+│   ├── storage.ts                # Supabase Storage (upload / URL signée)
 │   └── api-key-auth.ts           # Middleware authentification clé API
 ├── hooks/                        # Hooks React personnalisés
+├── __tests__/                    # Suite Vitest (lib, services, routes API)
 ├── prisma/
 │   ├── schema.prisma             # Schéma de base de données
 │   └── seed.ts                   # Données de test
-├── android/                      # Application mobile Capacitor (Android)
-└── docs/                         # Documentation interne
+└── android/                      # Application mobile Capacitor (Android)
 ```
 
 ---
@@ -164,9 +188,11 @@ Les modèles principaux de la base de données :
 | `ApiKey` | Clés d'authentification API par vendeur |
 | `Document` | Documents d'onboarding vendeur (KYC) |
 | `ReturnPolicy` | Règles de retour par vendeur (seuils, modes, types acceptés) |
-| `Claim` | Réclamation client avec prédiction ML |
+| `Claim` | Réclamation client avec prédiction ML (unique sur `vendorId + orderId`) |
 | `ReturnSession` | Session temporaire pour le portail white-label |
 | `CustomerFraudRecord` | Historique de fraude client cross-vendeur |
+| `RefusalReport` | Signalement de refus par un vendeur (unique sur `vendorId + orderId`) |
+| `ReturnRateLimit` | Compteurs de rate limiting persistés en base |
 | `PredictionLog` | Journal d'audit du modèle ML |
 
 ---
@@ -195,12 +221,13 @@ Client / API vendeur
   Appel ML (si payload fourni)
        │
       / \
-  Reject  Refund / Exchange / Repair
+  Reject   Exchange / Repair
     │              │
-    ▼              ▼ (si AI_AUTO)
+    ▼              ▼ (si AI_AUTO **et** type ≠ REFUND)
  REJECTED       APPROVED
                    │
-              (si MANUAL)
+       (si MANUAL, ou type = REFUND,
+        ou ML absent / en échec)
                    ▼
                PENDING
           → revue humaine vendeur
@@ -215,20 +242,22 @@ Client / API vendeur
 | `APPROVED` | Approuvée (manuellement ou automatiquement) |
 | `REJECTED` | Rejetée (manuellement ou par décision ML) |
 
-Le champ `type` (EXCHANGE / REFUND / REPAIR) représente le **souhait du client** et ne change jamais. La décision ML (`aiDecision`) peut recommander une résolution différente ; l'UI les affiche côte à côte.
+Le champ `type` (EXCHANGE / REFUND / REPAIR) représente le **souhait du client** et ne change jamais. La décision ML (`aiDecision`) peut recommander une résolution différente ; l'UI les affiche côte à côte. Les deux vocabulaires sont volontairement distincts : `type` est un choix client, `aiDecision` est une recommandation modèle sur **trois classes seulement** (voir [Intégration ML](#intégration-ml-libservicesmlts)).
 
 ---
 
 ### Politique de retour (`lib/services/return-policy.ts`)
 
-Chaque vendeur configure sa politique de retour. Lors de la soumission d'une réclamation, trois règles sont vérifiées dans l'ordre :
+Chaque vendeur configure sa politique de retour. Lors de la soumission d'une réclamation, quatre règles sont évaluées dans l'ordre (les trois premières peuvent refuser, la quatrième requalifie) :
 
 1. **Fenêtre de rétractation** — Si la réclamation arrive après `maxClaimDays` jours depuis la commande, elle est refusée avec le code `DELAY_EXCEEDED`.
 2. **Catégorie non remboursable** — Si la catégorie produit figure dans `nonRefundableCategories`, la réclamation est refusée avec `NON_REFUNDABLE_CATEGORY`.
 3. **Type de réclamation non accepté** — Si le type demandé (ex. REFUND) ne fait pas partie des `acceptedTypes` du vendeur, refus avec `CLAIM_TYPE_NOT_ACCEPTED`.
 4. **Échange uniquement** — Si la catégorie est dans `exchangeOnlyCategories`, le type est forcé en EXCHANGE même si le client a demandé un remboursement (`forceExchange: true`).
 
-Si aucune règle ne s'applique, la réclamation est acceptée et passe à l'étape suivante.
+Si aucune règle ne s'applique, la réclamation est acceptée et passe à l'étape suivante. En l'absence de politique configurée, tout est accepté (`forceExchange: false`).
+
+Les autres champs de `ReturnPolicy` — `processingDays`, `fraudScoreThreshold`, `fraudReturnThreshold`, `allowRefusalOnDelivery`, `partialRefundEnabled` / `partialRefundRules` — n'entrent pas dans `checkReturnPolicy` : ils alimentent l'affichage vendeur, le seuil `Is_Suspicious` envoyé au ML, et la politique avancée.
 
 ---
 
@@ -239,9 +268,20 @@ Chaque vendeur choisit comment ses réclamations sont traitées :
 | Mode | Comportement |
 |---|---|
 | `MANUAL` | Toutes les réclamations passent en `PENDING` — le vendeur décide manuellement |
-| `AI_AUTO` | Si le ML retourne Refund / Exchange / Repair, la réclamation est automatiquement `APPROVED` |
+| `AI_AUTO` | Si le ML retourne `Exchange` ou `Repair`, la réclamation est automatiquement `APPROVED` — **sauf si son `type` est `REFUND`** |
 
-Dans les deux modes, une décision ML **Reject** entraîne un rejet automatique immédiat, indépendamment du mode configuré.
+Deux règles transversales s'appliquent quel que soit le mode :
+
+- **Un `Reject` du ML rejette toujours la réclamation**, immédiatement et automatiquement. Le ML est la seule source pouvant refuser à ce stade, la politique vendeur ayant déjà été validée en amont par la route.
+- **Un remboursement n'est jamais auto-approuvé.** Si `claim.type === 'REFUND'`, la réclamation reste `PENDING` même en `AI_AUTO` : le vendeur doit valider chaque remboursement à la main, car c'est le seul cas engageant un mouvement financier. Les échanges et réparations conservent l'auto-approbation.
+
+#### Bascule du mode (`PATCH /api/claims/validation-mode`)
+
+Le vendeur (ou un admin, en précisant `vendorId`) peut basculer `MANUAL ↔ AI_AUTO`. Passer en `AI_AUTO` **approuve rétroactivement** les réclamations déjà `PENDING` qui remplissent les mêmes conditions — `aiDecision ∈ {Exchange, Repair}` et `type ≠ REFUND` — et notifie chaque client. Les réclamations sans décision ML restent `PENDING`. La route répond `{ validationMode, approved }`, `approved` étant le nombre de réclamations requalifiées.
+
+#### Drapeau `refundEligible`
+
+Lorsqu'une réclamation de type `REFUND` reçoit une décision ML non-`Reject` et satisfait toujours `checkReturnPolicy`, `ingestClaim` écrit `refundEligible: true` dans le JSON `prediction`. Ce drapeau est **purement informatif** — une aide à la décision affichée au vendeur. Il ne modifie ni le statut, ni `aiDecision`, ni `claim.type`, et ne déclenche aucune action financière.
 
 ---
 
@@ -301,18 +341,34 @@ Le modèle ML reçoit un payload de 19 champs structurés décrivant la réclama
 | `Customer_Past_Returns` | `fraudRecord.totalClaims` en base |
 | `Is_Suspicious` | `1` si `pastReturns ≥ fraudReturnThreshold` (seuil vendeur), `0` sinon |
 
-**Résilience :** Le client ML effectue jusqu'à **2 retries** avec backoff exponentiel (250 ms, 500 ms) et un timeout de **4 secondes** par tentative. En cas d'échec, la réclamation passe en `PENDING` avec `mlFailed: true` — un **cron job** (`/api/cron/retry-ml`) tente de rejouer les appels ML échoués.
+**Contrat trois classes.** Le modèle ne renvoie que `Exchange`, `Repair` ou `Reject` — **jamais `Refund`**. Le remboursement relève du choix client (`claim.type`), pas d'une recommandation modèle. Toute autre valeur reçue est une violation de contrat : la réponse est traitée comme un échec (`mlFailed: true`) **sans retry**, puisque rejouer le même input renverrait la même classe.
+
+**Résilience :** Le client ML effectue jusqu'à **2 retries** avec backoff exponentiel (~250 ms puis ~500 ms, avec jitter) et un timeout de **4 secondes** par tentative. Seuls les échecs réseau et les HTTP 5xx / 429 sont rejoués. En cas d'échec, la réclamation reste en `PENDING` avec `mlFailed: true` — un **cron job** (`/api/cron/retry-ml`, quotidien à minuit UTC via `vercel.json`) tente de rejouer les appels ML échoués.
 
 **Sortie du modèle :**
 
 ```json
 {
   "resolution": {
-    "prediction": "Refund",
-    "probabilities": { "Refund": 0.82, "Exchange": 0.11, "Repair": 0.04, "Reject": 0.03 }
+    "prediction": "Exchange",
+    "probabilities": { "Exchange": 0.82, "Repair": 0.14, "Reject": 0.04 }
+  },
+  "shipping_paid_by": {
+    "prediction": "Customer",
+    "probabilities": { "Customer": 0.71, "Shop": 0.29 }
   }
 }
 ```
+
+Le résultat brut du modèle est mergé dans le JSON `prediction` de la réclamation, aux côtés des champs canoniques ; `aiScore` reçoit la probabilité maximale.
+
+---
+
+### Export du dataset ML (`POST /api/admin/claims/export`)
+
+Réservé aux **admins**. Envoie vers l'endpoint ML `/save_claim` toutes les réclamations jamais exportées (`exportedToML: false`), une par une, pour alimenter le jeu de données d'entraînement. Chaque succès marque la réclamation comme exportée ; les échecs sont journalisés sans interrompre le lot. La progression est **streamée en NDJSON** (`{type:'progress'|'done', …}`).
+
+Le payload suit le contrat `ReclamationInput` du modèle Pydantic côté FastAPI. Il est reconstruit à partir du `mlInput` persisté (source de vérité), complété par les données de la réclamation et des valeurs neutres — **sans aucun recalcul**. À la différence de `/predict`, le champ `Resolution` de cet export accepte bien les quatre valeurs, `Refund` inclus, puisqu'il décrit une issue réelle et non une prédiction.
 
 ---
 
@@ -355,6 +411,8 @@ x-api-key: <VOTRE_CLE_API_FLOWMERCE>
 
 Réponse `201` : `{ success, claim_id, status, message }` — `status` ∈ `PENDING` / `APPROVED` / `REJECTED` / `IN_PROGRESS`.
 
+> Dans l'exemple ci-dessus, `desired_resolution: "REFUND"` garantit un `status: "PENDING"` : les remboursements attendent toujours une validation vendeur, même en mode `AI_AUTO`. Seul un `Reject` du ML peut les faire basculer directement en `REJECTED`.
+
 ### Erreurs possibles
 
 | Code | Signification |
@@ -364,7 +422,16 @@ Réponse `201` : `{ success, claim_id, status, message }` — `status` ∈ `PEND
 | `403` | Compte vendeur non approuvé |
 | `409` | Une demande de retour existe déjà pour cette commande |
 | `422` | Refus par la politique du vendeur (`DELAY_EXCEEDED`, `CLAIM_TYPE_NOT_ACCEPTED`…) |
-| `429` | Rate limit dépassé (par IP+commande, ou par client sur 24 h) |
+| `429` | Rate limit dépassé (voir ci-dessous) |
+
+**Rate limiting** — deux compteurs persistés en base (`ReturnRateLimit`), appliqués aussi bien sur `POST /api/v1/returns` que sur `POST /api/claims/create` :
+
+| Portée | Limite | Fenêtre |
+|---|---|---|
+| IP + `orderId` | 3 tentatives | 1 heure |
+| Vendeur + email client + jour | 3 demandes | 24 heures |
+
+Le second compteur protège contre l'empoisonnement du score de fraude par soumissions répétées.
 
 > 📄 Guide d'intégration complet pour les plateformes partenaires : `integration-formulaire-retour-flowmerce.md`.
 
@@ -421,3 +488,28 @@ npx ts-node prisma/seed.ts
 ```
 
 Le seed crée un vendeur de démonstration approuvé (politique MANUAL) et des réclamations couvrant toutes les combinaisons statut × type × source × ML × fraude.
+
+---
+
+## Tests
+
+La suite tourne sous **Vitest** — aucune base de données ni service externe n'est requis, les dépendances (Prisma, ML, email) sont mockées.
+
+```bash
+npm run test        # mode watch
+npm run test:run    # une passe (CI)
+```
+
+Périmètre couvert (`__tests__/`) :
+
+| Fichier | Couverture |
+|---|---|
+| `lib/services/claim-ingestion.test.ts` | Dédup, score de fraude, auto-approve / auto-reject, carve-out REFUND |
+| `lib/services/ml.test.ts` | Retries, timeout, rejet des classes hors contrat |
+| `lib/services/return-policy.test.ts` | Les quatre règles de politique et leur ordre |
+| `lib/services/return-form-builder.test.ts` | Génération du formulaire et filtrage par politique |
+| `lib/fraud-score.test.ts` | Formule pondérée et plafonds |
+| `lib/rate-limit.test.ts` | Compteurs, fenêtres, réinitialisation |
+| `lib/env.test.ts` | Validation Zod et garde client/serveur |
+| `lib/constants.test.ts`, `lib/logger.test.ts`, `lib/utils.test.ts` | Helpers partagés |
+| `api/returns.test.ts`, `api/return-form.test.ts`, `api/health.test.ts` | Routes API v1 et health check |
