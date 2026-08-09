@@ -189,7 +189,9 @@ export function buildReturnForm(vendor: VendorInput, policy: PolicyInput): Retur
           // client. La page hébergée les lit sur la ReturnSession ; les
           // intégrations externes les envoient depuis leurs données de commande.
           field({ id: 'shipping_method', type: 'text', label: 'Mode de livraison', source: 'merchant', required: false, placeholder: 'Livraison à domicile', validation: { maxLength: 100 } }),
-          field({ id: 'shipping_cost', type: 'number', label: 'Frais de livraison (DA)', source: 'merchant', required: false, placeholder: '500', validation: { min: 0 } }),
+          // Libellé sans unité : le champ n'est plus saisi, il est restitué en
+          // lecture seule avec sa devise (« 500 DA »).
+          field({ id: 'shipping_cost', type: 'number', label: 'Frais de livraison', source: 'merchant', required: false, placeholder: '500', validation: { min: 0 } }),
           field({ id: 'order_date', type: 'date', label: 'Date de commande', required: false }),
         ],
       },

@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import {
   Store, Package, Hash, Calendar, User, Mail, Phone, MapPin, CreditCard, Truck,
-  Fingerprint, AlertTriangle, XCircle, CheckCircle, RotateCcw, Loader2, ChevronDown,
+  Banknote, Fingerprint, AlertTriangle, XCircle, CheckCircle, RotateCcw, Loader2, ChevronDown,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -87,7 +87,7 @@ const FIELD_ICONS: Record<string, LucideIcon> = {
   product_name:    Package,
   payment_method:  CreditCard,
   shipping_method: Truck,
-  shipping_cost:   Truck,
+  shipping_cost:   Banknote,
   order_date:      Calendar,
 }
 
@@ -448,10 +448,13 @@ export default function ReturnPage() {
           </div>
         </div>
 
-        {/* Sections du formulaire — pilotées par la définition du vendeur */}
+        {/* Sections du formulaire — pilotées par la définition du vendeur.
+            Pas d'`overflow-hidden` sur la carte : il découperait le panneau
+            déroulant des selects, positionné en absolu hors de la carte. Les
+            coins hauts sont arrondis sur l'en-tête lui-même. */}
         {inputSections.map(section => (
-          <div key={section.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
+          <div key={section.id} className="bg-white rounded-xl border border-gray-200">
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 rounded-t-xl">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 {section.title}{' '}
                 {section.fields.some(f => f.required)
