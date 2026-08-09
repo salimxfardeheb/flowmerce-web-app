@@ -49,7 +49,21 @@
       "Bash(npx tsc *)",
       "Bash(echo \"=====EXIT: $?\")",
       "Bash(grep -n \"checkRateLimit\\(\\\\`\" \"app/api/return/[token]/route.ts\")",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(sed -n '/^model Claim /,/^}/p' prisma/schema.prisma)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(lsof -nP -iTCP -sTCP:LISTEN)",
+      "Bash(lsof -nP -iTCP:3000 -sTCP:LISTEN)",
+      "Bash(break)",
+      "Bash(curl -s -o /dev/null -w \"GET /api/admin/claims -> HTTP %{http_code}\\\\n\" http://localhost:3000/api/admin/claims)",
+      "Bash(curl -s -L -o /dev/null -w \"final: HTTP %{http_code}  url=%{url_effective}\\\\n\" http://localhost:3000/api/admin/claims)",
+      "Bash(docker image *)",
+      "Bash(docker exec *)",
+      "Bash(pkill -f \"flowmerce-web-app/node_modules/.bin/next dev\")",
+      "Bash(lsof -nP -iTCP:3002 -sTCP:LISTEN)"
+    ],
+    "additionalDirectories": [
+      "/Users/salim/github/flowmerce/flowmerce-web-app/prisma"
     ]
   }
 }

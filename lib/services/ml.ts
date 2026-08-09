@@ -197,10 +197,14 @@ export type MLSaveClaimResult =
 // ─────────────────────────────────────────────────────────────
 // Construction du payload ReclamationInput à partir d'une claim
 // Flowmerce pour l'export global vers /save_claim.
-// Utilise le mlInput persisté tel quel (source de vérité) en
-// complétant les champs requis absents avec les données de la
-// claim (orderId, productName, orderDate, type) et des valeurs
-// neutres (0, chaîne vide, date du jour). Aucun recalcul.
+// Utilise le mlInput persisté tel quel en complétant les champs
+// requis absents avec les données de la claim (productName,
+// orderDate, type) et des valeurs neutres (0, chaîne vide, date
+// du jour). Aucun recalcul.
+//
+// Exception : les colonnes reprises ci-dessous directement du
+// modèle Prisma `Claim` priment sur mlInput, la base faisant foi.
+//   - Order_ID ← claim.orderId
 // ─────────────────────────────────────────────────────────────
 export interface BuildReclamationInputFromClaimInput {
   orderId: string
@@ -260,7 +264,12 @@ export function buildReclamationInputFromClaim(
         : 'Refund'
 
   return {
-    Order_ID:                 String(mlv.Order_ID ?? claim.orderId),
+    // Colonne DB `Claim.orderId` : seule source de vérité. Elle est validée et
+    // trimée aux trois points d'entrée (/claims/create, /return/[token],
+    // /v1/returns) et sert de clé de déduplication (vendorId, orderId).
+    // `mlInput` n'est volontairement pas consulté : c'est un blob JSONB figé à
+    // la création, qui ne porte pas Order_ID et ne doit pas primer sur la base.
+    Order_ID:                 claim.orderId,
     Customer_ID:               String(mlv.Customer_ID ?? ''),
     Customer_Age:              toNum(mlv.Customer_Age, 0),
     Customer_Gender:           String(mlv.Customer_Gender ?? 'Unknown'),
