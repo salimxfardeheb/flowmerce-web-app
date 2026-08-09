@@ -62,10 +62,17 @@
       "Bash(pkill -f \"flowmerce-web-app/node_modules/.bin/next dev\")",
       "Bash(lsof -nP -iTCP:3002 -sTCP:LISTEN)",
       "Bash(npx next *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(npx dotenvx *)",
+      "Bash(node --env-file=.env.local /private/tmp/claude-502/-Users-salim-github-flowmerce-flowmerce-web-app/9929bfaa-1963-4c7e-b65c-50f027a39ec5/scratchpad/cols.mjs)",
+      "Bash(cp /private/tmp/claude-502/-Users-salim-github-flowmerce-flowmerce-web-app/9929bfaa-1963-4c7e-b65c-50f027a39ec5/scratchpad/cols.mjs ./_cols_tmp.mjs)",
+      "Bash(node --env-file=.env.local ./_cols_tmp.mjs)",
+      "Bash(node --env-file=.env.local ./_ck_tmp.mjs)",
+      "Bash(git stash *)"
     ],
     "additionalDirectories": [
-      "/Users/salim/github/flowmerce/flowmerce-web-app/prisma"
+      "/Users/salim/github/flowmerce/flowmerce-web-app/prisma",
+      "/Users/salim/github/flowmerce/flowmerce-web-app"
     ]
   }
 }

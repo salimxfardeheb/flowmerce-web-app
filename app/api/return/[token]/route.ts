@@ -18,6 +18,10 @@
 // mode de paiement quand la boutique les a transmis) ne sont ni attendus ni
 // validés : la valeur de session fait foi.
 //
+// Le mode et les frais de livraison (champs `merchant` du formulaire) ne sont
+// jamais demandés au client ni lus depuis son body : ils proviennent
+// uniquement de la session, avec repli 'Standard' / 0.
+//
 // La return policy a déjà été vérifiée par /api/return-sessions au moment
 // de générer le lien — on ne re-vérifie pas ici.
 
@@ -69,7 +73,6 @@ export async function POST(
 
   const str    = (k: string) => String(ans[k] ?? '').trim()
   const numPos = (k: string) => { const n = Number(ans[k]); return Number.isFinite(n) && n > 0  ? n : null }
-  const numGe0 = (k: string) => { const n = Number(ans[k]); return Number.isFinite(n) && n >= 0 ? n : null }
   const intPos = (k: string) => { const n = parseInt(String(ans[k]), 10); return Number.isFinite(n) && n > 0 ? n : null }
 
   // Données pré-remplies (session) prioritaires sur celles tapées par le client
@@ -83,8 +86,11 @@ export async function POST(
   const orderDateRaw    = session.orderDate      || str('order_date')
   const customerWilaya  = session.customerWilaya || str('customer_wilaya') || 'Unknown'
   const paymentMethod   = session.paymentMethod  || str('payment_method')  || 'Unknown'
-  const shippingMethod  = session.shippingMethod || str('shipping_method') || 'Standard'
-  const shippingCost    = session.shippingCost   ?? numGe0('shipping_cost') ?? 0
+  // Livraison : donnée logistique de la boutique (champs `merchant` du
+  // formulaire). Jamais lue depuis les réponses du client — un client final ne
+  // doit pas pouvoir influencer le score en déclarant ses propres frais.
+  const shippingMethod  = session.shippingMethod || 'Standard'
+  const shippingCost    = session.shippingCost   ?? 0
   const productPrice    = session.productPrice    ?? numPos('product_price')
   const productQuantity = session.productQuantity ?? intPos('order_quantity') ?? intPos('product_quantity') ?? 1
   const orderTotal      = session.orderTotal      ?? numPos('order_total')
@@ -111,8 +117,10 @@ export async function POST(
   if (session.customerPhone)  sessionFields.add('customer_phone')
   if (session.customerWilaya) sessionFields.add('customer_wilaya')
   if (session.paymentMethod)  sessionFields.add('payment_method')
-  if (session.shippingMethod) sessionFields.add('shipping_method')
-  if (session.shippingCost != null) sessionFields.add('shipping_cost')
+  // Toujours ignorés côté client : leur valeur vient exclusivement de la
+  // session, y compris quand la boutique ne l'a pas transmise (repli).
+  sessionFields.add('shipping_method')
+  sessionFields.add('shipping_cost')
   if (session.productName)    sessionFields.add('product_name')
   if (session.orderDate)      sessionFields.add('order_date')
 

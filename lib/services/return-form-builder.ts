@@ -23,7 +23,16 @@ import {
   RETURN_REASON_DESCRIPTIONS,
 } from '@/lib/constants'
 
-export const RETURN_FORM_VERSION = 1
+export const RETURN_FORM_VERSION = 2
+
+// Qui renseigne la valeur d'un champ :
+//   'customer' → saisi par le client final dans le formulaire ;
+//   'merchant' → connu du système de la boutique (logistique, facturation…).
+//                Jamais demandé au client : la page hébergée le prend sur la
+//                ReturnSession, les intégrations externes l'envoient depuis
+//                leurs données de commande. Affiché en lecture seule quand la
+//                valeur est connue.
+export type ReturnFormFieldSource = 'customer' | 'merchant'
 
 export type ReturnFormFieldType =
   | 'text'
@@ -45,6 +54,7 @@ export interface ReturnFormField {
   id: string
   type: ReturnFormFieldType
   label: string
+  source: ReturnFormFieldSource
   required: boolean
   placeholder?: string
   defaultValue?: string | number | boolean | null
@@ -112,15 +122,17 @@ export function slugify(value: string): string {
 }
 
 function field(
-  input: Omit<ReturnFormField, 'options' | 'validation' | 'defaultValue'> & {
+  input: Omit<ReturnFormField, 'options' | 'validation' | 'defaultValue' | 'source'> & {
     options?: ReturnFormOption[]
     validation?: ReturnFormField['validation']
     defaultValue?: ReturnFormField['defaultValue']
+    source?: ReturnFormFieldSource
   },
 ): ReturnFormField {
-  const { options, validation, defaultValue, ...rest } = input
+  const { options, validation, defaultValue, source, ...rest } = input
   return {
     ...rest,
+    source:      source ?? 'customer',
     options:     options ?? [],
     validation:  validation ?? {},
     defaultValue: defaultValue ?? null,
@@ -173,8 +185,11 @@ export function buildReturnForm(vendor: VendorInput, policy: PolicyInput): Retur
           field({ id: 'customer_wilaya', type: 'text', label: 'Wilaya', required: true, placeholder: 'Alger', validation: { maxLength: 100 } }),
           field({ id: 'product_name', type: 'text', label: 'Produit', required: true, placeholder: 'Nike Air Max', validation: { maxLength: 500 } }),
           field({ id: 'payment_method', type: 'select', label: 'Mode de paiement', required: true, placeholder: 'Sélectionnez un mode de paiement…', options: paymentOptions, validation: { minLength: 1 } }),
-          field({ id: 'shipping_method', type: 'text', label: 'Mode de livraison', required: true, placeholder: 'Livraison à domicile', validation: { maxLength: 100 } }),
-          field({ id: 'shipping_cost', type: 'number', label: 'Frais de livraison (DA)', required: false, placeholder: '500', validation: { min: 0 } }),
+          // Données logistiques : connues de la boutique, jamais saisies par le
+          // client. La page hébergée les lit sur la ReturnSession ; les
+          // intégrations externes les envoient depuis leurs données de commande.
+          field({ id: 'shipping_method', type: 'text', label: 'Mode de livraison', source: 'merchant', required: false, placeholder: 'Livraison à domicile', validation: { maxLength: 100 } }),
+          field({ id: 'shipping_cost', type: 'number', label: 'Frais de livraison (DA)', source: 'merchant', required: false, placeholder: '500', validation: { min: 0 } }),
           field({ id: 'order_date', type: 'date', label: 'Date de commande', required: false }),
         ],
       },

@@ -74,7 +74,7 @@ describe('GET /api/v1/return-form', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
 
-    expect(body.version).toBe(1)
+    expect(body.version).toBe(2)
     expect(body.title).toBe('Demande de retour')
     expect(body.meta.shop).toEqual({ name: 'Caba Store', slug: 'caba-store', website: 'https://caba.example.com' })
     expect(body.sections.map((s: { id: string }) => s.id)).toEqual([

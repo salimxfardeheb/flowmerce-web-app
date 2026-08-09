@@ -70,14 +70,14 @@ function makeSession(overrides: Record<string, unknown> = {}) {
   }
 }
 
+// Ce que la page hébergée envoie réellement : la livraison n'y figure pas,
+// c'est une donnée boutique lue sur la session.
 const CLIENT_ANSWERS = {
   reason:             'Produit défectueux',
   desired_resolution: 'REFUND',
   description:        'Semelle décollée à la réception.',
   customer_wilaya:    'Alger',
   payment_method:     'Cash on Delivery',
-  shipping_method:    'Livraison à domicile',
-  shipping_cost:      500,
 }
 
 beforeEach(() => {
@@ -121,10 +121,36 @@ describe('POST /api/return/[token]', () => {
       prediction:   expect.objectContaining({
         customerWilaya: 'Alger',
         paymentMethod:  'Cash on Delivery',
-        shippingMethod: 'Livraison à domicile',
-        shippingCost:   500,
+        // Session sans livraison → repli, jamais une valeur du client.
+        shippingMethod: 'Standard',
+        shippingCost:   0,
       }),
     }))
+  })
+
+  it('ignore le mode et les frais de livraison envoyés par le client', async () => {
+    mockFindUnique.mockResolvedValue(makeSession({
+      shippingMethod: 'Stopdesk',
+      shippingCost:   400,
+    }))
+
+    const res = await callPost({
+      answers: { ...CLIENT_ANSWERS, shipping_method: 'Gratuit', shipping_cost: 0 },
+    })
+
+    expect(res.status).toBe(201)
+    expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+      prediction: expect.objectContaining({
+        shippingMethod: 'Stopdesk',
+        shippingCost:   400,
+      }),
+    }))
+  })
+
+  it("n'exige pas la livraison quand la boutique ne l'a pas transmise", async () => {
+    const res = await callPost({ answers: CLIENT_ANSWERS })
+
+    expect(res.status).toBe(201)
   })
 
   it('accepte encore le body plat (ancien client)', async () => {

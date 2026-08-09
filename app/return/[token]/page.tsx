@@ -26,10 +26,14 @@ interface FormOption {
   description?: string
 }
 
+// 'merchant' : valeur fournie par la boutique, jamais saisie par le client.
+type FieldSource = 'customer' | 'merchant'
+
 interface FormField {
   id:            string
   type:          FieldType
   label:         string
+  source?:       FieldSource
   required:      boolean
   placeholder?:  string
   defaultValue?: string | number | boolean | null
@@ -99,6 +103,7 @@ function formatValue(field: FormField, raw: string): string {
     return field.options.find(o => o.value === raw)?.label ?? raw
   }
   if (field.id === 'order_id') return `#${raw.slice(-10).toUpperCase()}`
+  if (field.id === 'shipping_cost') return `${raw} DA`
   return raw
 }
 
@@ -255,8 +260,12 @@ export default function ReturnPage() {
       const fields: FormField[] = []
       for (const field of section.fields) {
         const known = prefill[field.id]
-        if (known) recap.push({ field, value: known })
-        else       fields.push(field)
+        // Connu de la session → récapitulatif en lecture seule.
+        // Sinon : les champs `merchant` (livraison…) ne sont jamais demandés au
+        // client — faute de valeur transmise par la boutique, ils disparaissent
+        // simplement de la page.
+        if (known)                        recap.push({ field, value: known })
+        else if (field.source !== 'merchant') fields.push(field)
       }
       if (fields.length > 0) sections.push({ ...section, fields })
     }

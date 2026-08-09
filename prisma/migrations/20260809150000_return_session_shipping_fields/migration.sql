@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "ReturnSession" ADD COLUMN IF NOT EXISTS "shippingMethod" TEXT,
+ADD COLUMN IF NOT EXISTS "shippingCost" DOUBLE PRECISION;

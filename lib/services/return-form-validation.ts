@@ -24,7 +24,11 @@ export function isPresent(value: unknown): boolean {
   return true
 }
 
+// Un champ `source: 'merchant'` est renseigné par la boutique (session de
+// retour ou données de commande de l'intégration), jamais par le client : il
+// n'est donc jamais exigé. Sa valeur reste validée quand elle est fournie.
 function isRequired(field: ReturnFormField): boolean {
+  if (field.source === 'merchant') return false
   return field.required ?? false
 }
 

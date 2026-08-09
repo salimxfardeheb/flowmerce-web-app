@@ -172,17 +172,29 @@ describe('buildReturnForm', () => {
     expect(payment.options[0].label).toBe(PAYMENT_METHOD_LABELS[PAYMENT_METHODS[0]])
   })
 
-  it('collecte le mode et les frais de livraison', () => {
+  it('expose le mode et les frais de livraison comme champs boutique, jamais requis du client', () => {
     const order = buildReturnForm(vendor, policy()).sections.find(s => s.id === 'order')!
 
     const method = order.fields.find(f => f.id === 'shipping_method')!
     expect(method.type).toBe('text')
-    expect(method.required).toBe(true)
+    expect(method.source).toBe('merchant')
+    expect(method.required).toBe(false)
 
     const cost = order.fields.find(f => f.id === 'shipping_cost')!
     expect(cost.type).toBe('number')
+    expect(cost.source).toBe('merchant')
     expect(cost.required).toBe(false)
     expect(cost.validation.min).toBe(0)
+  })
+
+  it('marque tous les autres champs comme saisis par le client', () => {
+    const form = buildReturnForm(vendor, policy())
+    const merchantFields = form.sections
+      .flatMap(s => s.fields)
+      .filter(f => f.source === 'merchant')
+      .map(f => f.id)
+
+    expect(merchantFields).toEqual(['shipping_method', 'shipping_cost'])
   })
 
   it('ne dépend d’aucun champ du vendeur autre que le nom', () => {

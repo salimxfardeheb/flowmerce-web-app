@@ -819,8 +819,8 @@ x-api-key: flk_votre_cle_api`}
                         <FieldRow name="customer_id"      type="string" desc="Identifiant du client dans votre système (repris sur la réclamation)" />
                         <FieldRow name="customer_wilaya"  type="string" desc="Wilaya du client — sinon demandée au client sur la page de retour" />
                         <FieldRow name="payment_method"   type="string" desc="Cash on Delivery | Card | CCP | Bank Transfer — sinon demandé au client" />
-                        <FieldRow name="shipping_method"  type="string" desc="Mode de livraison (Livraison à domicile, Stopdesk…) — sinon demandé au client" />
-                        <FieldRow name="shipping_cost"    type="number" desc="Frais de livraison en DA — sinon demandés au client" />
+                        <FieldRow name="shipping_method"  type="string" desc="Mode de livraison (Livraison à domicile, Stopdesk…) — jamais demandé au client : repli 'Standard' si absent" />
+                        <FieldRow name="shipping_cost"    type="number" desc="Frais de livraison en DA — jamais demandés au client : repli 0 si absent" />
                         <FieldRow name="order_date"       type="string" desc="Date de commande ISO-8601 (vérifie le délai vs return policy)" />
                         <FieldRow name="shop_name"        type="string" desc="Nom de votre boutique (affiché sur la page de retour). Défaut: nom du compte." />
                         <FieldRow name="product_price"    type="number" desc="Prix unitaire en DA" />
