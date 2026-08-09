@@ -92,6 +92,7 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
 // avant l'envoi effectif (cf. claim-ingestion.ts).
 // ─────────────────────────────────────────────────────────────
 export interface BuildMLPayloadInput {
+  customerId:         string | null
   shopName:           string
   productCategory:    string | null
   productPrice:       number | null
@@ -109,6 +110,7 @@ export interface BuildMLPayloadInput {
 }
 
 export interface MLPayload {
+  Customer_ID:             string
   Customer_Gender:         string
   Customer_Age:            number
   Customer_Wilaya:         string
@@ -132,6 +134,7 @@ export interface MLPayload {
 
 export function buildMLPayload(input: BuildMLPayloadInput): MLPayload {
   return {
+    Customer_ID:             input.customerId ?? '',
     Customer_Gender:         input.customerGender,
     Customer_Age:            input.customerAge ?? 0,
     Customer_Wilaya:         input.customerWilaya,
@@ -159,6 +162,10 @@ export function buildMLPayload(input: BuildMLPayloadInput): MLPayload {
 // Source unique de vérité du contrat : le modèle Pydantic
 // `ReclamationInput` (api/server.py). Les champs sont envoyés
 // tels quels, sans recalcul.
+//
+// `Return_Shipping_Paid_By` et `Refund_Amount_DA` ne font PAS partie du
+// contrat : aucun point d'entrée Flowmerce ne les collecte, ils ne valaient
+// donc que la valeur neutre ('' / 0) et polluaient le dataset.
 // ─────────────────────────────────────────────────────────────
 export interface ReclamationInput {
   Order_ID:                 string
@@ -183,8 +190,6 @@ export interface ReclamationInput {
   Within_Return_Policy:        0 | 1
   Return_Reason:               string
   Resolution:                   'Exchange' | 'Reject' | 'Repair' | 'Refund'
-  Return_Shipping_Paid_By:      string
-  Refund_Amount_DA:             number
   Fraud_Score:                   number
   Is_Suspicious:                  0 | 1
   Customer_Satisfaction?:         number | null
@@ -204,10 +209,14 @@ export type MLSaveClaimResult =
 //
 // Exception : les colonnes reprises ci-dessous directement du
 // modèle Prisma `Claim` priment sur mlInput, la base faisant foi.
-//   - Order_ID ← claim.orderId
+//   - Order_ID    ← claim.orderId
+//   - Customer_ID ← claim.customerId
+//   - Fraud_Score ← claim.fraudScore
 // ─────────────────────────────────────────────────────────────
 export interface BuildReclamationInputFromClaimInput {
   orderId: string
+  customerId?: string | null
+  fraudScore?: number | null
   productName: string | null
   orderDate: Date | null
   // Date de dépôt de la réclamation — sert de Return_Date quand le mlInput
@@ -270,7 +279,10 @@ export function buildReclamationInputFromClaim(
     // `mlInput` n'est volontairement pas consulté : c'est un blob JSONB figé à
     // la création, qui ne porte pas Order_ID et ne doit pas primer sur la base.
     Order_ID:                 claim.orderId,
-    Customer_ID:               String(mlv.Customer_ID ?? ''),
+    // Colonne DB `Claim.customerId` (identifiant client côté boutique) : elle
+    // fait foi ; `mlInput.Customer_ID` sert de repli pour les claims créées
+    // avant l'ajout de la colonne.
+    Customer_ID:               String(claim.customerId ?? mlv.Customer_ID ?? ''),
     Customer_Age:              toNum(mlv.Customer_Age, 0),
     Customer_Gender:           String(mlv.Customer_Gender ?? 'Unknown'),
     Customer_Wilaya:           String(mlv.Customer_Wilaya ?? 'Unknown'),
@@ -297,9 +309,10 @@ export function buildReclamationInputFromClaim(
     Within_Return_Policy:      toFlag(mlv.Within_Return_Policy, 1),
     Return_Reason:             String(mlv.Return_Reason ?? ''),
     Resolution:                resolution,
-    Return_Shipping_Paid_By:   String(mlv.Return_Shipping_Paid_By ?? ''),
-    Refund_Amount_DA:          toNum(mlv.Refund_Amount_DA, 0),
-    Fraud_Score:               toNum(mlv.Fraud_Score, 0),
+    // Colonne DB `Claim.fraudScore` : calculée à l'ingestion par
+    // computeFraudScore() et stockée sur la claim — c'est elle qui fait foi.
+    // `mlInput.Fraud_Score` (figé à la création) n'est qu'un repli.
+    Fraud_Score:               toNum(claim.fraudScore ?? mlv.Fraud_Score, 0),
     Is_Suspicious:             toFlag(mlv.Is_Suspicious, 0),
     Customer_Satisfaction:
       mlv.Customer_Satisfaction === null ||

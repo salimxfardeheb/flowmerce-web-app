@@ -4,19 +4,32 @@
 // Le client final remplit le formulaire ; auth via token de session
 // (à usage unique, expirable). Délègue la création du Claim à ingestClaim().
 //
+// Les réponses sont validées CONTRE la définition du formulaire renvoyée par
+// buildReturnForm — exactement comme POST /api/v1/returns. La page hébergée et
+// les intégrations externes partagent donc le même formulaire, la même
+// validation et le même service d'ingestion ; seule l'authentification diffère
+// (token de session ici, clé API là-bas).
+//
+// Body accepté :
+//   { "answers": { "<field_id>": valeur, … } }   ← format formulaire
+//   { "reason": …, "desired_resolution": … }     ← format plat (rétrocompat)
+//
+// Les champs déjà connus de la session (commande, identité client, wilaya,
+// mode de paiement quand la boutique les a transmis) ne sont ni attendus ni
+// validés : la valeur de session fait foi.
+//
 // La return policy a déjà été vérifiée par /api/return-sessions au moment
 // de générer le lien — on ne re-vérifie pas ici.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma }                    from '@/lib/prisma'
 import { checkRateLimit }            from '@/lib/rate-limit'
-import { RETURN_REASONS, CLAIM_TYPES } from '@/lib/constants'
+import { buildReturnForm }           from '@/lib/services/return-form-builder'
+import { validateReturnFormAnswers } from '@/lib/services/return-form-validation'
 import { ingestClaim }               from '@/lib/services/claim-ingestion'
 import { buildMLPayload }            from '@/lib/services/ml'
 import { log }                       from '@/lib/logger'
 
-const VALID_REASONS     = new Set<string>(RETURN_REASONS)
-const VALID_RESOLUTIONS = new Set<string>(CLAIM_TYPES)
 const HTML_RE  = /<[^>]*>/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -48,19 +61,30 @@ export async function POST(
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Body JSON invalide' }, { status: 400 }) }
 
-  const str    = (k: string) => String(body[k] ?? '').trim()
-  const numPos = (k: string) => { const n = Number(body[k]); return Number.isFinite(n) && n > 0  ? n : null }
-  const numGe0 = (k: string) => { const n = Number(body[k]); return Number.isFinite(n) && n >= 0 ? n : null }
-  const intPos = (k: string) => { const n = parseInt(String(body[k]), 10); return Number.isFinite(n) && n > 0 ? n : null }
+  // `answers` (formulaire dynamique) ou body plat (ancien client)
+  const ans: Record<string, unknown> =
+    body.answers && typeof body.answers === 'object' && !Array.isArray(body.answers)
+      ? body.answers as Record<string, unknown>
+      : body
+
+  const str    = (k: string) => String(ans[k] ?? '').trim()
+  const numPos = (k: string) => { const n = Number(ans[k]); return Number.isFinite(n) && n > 0  ? n : null }
+  const numGe0 = (k: string) => { const n = Number(ans[k]); return Number.isFinite(n) && n >= 0 ? n : null }
+  const intPos = (k: string) => { const n = parseInt(String(ans[k]), 10); return Number.isFinite(n) && n > 0 ? n : null }
 
   // Données pré-remplies (session) prioritaires sur celles tapées par le client
-  const customerName    = session.customerName  || str('customer_name')
+  const customerName    = session.customerName   || str('customer_name')
   const customerEmail   = (session.customerEmail || str('customer_email')).toLowerCase()
-  const customerPhone   = session.customerPhone  || str('customer_telephone')
+  const customerPhone   = session.customerPhone  || str('customer_telephone') || str('customer_phone')
+  const customerId      = session.customerId     || str('customer_id')
   const productName     = session.productName    || str('product_name')
   const orderId         = session.orderId        || str('order_id')
   const shopName        = session.shopName       || str('shop_name')
   const orderDateRaw    = session.orderDate      || str('order_date')
+  const customerWilaya  = session.customerWilaya || str('customer_wilaya') || 'Unknown'
+  const paymentMethod   = session.paymentMethod  || str('payment_method')  || 'Unknown'
+  const shippingMethod  = session.shippingMethod || str('shipping_method') || 'Standard'
+  const shippingCost    = session.shippingCost   ?? numGe0('shipping_cost') ?? 0
   const productPrice    = session.productPrice    ?? numPos('product_price')
   const productQuantity = session.productQuantity ?? intPos('order_quantity') ?? intPos('product_quantity') ?? 1
   const orderTotal      = session.orderTotal      ?? numPos('order_total')
@@ -71,32 +95,46 @@ export async function POST(
   const description       = str('description')
   const customerGender    = str('customer_gender')  || 'Unknown'
   const customerAge       = intPos('customer_age')   ?? 30
-  const customerWilaya    = str('customer_wilaya')   || 'Unknown'
   const productCategory   = str('product_category')
   const orderAddress      = str('order_address')
-  const paymentMethod     = str('payment_method')  || 'Unknown'
-  const shippingMethod    = str('shipping_method') || 'Standard'
-  const shippingCost      = numGe0('shipping_cost') ?? 0
 
-  // ── 3. Validation ────────────────────────────────────────────────────────
+  // ── 3. Validation contre la définition du formulaire ─────────────────────
+  // Les champs renseignés par la session ne sont pas validés (le client ne les
+  // saisit pas) ; tous les autres suivent les règles du formulaire du vendeur.
+  const form = buildReturnForm(apiKey.vendor, apiKey.vendor.returnPolicy)
+
+  const sessionFields = new Set<string>()
+  if (session.orderId)        sessionFields.add('order_id')
+  if (session.customerId)     sessionFields.add('customer_id')
+  if (session.customerName)   sessionFields.add('customer_name')
+  if (session.customerEmail)  sessionFields.add('customer_email')
+  if (session.customerPhone)  sessionFields.add('customer_phone')
+  if (session.customerWilaya) sessionFields.add('customer_wilaya')
+  if (session.paymentMethod)  sessionFields.add('payment_method')
+  if (session.shippingMethod) sessionFields.add('shipping_method')
+  if (session.shippingCost != null) sessionFields.add('shipping_cost')
+  if (session.productName)    sessionFields.add('product_name')
+  if (session.orderDate)      sessionFields.add('order_date')
+
+  // `desired_resolution` est comparé en majuscules aux options du formulaire.
+  const normalizedAnswers = { ...ans, desired_resolution: desiredResolution }
+
+  const validationError = validateReturnFormAnswers(form, normalizedAnswers, {
+    skipFields: sessionFields,
+  })
+  if (validationError)
+    return NextResponse.json({ error: validationError }, { status: 400 })
+
+  // Garde-fous sur les valeurs issues de la session (jamais passées par le
+  // formulaire) et sur les champs libres hors formulaire.
   if (!customerEmail || !orderId || !productName || !reason || !desiredResolution)
     return NextResponse.json({ error: 'Champs requis : customer_email, order_id, product_name, reason, desired_resolution' }, { status: 400 })
   if (!EMAIL_RE.test(customerEmail) || customerEmail.length > 254)
     return NextResponse.json({ error: 'Email invalide' }, { status: 400 })
   if (customerName.length > 200 || productName.length > 500 || orderId.length > 200)
     return NextResponse.json({ error: 'Champ trop long' }, { status: 400 })
-  if (description.length > 2000)
-    return NextResponse.json({ error: 'Description trop longue (max 2000 caractères)' }, { status: 400 })
-  if (HTML_RE.test(customerName) || HTML_RE.test(productName) || HTML_RE.test(description) || HTML_RE.test(shopName) || HTML_RE.test(orderAddress))
+  if (HTML_RE.test(shopName) || HTML_RE.test(orderAddress))
     return NextResponse.json({ error: 'Contenu HTML non autorisé' }, { status: 400 })
-  if (!VALID_REASONS.has(reason))
-    return NextResponse.json({ error: 'Motif de retour non reconnu' }, { status: 400 })
-  if (!VALID_RESOLUTIONS.has(desiredResolution))
-    return NextResponse.json({ error: 'Résolution invalide (EXCHANGE, REFUND ou REPAIR)' }, { status: 400 })
-
-  const acceptedTypes = apiKey.vendor.returnPolicy?.acceptedTypes ?? ['EXCHANGE', 'REFUND', 'REPAIR']
-  if (acceptedTypes.length > 0 && !acceptedTypes.includes(desiredResolution as 'EXCHANGE' | 'REFUND' | 'REPAIR'))
-    return NextResponse.json({ error: "Cette résolution n'est pas acceptée par ce vendeur" }, { status: 400 })
 
   // ── 4. Rate limit ────────────────────────────────────────────────────────
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
@@ -116,6 +154,7 @@ export async function POST(
     : 0
 
   const mlPayload = buildMLPayload({
+    customerId:       customerId || null,
     shopName:         shopName || apiKey.vendor.companyName,
     productCategory:  productCategory || apiKey.vendor.vendorCategories?.[0] || null,
     productPrice,
@@ -143,6 +182,7 @@ export async function POST(
     vendor:    { id: apiKey.vendorId, companyName: apiKey.vendor.companyName },
     apiKeyId:  apiKey.id,
     orderId,
+    customerId:    customerId || null,
     customerName:  customerName || customerEmail,
     customerEmail,
     customerPhone: customerPhone || null,

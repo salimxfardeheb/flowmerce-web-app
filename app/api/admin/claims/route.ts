@@ -33,6 +33,8 @@ export async function GET() {
     select: {
       id:           true,
       orderId:      true,
+      customerId:   true,
+      fraudScore:   true,
       productName:  true,
       orderDate:    true,
       createdAt:    true,
@@ -56,6 +58,8 @@ export async function GET() {
     const row = hasMlInput
       ? buildReclamationInputFromClaim({
           orderId:     c.orderId,
+          customerId:  c.customerId,
+          fraudScore:  c.fraudScore,
           productName: c.productName,
           orderDate:   c.orderDate,
           createdAt:   c.createdAt,
@@ -66,10 +70,12 @@ export async function GET() {
         })
       : {
           Order_ID:     c.orderId,
+          Customer_ID:  c.customerId,
           Product_Name: c.productName,
           Shop_Name:    c.vendor.companyName,
           Order_Date:   toDateStr(c.orderDate),
           Return_Date:  toDateStr(c.createdAt),
+          Fraud_Score:  c.fraudScore,
           Resolution:
             c.aiDecision ?? (c.type ? TYPE_TO_RESOLUTION[c.type] : null),
         };

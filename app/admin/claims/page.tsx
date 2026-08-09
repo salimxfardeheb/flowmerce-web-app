@@ -54,8 +54,6 @@ interface FlatRow {
   Within_Return_Policy: string;
   Return_Reason: string;
   Resolution: string;
-  Return_Shipping_Paid_By: string;
-  Refund_Amount_DA: string;
   Fraud_Score: string;
   Is_Suspicious: string;
   Customer_Satisfaction: string;
@@ -99,8 +97,6 @@ const COLUMNS: { key: MlField; label: string; minW?: string }[] = [
   { key: "Within_Return_Policy", label: "Within Policy", minW: "110px" },
   { key: "Return_Reason", label: "Return Reason", minW: "150px" },
   { key: "Resolution", label: "Resolution", minW: "110px" },
-  { key: "Return_Shipping_Paid_By", label: "Shipping Paid By", minW: "130px" },
-  { key: "Refund_Amount_DA", label: "Refund (DA)", minW: "100px" },
   { key: "Fraud_Score", label: "Fraud Score", minW: "100px" },
   { key: "Is_Suspicious", label: "Suspicious", minW: "90px" },
   { key: "Customer_Satisfaction", label: "Satisfaction", minW: "100px" },

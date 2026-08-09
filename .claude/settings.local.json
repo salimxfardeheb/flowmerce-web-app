@@ -60,7 +60,9 @@
       "Bash(docker image *)",
       "Bash(docker exec *)",
       "Bash(pkill -f \"flowmerce-web-app/node_modules/.bin/next dev\")",
-      "Bash(lsof -nP -iTCP:3002 -sTCP:LISTEN)"
+      "Bash(lsof -nP -iTCP:3002 -sTCP:LISTEN)",
+      "Bash(npx next *)",
+      "Bash(npx eslint *)"
     ],
     "additionalDirectories": [
       "/Users/salim/github/flowmerce/flowmerce-web-app/prisma"

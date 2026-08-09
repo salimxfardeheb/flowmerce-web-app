@@ -50,12 +50,17 @@ function authFail() {
   })
 }
 
-const VALID_ANSWERS = {
+const VALID_ANSWERS: Record<string, unknown> = {
   order_id:          'ord_1',
+  customer_id:       'CUST-1024',
   customer_name:     'Ahmed Benali',
   customer_email:    'ahmed@exemple.com',
   customer_phone:    '0555123456',
+  customer_wilaya:   'Alger',
   product_name:      'Nike Air Max',
+  payment_method:    'Cash on Delivery',
+  shipping_method:   'Livraison à domicile',
+  shipping_cost:     500,
   order_date:        '2026-07-01',
   reason:            'Produit défectueux',
   desired_resolution: 'REFUND',
@@ -235,11 +240,16 @@ describe('POST /api/v1/returns', () => {
 
     expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
       orderId:      'ord_1',
+      customerId:   'CUST-1024',
       customerName: 'Ahmed Benali',
       customerEmail: 'ahmed@exemple.com',
       type:         'REFUND',
       source:       'API',
       productName:  'Nike Air Max',
+      prediction:   expect.objectContaining({
+        customerWilaya: 'Alger',
+        paymentMethod:  'Cash on Delivery',
+      }),
     }))
   })
 })

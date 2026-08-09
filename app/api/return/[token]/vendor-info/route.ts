@@ -1,9 +1,15 @@
-// Valide le token de session et retourne les infos publiques du vendeur
-// ainsi que les données pré-remplies (PII masquées) pour le formulaire.
+// Valide le token de session et retourne :
+//   - les infos publiques du vendeur,
+//   - la DÉFINITION du formulaire de retour (buildReturnForm) — exactement la
+//     même que celle servie par GET /api/v1/return-form aux plateformes
+//     externes : la page hébergée ne code plus aucun champ en dur,
+//   - les données pré-remplies par la session (PII masquées) qui dispensent le
+//     client de saisir les champs déjà connus.
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma }          from '@/lib/prisma'
-import { checkRateLimit }  from '@/lib/rate-limit'
-import { log }             from '@/lib/logger'
+import { prisma }           from '@/lib/prisma'
+import { checkRateLimit }   from '@/lib/rate-limit'
+import { buildReturnForm }  from '@/lib/services/return-form-builder'
+import { log }              from '@/lib/logger'
 
 // ── Masquage PII ──────────────────────────────────────────────────────────
 function maskEmail(email: string | null | undefined): string {
@@ -82,14 +88,44 @@ export async function GET(
     ip,
   })
 
-  // ── 4. Réponse avec PII masquées ──────────────────────────────────────
+  // ── 4. Définition du formulaire + pré-remplissage ─────────────────────
+  // `form` : même source de vérité que /api/v1/return-form (motifs et
+  // résolutions déjà filtrés par la politique du vendeur).
+  // `prefill` : valeurs connues de la session, indexées par id de champ du
+  // formulaire. Elles sont affichées en lecture seule et ne sont jamais
+  // redemandées ni resoumises — le serveur les relit depuis la session.
+  const form = buildReturnForm(apiKey.vendor, apiKey.vendor.returnPolicy)
+
+  const prefill: Record<string, string> = {
+    order_id:       session.orderId,
+    customer_name:  session.customerName,
+    customer_email: maskEmail(session.customerEmail),
+    customer_phone: maskPhone(session.customerPhone),
+    product_name:   session.productName,
+    order_date:     session.orderDate,
+  }
+  if (session.customerId)     prefill.customer_id     = session.customerId
+  if (session.customerWilaya) prefill.customer_wilaya = session.customerWilaya
+  if (session.paymentMethod)  prefill.payment_method  = session.paymentMethod
+  if (session.shippingMethod) prefill.shipping_method = session.shippingMethod
+  if (session.shippingCost != null) prefill.shipping_cost = String(session.shippingCost)
+
+  // Les champs vides ne sont pas considérés comme pré-remplis : le client
+  // devra les saisir s'ils sont requis par le formulaire.
+  for (const [key, value] of Object.entries(prefill)) {
+    if (!value) delete prefill[key]
+  }
+
+  // ── 5. Réponse ────────────────────────────────────────────────────────
   return NextResponse.json(
     {
       valid:           true,
       companyName:     apiKey.vendor.companyName,
       acceptedTypes:   apiKey.vendor.returnPolicy?.acceptedTypes   ?? ['EXCHANGE', 'REFUND', 'REPAIR'],
       acceptedReasons: apiKey.vendor.returnPolicy?.acceptedReturnReasons ?? [],
-      // session pre-fill — PII masquées
+      form,
+      prefill,
+      // session pre-fill — PII masquées (conservé pour compatibilité)
       orderId:         session.orderId,
       customerEmail:   maskEmail(session.customerEmail),
       customerName:    session.customerName,

@@ -17,6 +17,8 @@ import {
   CLAIM_TYPES,
   CLAIM_TYPE_DESCRIPTIONS,
   CLAIM_TYPE_LABELS,
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
   RETURN_REASONS,
   RETURN_REASON_DESCRIPTIONS,
 } from '@/lib/constants'
@@ -148,6 +150,11 @@ export function buildReturnForm(vendor: VendorInput, policy: PolicyInput): Retur
       description: CLAIM_TYPE_DESCRIPTIONS[t],
     }))
 
+  const paymentOptions: ReturnFormOption[] = PAYMENT_METHODS.map(p => ({
+    value: p,
+    label: PAYMENT_METHOD_LABELS[p],
+  }))
+
   return {
     version: RETURN_FORM_VERSION,
     title:   'Demande de retour',
@@ -159,10 +166,15 @@ export function buildReturnForm(vendor: VendorInput, policy: PolicyInput): Retur
         description: 'Renseignez les informations de la commande concernée.',
         fields: [
           field({ id: 'order_id', type: 'text', label: 'Numéro de commande', required: true, placeholder: 'CMD-1234', validation: { maxLength: 200 } }),
+          field({ id: 'customer_id', type: 'text', label: 'Identifiant client', required: false, placeholder: 'CUST-1024', validation: { maxLength: 100 } }),
           field({ id: 'customer_name', type: 'text', label: 'Nom complet', required: true, placeholder: 'Ahmed Benali', validation: { maxLength: 200 } }),
           field({ id: 'customer_email', type: 'email', label: 'Adresse e-mail', required: true, placeholder: 'client@exemple.com', validation: { maxLength: 254, pattern: EMAIL_PATTERN } }),
           field({ id: 'customer_phone', type: 'tel', label: 'Téléphone', required: false, placeholder: '0555123456' }),
+          field({ id: 'customer_wilaya', type: 'text', label: 'Wilaya', required: true, placeholder: 'Alger', validation: { maxLength: 100 } }),
           field({ id: 'product_name', type: 'text', label: 'Produit', required: true, placeholder: 'Nike Air Max', validation: { maxLength: 500 } }),
+          field({ id: 'payment_method', type: 'select', label: 'Mode de paiement', required: true, placeholder: 'Sélectionnez un mode de paiement…', options: paymentOptions, validation: { minLength: 1 } }),
+          field({ id: 'shipping_method', type: 'text', label: 'Mode de livraison', required: true, placeholder: 'Livraison à domicile', validation: { maxLength: 100 } }),
+          field({ id: 'shipping_cost', type: 'number', label: 'Frais de livraison (DA)', required: false, placeholder: '500', validation: { min: 0 } }),
           field({ id: 'order_date', type: 'date', label: 'Date de commande', required: false }),
         ],
       },

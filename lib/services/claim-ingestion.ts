@@ -29,6 +29,7 @@ import type { AIDecision } from '@/lib/constants'
 // ─────────────────────────────────────────────────────────────
 export interface CanonicalPrediction {
   shopName:        string
+  customerId:      string | null
   orderTotal:      number | null
   customerAge:     number | null
   orderAddress:    string | null
@@ -45,6 +46,7 @@ export interface CanonicalPrediction {
 
 function buildPrediction(input: {
   shopName:         string
+  customerId?:      string | null
   orderTotal?:      number | null
   customerAge?:     number | null
   orderAddress?:    string | null
@@ -60,6 +62,7 @@ function buildPrediction(input: {
 }): CanonicalPrediction {
   return {
     shopName:        input.shopName,
+    customerId:      input.customerId      ?? null,
     orderTotal:      input.orderTotal      ?? null,
     customerAge:     input.customerAge     ?? null,
     orderAddress:    input.orderAddress    ?? null,
@@ -87,6 +90,8 @@ export interface IngestClaimInput {
 
   // Champs Claim "racine"
   orderId:       string
+  // Identifiant du client côté boutique (Customer_ID du dataset ML).
+  customerId?:   string | null
   customerName:  string
   customerEmail: string
   customerPhone: string | null
@@ -142,6 +147,7 @@ export type IngestClaimResult =
 export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimResult> {
   const customerEmailNorm = input.customerEmail.trim().toLowerCase()
   const customerPhoneNorm = input.customerPhone?.trim() || null
+  const customerIdNorm    = input.customerId?.trim() || null
 
   // 1. Fraud score
   const { record: fraudRecord } = await findOrCreateFraudRecord(
@@ -155,6 +161,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   // Le résultat ML sera mergé en plus si l'appel réussit (étape 5).
   const predictionData = buildPrediction({
     shopName:        input.vendor.companyName,
+    customerId:      customerIdNorm,
     customerPhone:   customerPhoneNorm,
     ...input.prediction,
   })
@@ -171,6 +178,9 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   const enrichedMlPayload = input.mlPayload
     ? {
         ...input.mlPayload,
+        // Identité client : la valeur passée à ingestClaim fait foi (elle est
+        // aussi persistée en colonne). Sans valeur, on laisse celle du payload.
+        ...(customerIdNorm ? { Customer_ID: customerIdNorm } : {}),
         Fraud_Score:           fraudScore,
         Customer_Past_Returns: pastReturns,
         Is_Suspicious:
@@ -201,6 +211,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
           vendorId:      input.vendor.id,
           apiKeyId:      input.apiKeyId ?? null,
           orderId:       input.orderId,
+          customerId:    customerIdNorm,
           customerName:  input.customerName.trim(),
           customerEmail: customerEmailNorm,
           customerPhone: customerPhoneNorm,

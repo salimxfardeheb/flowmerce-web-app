@@ -67,6 +67,22 @@ export const VENDOR_CATEGORIES = [
 ] as const
 export type VendorCategory = (typeof VENDOR_CATEGORIES)[number]
 
+// ── Moyens de paiement ────────────────────────────────────────────────────────
+// `value` = valeur envoyée au ML (champ Payment_Method), `label` = affichage FR.
+// La wilaya n'a volontairement pas de liste figée : elle est transmise par la
+// boutique (session de retour ou réponses du formulaire) et reprise telle quelle.
+export const PAYMENT_METHODS = [
+  'Cash on Delivery', 'Card', 'CCP', 'Bank Transfer',
+] as const
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  'Cash on Delivery': 'Paiement à la livraison',
+  'Card':             'Carte bancaire (CIB / Edahabia)',
+  'CCP':              'Versement CCP',
+  'Bank Transfer':    'Virement bancaire',
+}
+
 // ── Labels UI ─────────────────────────────────────────────────────────────────
 export const CLAIM_TYPE_LABELS: Record<ClaimTypeValue, string> = {
   EXCHANGE: 'Échange',

@@ -47,6 +47,12 @@ export default async function ClaimDetailPage({
   const productQty   = typeof prediction?.productQuantity === 'number' ? prediction.productQuantity : null
   const orderTotal   = typeof prediction?.orderTotal      === 'number' ? prediction.orderTotal      : null
 
+  // Données client transmises par la boutique / saisies dans le formulaire.
+  const unknown = (v: unknown) =>
+    typeof v === 'string' && v.trim() !== '' && v !== 'Unknown' ? v : null
+  const customerWilaya = unknown(prediction?.customerWilaya)
+  const paymentMethod  = unknown(prediction?.paymentMethod)
+
   // Drapeau informatif calculé côté web app (jamais par le ML)
   const refundEligible = prediction?.refundEligible === true
   const confidence   = claim.aiScore != null ? Math.round(claim.aiScore * 100) : null
@@ -128,6 +134,12 @@ export default async function ClaimDetailPage({
               <p className="text-xs text-gray-400">Nom</p>
               <p className="text-sm font-medium text-gray-900">{claim.customerName}</p>
             </div>
+            {claim.customerId && (
+              <div>
+                <p className="text-xs text-gray-400">ID client</p>
+                <p className="text-sm font-mono text-gray-700">{claim.customerId}</p>
+              </div>
+            )}
             <div>
               <p className="text-xs text-gray-400">Email</p>
               <p className="text-sm text-gray-700">{claim.customerEmail}</p>
@@ -136,6 +148,18 @@ export default async function ClaimDetailPage({
               <div>
                 <p className="text-xs text-gray-400">Téléphone</p>
                 <p className="text-sm text-gray-700">{claim.customerPhone}</p>
+              </div>
+            )}
+            {customerWilaya && (
+              <div>
+                <p className="text-xs text-gray-400">Wilaya</p>
+                <p className="text-sm text-gray-700">{customerWilaya}</p>
+              </div>
+            )}
+            {paymentMethod && (
+              <div>
+                <p className="text-xs text-gray-400">Mode de paiement</p>
+                <p className="text-sm text-gray-700">{paymentMethod}</p>
               </div>
             )}
             <div>

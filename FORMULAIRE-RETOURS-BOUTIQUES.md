@@ -64,7 +64,7 @@ interface ReturnForm {
 
 | Section | Champs |
 |---|---|
-| `order` — Informations de commande | `order_id*`, `customer_name*`, `customer_email*` (pattern email), `customer_phone`, `product_name*`, `order_date` |
+| `order` — Informations de commande | `order_id*`, `customer_id`, `customer_name*`, `customer_email*` (pattern email), `customer_phone`, `customer_wilaya*`, `product_name*`, `payment_method*` (select `PAYMENT_METHODS`), `shipping_method*`, `shipping_cost` (number ≥ 0), `order_date` |
 | `reason` — Motif du retour | `reason*` (select) — options **filtrées** par `acceptedReturnReasons` |
 | `resolution` — Résolution souhaitée | `desired_resolution*` (select) — options **filtrées** par `acceptedTypes` |
 | `description` — Détails de la demande | `description` (textarea, max 2000) |

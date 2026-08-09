@@ -22,130 +22,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit }            from '@/lib/rate-limit'
 import { validateApiKey }            from '@/lib/api-key-auth'
 import { buildReturnForm }           from '@/lib/services/return-form-builder'
-import type { ReturnForm, ReturnFormField } from '@/lib/services/return-form-builder'
+import {
+  isPresent,
+  validateReturnFormAnswers,
+}                                    from '@/lib/services/return-form-validation'
 import { buildMLPayload }            from '@/lib/services/ml'
 import { checkReturnPolicy }         from '@/lib/services/return-policy'
 import { ingestClaim }               from '@/lib/services/claim-ingestion'
 import { log }                       from '@/lib/logger'
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const HTML_RE  = /<[^>]*>/
-const URL_RE   = /^(https?:|data:|blob:)/
-
-// ─────────────────────────────────────────────────────────────
-// Validation des réponses contre la définition du formulaire
-// (règles de validation pilotées par buildReturnForm — source de vérité)
-// ─────────────────────────────────────────────────────────────
-
-function isPresent(value: unknown): boolean {
-  if (value === undefined || value === null) return false
-  if (typeof value === 'string') return value.trim() !== ''
-  if (typeof value === 'boolean') return true
-  if (typeof value === 'number') return Number.isFinite(value)
-  if (Array.isArray(value)) return value.length > 0
-  return true
-}
-
-function isRequired(field: ReturnFormField): boolean {
-  return field.required ?? false
-}
-
-function optionValues(field: ReturnFormField): string[] {
-  return (field.options ?? []).map(o =>
-    typeof o === 'string' ? o : o.value,
-  )
-}
-
-function validateAnswer(field: ReturnFormField, value: unknown): string | null {
-  const label = field.label ?? field.id
-
-  if (!isPresent(value)) {
-    return isRequired(field) ? `Champ requis manquant : ${field.id}` : null
-  }
-
-  // Types à valeur de chaîne (text, textarea, email, tel)
-  if (field.type === 'text' || field.type === 'textarea' || field.type === 'email' || field.type === 'tel') {
-    if (typeof value !== 'string') return `Champ ${label} invalide`
-    const text = value.trim()
-
-    if (field.validation?.minLength != null && text.length < field.validation.minLength) {
-      return `Champ ${label} : minimum ${field.validation.minLength} caractères`
-    }
-    if (field.validation?.maxLength != null && text.length > field.validation.maxLength) {
-      return `Champ ${label} : maximum ${field.validation.maxLength} caractères`
-    }
-
-    if (field.type === 'email') {
-      if (!EMAIL_RE.test(text) || text.length > 254) return 'Email invalide'
-    } else if (field.validation?.pattern) {
-      try {
-        if (!new RegExp(field.validation.pattern).test(text)) return `Champ ${label} : format invalide`
-      } catch {
-        // Regex invalide dans la définition du formulaire : on ne bloque pas
-      }
-    }
-
-    if (HTML_RE.test(text)) return `Contenu HTML non autorisé (champ ${label})`
-    return null
-  }
-
-  // Date
-  if (field.type === 'date') {
-    if (typeof value !== 'string') return `Champ ${label} invalide`
-    const parsed = new Date(value)
-    if (isNaN(parsed.getTime())) return `Champ ${label} : date invalide`
-    return null
-  }
-
-  // Nombre
-  if (field.type === 'number') {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return `Champ ${label} invalide`
-    if (field.validation?.min != null && value < field.validation.min) return `Champ ${label} : valeur minimale ${field.validation.min}`
-    if (field.validation?.max != null && value > field.validation.max) return `Champ ${label} : valeur maximale ${field.validation.max}`
-    return null
-  }
-
-  // Select / radio — la valeur doit être une option valide du formulaire
-  // (les options sont déjà filtrées par la policy du vendeur : raisons
-  // acceptées et types de résolution acceptés)
-  if (field.type === 'select') {
-    if (typeof value !== 'string') return `Champ ${label} invalide`
-    const options = optionValues(field)
-    if (options.length > 0 && !options.includes(value)) {
-      return `Valeur invalide pour le champ ${field.id}`
-    }
-    return null
-  }
-
-  // Checkbox — booléen seul, ou multi-sélection (tableau d'options)
-  if (field.type === 'checkbox') {
-    if (typeof value === 'boolean') return null
-    if (Array.isArray(value)) {
-      const options = optionValues(field)
-      if (options.length > 0 && value.every(v => typeof v === 'string' && options.includes(v))) return null
-    }
-    return `Champ ${label} invalide`
-  }
-
-  // Fichiers uploadés (image/video/file/barcode/qr/signature) — la valeur
-  // est l'URL du fichier déjà mis en ligne par la plateforme cliente
-  if (typeof value === 'string') {
-    if (!URL_RE.test(value)) return `Champ ${label} : URL invalide`
-    return null
-  }
-
-  return null
-}
-
-function validateReturnFormAnswers(form: ReturnForm, answers: Record<string, unknown>): string | null {
-  for (const section of form.sections ?? []) {
-    for (const field of section.fields ?? []) {
-      const error = validateAnswer(field, answers[field.id])
-      if (error) return error
-    }
-  }
-  return null
-}
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/v1/returns
@@ -206,6 +90,7 @@ export async function POST(req: NextRequest) {
   // 4. Mapping des réponses validées vers les champs métier
   const str = (v: unknown) => String(v ?? '').trim()
 
+  const customerId       = str(ans.customer_id) || null
   const customerName     = str(ans.customer_name)
   const customerEmail    = str(ans.customer_email).toLowerCase()
   const customerPhone    = str(ans.customer_phone) || null
@@ -281,6 +166,7 @@ export async function POST(req: NextRequest) {
   const productCategory  = strOrNull(ans.product_category)
 
   const mlPayload = buildMLPayload({
+    customerId,
     shopName:           vendor.companyName,
     productCategory,
     productPrice,
@@ -307,6 +193,7 @@ export async function POST(req: NextRequest) {
     vendor:        { id: keyRecord.vendorId, companyName: vendor.companyName },
     apiKeyId:      keyRecord.id,
     orderId,
+    customerId,
     customerName,
     customerEmail,
     customerPhone,

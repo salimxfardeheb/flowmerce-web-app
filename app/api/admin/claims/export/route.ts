@@ -45,6 +45,8 @@ export async function POST() {
     select: {
       id:          true,
       orderId:     true,
+      customerId:  true,
+      fraudScore:  true,
       productName: true,
       orderDate:   true,
       createdAt:   true,
@@ -82,6 +84,8 @@ export async function POST() {
         try {
           const payload = buildReclamationInputFromClaim({
             orderId:     c.orderId,
+            customerId:  c.customerId,
+            fraudScore:  c.fraudScore,
             productName: c.productName,
             orderDate:   c.orderDate,
             createdAt:   c.createdAt,

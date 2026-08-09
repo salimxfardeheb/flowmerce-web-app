@@ -1,93 +1,325 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+// app/return/[token]/page.tsx — page de retour hébergée Flowmerce.
+//
+// La page ne code AUCUN champ en dur : elle récupère la définition du
+// formulaire (buildReturnForm) via /api/return/[token]/vendor-info — la même
+// que celle servie aux plateformes externes par /api/v1/return-form — et la
+// restitue telle quelle. Les champs déjà connus de la session sont affichés en
+// récapitulatif (lecture seule) ; les autres sont saisis par le client puis
+// soumis dans `answers`, comme pour l'API v1.
+
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import {
-  Store, Package, Hash, Calendar, User, Mail, Phone,
-  AlertTriangle, XCircle, CheckCircle, RotateCcw, Loader2, ChevronDown,
+  Store, Package, Hash, Calendar, User, Mail, Phone, MapPin, CreditCard, Truck,
+  Fingerprint, AlertTriangle, XCircle, CheckCircle, RotateCcw, Loader2, ChevronDown,
 } from 'lucide-react'
-import {
-  RETURN_REASONS, RETURN_REASON_DESCRIPTIONS,
-  CLAIM_TYPES, CLAIM_TYPE_LABELS, CLAIM_TYPE_DESCRIPTIONS,
-} from '@/lib/constants'
+import type { LucideIcon } from 'lucide-react'
 
-type VendorInfo = {
-  valid:           boolean
-  companyName:     string
-  acceptedReasons: string[]
-  acceptedTypes:   string[]
-  error?:          string
-  orderId:         string
-  customerEmail:   string
-  customerName:    string
-  customerPhone:   string
-  productName:     string
-  orderDate:       string
-  shopName:        string
+// ── Types du formulaire (miroir de lib/services/return-form-builder) ────────
+type FieldType = 'text' | 'textarea' | 'select' | 'number' | 'email' | 'tel' | 'date' | 'checkbox'
+
+interface FormOption {
+  value:        string
+  label:        string
+  description?: string
 }
 
-const RESOLUTION_OPTIONS = CLAIM_TYPES.map((value) => ({
-  value,
-  label: CLAIM_TYPE_LABELS[value],
-  desc:  CLAIM_TYPE_DESCRIPTIONS[value],
-}))
+interface FormField {
+  id:            string
+  type:          FieldType
+  label:         string
+  required:      boolean
+  placeholder?:  string
+  defaultValue?: string | number | boolean | null
+  options:       FormOption[]
+  validation: {
+    minLength?: number
+    maxLength?: number
+    pattern?:   string
+    min?:       number
+    max?:       number
+  }
+}
 
-const DEFAULT_REASONS = RETURN_REASONS.map((value) => ({ value, desc: RETURN_REASON_DESCRIPTIONS[value] }))
+interface FormSection {
+  id:           string
+  title:        string
+  description?: string
+  fields:       FormField[]
+}
 
-export default function ReturnPage() {
-  const params = useParams()
-  const token  = params.token as string
+interface ReturnForm {
+  version:     number
+  title:       string
+  description: string
+  sections:    FormSection[]
+  meta: {
+    shop:   { name: string; slug: string; website?: string | null }
+    policy: { max_claim_days: number; processing_days: number }
+  }
+}
 
-  const [vendor, setVendor]                 = useState<VendorInfo | null>(null)
-  const [loadingVendor, setLoadingVendor]   = useState(true)
-  const [reason, setReason]                 = useState('')
-  const [reasonOpen, setReasonOpen]         = useState(false)
-  const [desiredResolution, setResolution]  = useState('')
-  const [description, setDescription]       = useState('')
-  const [submitting, setSubmitting]         = useState(false)
-  const [result, setResult]                 = useState<{ success: boolean; claimId?: string; message: string } | null>(null)
-  const reasonRef = useRef<HTMLDivElement>(null)
+type VendorInfo = {
+  valid:         boolean
+  companyName:   string
+  error?:        string
+  form?:         ReturnForm
+  prefill?:      Record<string, string>
+  customerEmail: string
+}
+
+type FieldValue = string | boolean
+
+// ── Icônes du récapitulatif, par id de champ ────────────────────────────────
+const FIELD_ICONS: Record<string, LucideIcon> = {
+  order_id:        Hash,
+  customer_id:     Fingerprint,
+  customer_name:   User,
+  customer_email:  Mail,
+  customer_phone:  Phone,
+  customer_wilaya: MapPin,
+  product_name:    Package,
+  payment_method:  CreditCard,
+  shipping_method: Truck,
+  shipping_cost:   Truck,
+  order_date:      Calendar,
+}
+
+function formatValue(field: FormField, raw: string): string {
+  if (!raw) return '—'
+  if (field.type === 'date') {
+    const d = new Date(raw)
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+    }
+  }
+  if (field.type === 'select') {
+    return field.options.find(o => o.value === raw)?.label ?? raw
+  }
+  if (field.id === 'order_id') return `#${raw.slice(-10).toUpperCase()}`
+  return raw
+}
+
+// ── Select générique (piloté par les options du formulaire) ─────────────────
+function SelectField({
+  field, value, onChange,
+}: {
+  field:    FormField
+  value:    string
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (reasonRef.current && !reasonRef.current.contains(e.target as Node)) {
-        setReasonOpen(false)
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const selected = field.options.find(o => o.value === value)
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-lg border transition-all ${
+          open ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-gray-200 hover:border-gray-300'
+        } bg-white`}
+      >
+        <span className={selected ? 'text-gray-900' : 'text-gray-400'}>
+          {selected?.label ?? field.placeholder ?? 'Sélectionnez…'}
+        </span>
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+          {field.options.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false) }}
+              className={`w-full text-left px-4 py-3 transition-colors border-b border-gray-100 last:border-0 ${
+                value === opt.value ? 'bg-indigo-50' : 'hover:bg-gray-50'
+              }`}
+            >
+              <p className={`text-sm font-medium ${value === opt.value ? 'text-indigo-700' : 'text-gray-800'}`}>
+                {opt.label}
+              </p>
+              {opt.description && <p className="text-xs text-gray-400 mt-0.5">{opt.description}</p>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected?.description && !open && (
+        <p className="text-xs text-gray-500 mt-2 px-1">{selected.description}</p>
+      )}
+    </div>
+  )
+}
+
+// ── Champ générique ─────────────────────────────────────────────────────────
+function Field({
+  field, value, onChange,
+}: {
+  field:    FormField
+  value:    FieldValue
+  onChange: (v: FieldValue) => void
+}) {
+  const inputClass =
+    'w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 text-gray-800 placeholder-gray-400 ' +
+    'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition'
+
+  if (field.type === 'select') {
+    return <SelectField field={field} value={String(value ?? '')} onChange={onChange} />
+  }
+
+  if (field.type === 'textarea') {
+    return (
+      <textarea
+        value={String(value ?? '')}
+        onChange={e => onChange(e.target.value)}
+        rows={4}
+        maxLength={field.validation.maxLength}
+        placeholder={field.placeholder}
+        className={`${inputClass} resize-none`}
+      />
+    )
+  }
+
+  if (field.type === 'checkbox') {
+    return (
+      <label className="flex items-center gap-2.5 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={value === true}
+          onChange={e => onChange(e.target.checked)}
+          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+        />
+        {field.placeholder ?? field.label}
+      </label>
+    )
+  }
+
+  return (
+    <input
+      type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type}
+      value={String(value ?? '')}
+      onChange={e => onChange(e.target.value)}
+      maxLength={field.validation.maxLength}
+      min={field.validation.min}
+      max={field.validation.max}
+      placeholder={field.placeholder}
+      className={inputClass}
+    />
+  )
+}
+
+// ── Page ────────────────────────────────────────────────────────────────────
+export default function ReturnPage() {
+  const params = useParams()
+  const token  = params.token as string
+
+  const [vendor, setVendor]               = useState<VendorInfo | null>(null)
+  const [loadingVendor, setLoadingVendor] = useState(true)
+  const [answers, setAnswers]             = useState<Record<string, FieldValue>>({})
+  const [submitting, setSubmitting]       = useState(false)
+  const [result, setResult]               = useState<{ success: boolean; claimId?: string; message: string } | null>(null)
+
   useEffect(() => {
     fetch(`/api/return/${token}/vendor-info`)
       .then(r => r.json())
-      .then(data => { setVendor(data); setLoadingVendor(false) })
+      .then((data: VendorInfo) => { setVendor(data); setLoadingVendor(false) })
       .catch(() => {
-        setVendor({ valid: false, companyName: '', acceptedReasons: [], acceptedTypes: [], error: 'Impossible de vérifier le lien.', orderId: '', customerEmail: '', customerName: '', customerPhone: '', productName: '', orderDate: '', shopName: '' })
+        setVendor({ valid: false, companyName: '', customerEmail: '', error: 'Impossible de vérifier le lien.' })
         setLoadingVendor(false)
       })
   }, [token])
 
-  const displayedReasons = (vendor?.acceptedReasons?.length ?? 0) > 0
-    ? DEFAULT_REASONS.filter(r => vendor!.acceptedReasons.includes(r.value))
-    : DEFAULT_REASONS
+  const form    = vendor?.form
+  const prefill = useMemo(() => vendor?.prefill ?? {}, [vendor])
 
-  const displayedResolutions = RESOLUTION_OPTIONS.filter(
-    r => (vendor?.acceptedTypes?.length ?? 0) === 0 || vendor!.acceptedTypes.includes(r.value)
+  // Champs à afficher en récapitulatif (connus de la session) vs. à saisir.
+  const { recapFields, inputSections } = useMemo(() => {
+    const recap: { field: FormField; value: string }[] = []
+    const sections: FormSection[] = []
+
+    for (const section of form?.sections ?? []) {
+      const fields: FormField[] = []
+      for (const field of section.fields) {
+        const known = prefill[field.id]
+        if (known) recap.push({ field, value: known })
+        else       fields.push(field)
+      }
+      if (fields.length > 0) sections.push({ ...section, fields })
+    }
+    return { recapFields: recap, inputSections: sections }
+  }, [form, prefill])
+
+  // Valeurs par défaut fournies par le formulaire
+  useEffect(() => {
+    if (!form) return
+    const defaults: Record<string, FieldValue> = {}
+    for (const section of form.sections) {
+      for (const field of section.fields) {
+        if (field.defaultValue !== null && field.defaultValue !== undefined) {
+          defaults[field.id] = field.type === 'checkbox'
+            ? Boolean(field.defaultValue)
+            : String(field.defaultValue)
+        }
+      }
+    }
+    setAnswers(a => ({ ...defaults, ...a }))
+  }, [form])
+
+  const missingRequired = useMemo(
+    () => inputSections.some(s => s.fields.some(f => {
+      if (!f.required) return false
+      const v = answers[f.id]
+      return v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
+    })),
+    [inputSections, answers],
   )
 
+  const setAnswer = (id: string, value: FieldValue) =>
+    setAnswers(a => ({ ...a, [id]: value }))
+
   const handleSubmit = async () => {
-    if (!reason) return
+    if (missingRequired) return
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/return/${token}`, {
+      // Les champs `number` sont envoyés typés : la validation serveur
+      // (return-form-validation) refuse une chaîne pour ce type.
+      const payload: Record<string, string | number | boolean> = {}
+      for (const section of inputSections) {
+        for (const field of section.fields) {
+          const v = answers[field.id]
+          if (v === undefined || v === null) continue
+          if (typeof v === 'boolean') { payload[field.id] = v; continue }
+
+          const text = v.trim()
+          if (text === '') continue
+
+          if (field.type === 'number') {
+            const n = Number(text)
+            if (Number.isFinite(n)) payload[field.id] = n
+            continue
+          }
+          payload[field.id] = text
+        }
+      }
+
+      const res  = await fetch(`/api/return/${token}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reason,
-          desired_resolution: desiredResolution,
-          description:        description.trim(),
-        }),
+        body:    JSON.stringify({ answers: payload }),
       })
       const data = await res.json()
       if (res.ok && data.success) {
@@ -113,7 +345,7 @@ export default function ReturnPage() {
   )
 
   // ── Lien invalide ────────────────────────────────────────────
-  if (!vendor?.valid) return (
+  if (!vendor?.valid || !form) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="bg-white rounded-xl border border-gray-200 p-8 max-w-md w-full text-center">
         <XCircle className="w-10 h-10 text-red-400 mx-auto mb-4" />
@@ -149,16 +381,6 @@ export default function ReturnPage() {
     </div>
   )
 
-  const orderFields = [
-    { icon: Store,    label: "Boutique",   value: vendor.companyName },
-    { icon: Package,  label: "Produit",    value: vendor.productName },
-    { icon: Hash,     label: "Commande",   value: vendor.orderId ? `#${vendor.orderId.slice(-10).toUpperCase()}` : '—' },
-    { icon: Calendar, label: "Date",       value: vendor.orderDate ? new Date(vendor.orderDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
-    { icon: User,     label: "Client",     value: vendor.customerName || '—' },
-    { icon: Mail,     label: "Email",      value: vendor.customerEmail },
-    { icon: Phone,    label: "Téléphone",  value: vendor.customerPhone || '—' },
-  ]
-
   // ── Formulaire principal ──────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
@@ -185,132 +407,79 @@ export default function ReturnPage() {
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
 
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Demande de retour</h1>
-          <p className="text-sm text-gray-500 mt-1">Complétez le formulaire ci-dessous pour soumettre votre demande.</p>
+          <h1 className="text-xl font-semibold text-gray-900">{form.title}</h1>
+          <p className="text-sm text-gray-500 mt-1">{form.description}</p>
         </div>
 
-        {/* Récapitulatif commande */}
+        {/* Récapitulatif commande — champs déjà connus de la boutique */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Récapitulatif de la commande</p>
           </div>
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {orderFields.map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-start gap-2.5">
-                <Icon className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs text-gray-400">{label}</p>
-                  <p className="text-sm font-medium text-gray-800 truncate">{value || '—'}</p>
-                </div>
+            <div className="flex items-start gap-2.5">
+              <Store className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400">Boutique</p>
+                <p className="text-sm font-medium text-gray-800 truncate">{vendor.companyName}</p>
               </div>
-            ))}
+            </div>
+            {recapFields.map(({ field, value }) => {
+              const Icon = FIELD_ICONS[field.id] ?? Hash
+              return (
+                <div key={field.id} className="flex items-start gap-2.5">
+                  <Icon className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-400">{field.label}</p>
+                    <p className="text-sm font-medium text-gray-800 truncate">{formatValue(field, value)}</p>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 
-        {/* Motifs du retour */}
-        <div className="bg-white rounded-xl border border-gray-200">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              Motif du retour <span className="text-red-400 font-normal">requis</span>
-            </p>
-          </div>
-          <div className="p-5">
-            <div ref={reasonRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setReasonOpen(o => !o)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 text-sm rounded-lg border transition-all ${
-                  reasonOpen
-                    ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-                    : 'border-gray-200 hover:border-gray-300'
-                } bg-white`}
-              >
-                <span className={reason ? 'text-gray-900' : 'text-gray-400'}>
-                  {reason || 'Sélectionnez un motif…'}
-                </span>
-                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${reasonOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {reasonOpen && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-                  {displayedReasons.map(opt => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => { setReason(opt.value); setReasonOpen(false) }}
-                      className={`w-full text-left px-4 py-3 transition-colors border-b border-gray-100 last:border-0 ${
-                        reason === opt.value
-                          ? 'bg-indigo-50'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <p className={`text-sm font-medium ${reason === opt.value ? 'text-indigo-700' : 'text-gray-800'}`}>
-                        {opt.value}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
-                    </button>
-                  ))}
-                </div>
+        {/* Sections du formulaire — pilotées par la définition du vendeur */}
+        {inputSections.map(section => (
+          <div key={section.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                {section.title}{' '}
+                {section.fields.some(f => f.required)
+                  ? <span className="text-red-400 font-normal">requis</span>
+                  : <span className="font-normal normal-case">— optionnel</span>}
+              </p>
+              {section.description && (
+                <p className="text-xs text-gray-400 mt-1 normal-case">{section.description}</p>
               )}
             </div>
-
-            {reason && !reasonOpen && (
-              <p className="text-xs text-gray-500 mt-2 px-1">
-                {displayedReasons.find(r => r.value === reason)?.desc}
-              </p>
-            )}
+            <div className="p-5 space-y-4">
+              {section.fields.map(field => (
+                <div key={field.id}>
+                  {/* Le libellé n'est masqué que s'il répète le titre de section */}
+                  {!(section.fields.length === 1 && field.label === section.title) && (
+                    <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                      {field.label}
+                      {field.required && <span className="text-red-400 ml-1">*</span>}
+                    </label>
+                  )}
+                  <Field
+                    field={field}
+                    value={answers[field.id] ?? ''}
+                    onChange={v => setAnswer(field.id, v)}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-
-        {/* Résolution souhaitée */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              Résolution souhaitée <span className="text-red-400 font-normal">requis</span>
-            </p>
-          </div>
-          <div className="p-5 space-y-2">
-            {displayedResolutions.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setResolution(opt.value)}
-                className={`w-full text-left px-4 py-3 rounded-lg border transition-all ${
-                  desiredResolution === opt.value
-                    ? 'border-indigo-500 bg-indigo-50'
-                    : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
-                }`}
-              >
-                <p className={`text-sm font-medium ${desiredResolution === opt.value ? 'text-indigo-700' : 'text-gray-800'}`}>
-                  {opt.label}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">{opt.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Description */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Description <span className="font-normal normal-case">— optionnel</span></p>
-          </div>
-          <div className="p-5">
-            <textarea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              rows={4}
-              placeholder="Décrivez votre problème en détail pour accélérer le traitement…"
-              className="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition"
-            />
-          </div>
-        </div>
+        ))}
 
         {/* Avertissement */}
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
           <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-700">
             Conservez le produit en bon état jusqu&apos;à la confirmation de votre retour.
-            Le dossier sera traité sous <strong>48h ouvrées</strong> par {vendor.companyName}.
+            Le dossier sera traité sous <strong>{form.meta.policy.processing_days} jours ouvrés</strong> par {vendor.companyName}.
           </p>
         </div>
 
@@ -325,7 +494,7 @@ export default function ReturnPage() {
         {/* Bouton soumettre */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !reason || !desiredResolution}
+          disabled={submitting || missingRequired}
           className="w-full inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-3 rounded-lg transition-colors"
         >
           {submitting ? (

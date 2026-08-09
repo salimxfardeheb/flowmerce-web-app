@@ -5,7 +5,12 @@ import {
   slugify,
   RETURN_FORM_VERSION,
 } from '@/lib/services/return-form-builder'
-import { RETURN_REASONS, CLAIM_TYPES } from '@/lib/constants'
+import {
+  RETURN_REASONS,
+  CLAIM_TYPES,
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+} from '@/lib/constants'
 
 const vendor: Pick<Vendor, 'companyName' | 'website'> = {
   companyName: 'Caba Store',
@@ -146,6 +151,38 @@ describe('buildReturnForm', () => {
     expect(description.type).toBe('textarea')
     expect(description.required).toBe(false)
     expect(description.validation.maxLength).toBe(2000)
+  })
+
+  it('collecte identifiant client, wilaya et mode de paiement', () => {
+    const form  = buildReturnForm(vendor, policy())
+    const order = form.sections.find(s => s.id === 'order')!
+
+    const customerId = order.fields.find(f => f.id === 'customer_id')!
+    expect(customerId.type).toBe('text')
+    expect(customerId.required).toBe(false)
+
+    const wilaya = order.fields.find(f => f.id === 'customer_wilaya')!
+    expect(wilaya.type).toBe('text')
+    expect(wilaya.required).toBe(true)
+
+    const payment = order.fields.find(f => f.id === 'payment_method')!
+    expect(payment.type).toBe('select')
+    expect(payment.required).toBe(true)
+    expect(payment.options.map(o => o.value)).toEqual([...PAYMENT_METHODS])
+    expect(payment.options[0].label).toBe(PAYMENT_METHOD_LABELS[PAYMENT_METHODS[0]])
+  })
+
+  it('collecte le mode et les frais de livraison', () => {
+    const order = buildReturnForm(vendor, policy()).sections.find(s => s.id === 'order')!
+
+    const method = order.fields.find(f => f.id === 'shipping_method')!
+    expect(method.type).toBe('text')
+    expect(method.required).toBe(true)
+
+    const cost = order.fields.find(f => f.id === 'shipping_cost')!
+    expect(cost.type).toBe('number')
+    expect(cost.required).toBe(false)
+    expect(cost.validation.min).toBe(0)
   })
 
   it('ne dépend d’aucun champ du vendeur autre que le nom', () => {

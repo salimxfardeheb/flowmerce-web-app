@@ -14,10 +14,18 @@
 //   "customer_name":  "Ahmed Benali",     // obligatoire
 //   "product_name":   "Nike Air Max",     // obligatoire
 //   "customer_phone": "0555123456",       // optionnel
+//   "customer_id":     "CUST-1024",        // optionnel  id client côté boutique
+//   "customer_wilaya": "Alger",            // optionnel  pré-remplit le formulaire
+//   "payment_method":  "Cash on Delivery", // optionnel  pré-remplit le formulaire
+//   "shipping_method": "Livraison à domicile", // optionnel  pré-remplit le formulaire
+//   "shipping_cost":   500,                // optionnel  DA, pré-remplit le formulaire
 //   "order_date":     "2026-04-15",       // optionnel  ISO-8601
 //   "shop_name":      "Ma Boutique",      // optionnel
 //   "expires_in":     72                  // optionnel  heures (défaut : 72)
 // }
+//
+// Les champs pré-remplis ne sont plus demandés au client sur la page hébergée :
+// ils sont affichés en récapitulatif et font foi à la soumission.
 //
 // Réponse 201:
 // {
@@ -30,6 +38,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma }           from '@/lib/prisma'
 import { env }              from '@/lib/env'
 import { validateApiKey }   from '@/lib/api-key-auth'
+import { PAYMENT_METHODS }  from '@/lib/constants'
 import { log }              from '@/lib/logger'
 import { randomBytes }      from 'node:crypto'
 
@@ -62,6 +71,7 @@ export async function POST(req: NextRequest) {
 
   const str    = (k: string) => String(body[k] ?? '').trim()
   const numPos = (k: string) => { const n = Number(body[k]); return Number.isFinite(n) && n > 0 ? n : null }
+  const numGe0 = (k: string) => { const n = Number(body[k]); return body[k] != null && body[k] !== '' && Number.isFinite(n) && n >= 0 ? n : null }
   const intPos = (k: string) => { const n = parseInt(String(body[k]), 10); return Number.isFinite(n) && n > 0 ? n : null }
 
   const orderId         = str('order_id')
@@ -69,6 +79,11 @@ export async function POST(req: NextRequest) {
   const customerName    = str('customer_name')
   const productName     = str('product_name')
   const customerPhone   = str('customer_phone')
+  const customerId      = str('customer_id')
+  const customerWilaya  = str('customer_wilaya')
+  const paymentMethod   = str('payment_method')
+  const shippingMethod  = str('shipping_method')
+  const shippingCost    = numGe0('shipping_cost')
   const orderDate       = str('order_date')
   const shopName        = str('shop_name') || vendor.companyName
   const productPrice    = numPos('product_price')
@@ -87,8 +102,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Format email invalide' }, { status: 400 })
   if (orderId.length > 200 || customerName.length > 200 || productName.length > 500)
     return NextResponse.json({ error: 'Champ trop long' }, { status: 400 })
-  if (HTML_RE.test(customerName) || HTML_RE.test(productName) || HTML_RE.test(shopName))
+  if (customerId.length > 100 || customerWilaya.length > 100 || shippingMethod.length > 100)
+    return NextResponse.json({ error: 'Champ trop long' }, { status: 400 })
+  if (HTML_RE.test(customerName) || HTML_RE.test(productName) || HTML_RE.test(shopName) ||
+      HTML_RE.test(customerId)   || HTML_RE.test(customerWilaya) || HTML_RE.test(shippingMethod))
     return NextResponse.json({ error: 'Contenu HTML non autorisé' }, { status: 400 })
+  if (paymentMethod && !(PAYMENT_METHODS as readonly string[]).includes(paymentMethod))
+    return NextResponse.json(
+      { error: `payment_method invalide (valeurs acceptées : ${PAYMENT_METHODS.join(', ')})` },
+      { status: 400 },
+    )
 
   // Vérifier la politique de retour (fenêtre de temps)
   if (orderDate) {
@@ -114,9 +137,14 @@ export async function POST(req: NextRequest) {
       token,
       vendorId:      keyRecord.id,
       orderId,
+      customerId:      customerId || null,
       customerEmail,
       customerName,
       customerPhone:   customerPhone || '',
+      customerWilaya:  customerWilaya || null,
+      paymentMethod:   paymentMethod || null,
+      shippingMethod:  shippingMethod || null,
+      shippingCost,
       productName,
       orderDate:       orderDate || '',
       shopName,

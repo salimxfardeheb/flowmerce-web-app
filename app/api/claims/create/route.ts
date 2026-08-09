@@ -158,12 +158,14 @@ export async function POST(req: NextRequest) {
   const paymentMethod   = body.payment_method   ? String(body.payment_method)   : 'Unknown'
   const shippingMethod  = body.shipping_method  ? String(body.shipping_method)  : 'Standard'
   const orderAddress    = body.order_address    ? String(body.order_address)    : null
+  const customerId      = body.customer_id      ? String(body.customer_id).trim() : null
 
   // 8. Construction du payload ML enrichi (les champs non fournis prennent
   //    des valeurs par défaut neutres). Fraud_Score / Past_Returns / Is_Suspicious
   //    sont injectés par ingestClaim après calcul du fraud record.
   const returnWindowDays = returnPolicy?.maxClaimDays ?? 14
   const mlPayload = buildMLPayload({
+    customerId,
     shopName:         keyRecord.vendor.companyName,
     productCategory:  productCategory ?? null,
     productPrice,
@@ -185,6 +187,7 @@ export async function POST(req: NextRequest) {
     vendor:    { id: keyRecord.vendorId, companyName: keyRecord.vendor.companyName },
     apiKeyId:  keyRecord.id,
     orderId,
+    customerId,
     customerName:  String(body.customer_name),
     customerEmail: customerEmailNorm,
     customerPhone: customerPhoneNorm,

@@ -144,8 +144,10 @@ export async function POST(req: NextRequest) {
   // 5. Enrichir l'input ML avec la politique vendeur
   const { enriched: mlInput, warnings: policyWarnings } = enrichWithVendorPolicy(rawBody, policy);
 
-  // Supprimer Refund_Amount_DA du payload ML (retiré côté ML)
+  // Champs hors contrat ML : jamais collectés par Flowmerce, retirés du payload
+  // même si un partenaire les envoie encore.
   delete (mlInput as unknown as Record<string, unknown>).Refund_Amount_DA;
+  delete (mlInput as unknown as Record<string, unknown>).Return_Shipping_Paid_By;
 
   // 6. Appel ML
   const mlResult = await callMLPredict(mlInput);

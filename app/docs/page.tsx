@@ -613,6 +613,7 @@ x-api-key: flk_votre_cle_api`}
                     <table className="w-full text-sm">
                       <tbody>
                         <FieldRow name="customer_phone"   type="string" desc="Téléphone client (renforce la détection de fraude)" />
+                        <FieldRow name="customer_id"      type="string" desc="Identifiant du client dans votre système (exporté en Customer_ID)" />
                         <FieldRow name="customer_age"     type="number" desc="Âge du client" />
                         <FieldRow name="customer_gender"  type="string" desc="Genre du client" />
                         <FieldRow name="customer_wilaya"  type="string" desc="Wilaya (région) du client" />
@@ -815,6 +816,11 @@ x-api-key: flk_votre_cle_api`}
                     <table className="w-full text-sm">
                       <tbody>
                         <FieldRow name="customer_phone"   type="string" desc="Téléphone du client" />
+                        <FieldRow name="customer_id"      type="string" desc="Identifiant du client dans votre système (repris sur la réclamation)" />
+                        <FieldRow name="customer_wilaya"  type="string" desc="Wilaya du client — sinon demandée au client sur la page de retour" />
+                        <FieldRow name="payment_method"   type="string" desc="Cash on Delivery | Card | CCP | Bank Transfer — sinon demandé au client" />
+                        <FieldRow name="shipping_method"  type="string" desc="Mode de livraison (Livraison à domicile, Stopdesk…) — sinon demandé au client" />
+                        <FieldRow name="shipping_cost"    type="number" desc="Frais de livraison en DA — sinon demandés au client" />
                         <FieldRow name="order_date"       type="string" desc="Date de commande ISO-8601 (vérifie le délai vs return policy)" />
                         <FieldRow name="shop_name"        type="string" desc="Nom de votre boutique (affiché sur la page de retour). Défaut: nom du compte." />
                         <FieldRow name="product_price"    type="number" desc="Prix unitaire en DA" />
@@ -869,6 +875,13 @@ x-api-key: flk_votre_cle_api`}
                   <li>Le token est à usage unique — une fois utilisé, il devient invalide</li>
                   <li>Rate limit : 1 tentative par IP+commande par heure</li>
                   <li>Source du claim créé : <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">HOSTED_PAGE</code></li>
+                  <li>
+                    Body : <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">{'{ "answers": { "<field_id>": valeur } }'}</code> —
+                    les <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">field_id</code> proviennent du
+                    même formulaire que <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">GET /api/v1/return-form</code>,
+                    et les réponses sont validées contre sa définition
+                  </li>
+                  <li>Les champs transmis à l&apos;étape 1 ne sont pas redemandés au client : la valeur de session fait foi</li>
                 </ul>
               </div>
             </section>

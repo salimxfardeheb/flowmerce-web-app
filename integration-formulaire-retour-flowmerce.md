@@ -79,10 +79,15 @@ x-api-key: <VOTRE_CLE_API_FLOWMERCE>
       "description": "Renseignez les informations de la commande concernée.",
       "fields": [
         { "id": "order_id", "type": "text", "label": "Numéro de commande", "required": true, "options": [], "validation": { "maxLength": 200 }, "defaultValue": null },
+        { "id": "customer_id", "type": "text", "label": "Identifiant client", "required": false, "options": [], "validation": { "maxLength": 100 }, "defaultValue": null },
         { "id": "customer_name", "type": "text", "label": "Nom complet", "required": true, "options": [], "validation": { "maxLength": 200 }, "defaultValue": null },
         { "id": "customer_email", "type": "email", "label": "Adresse e-mail", "required": true, "options": [], "validation": { "maxLength": 254, "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" }, "defaultValue": null },
         { "id": "customer_phone", "type": "tel", "label": "Téléphone", "required": false, "options": [], "validation": {}, "defaultValue": null },
+        { "id": "customer_wilaya", "type": "text", "label": "Wilaya", "required": true, "options": [], "validation": { "maxLength": 100 }, "defaultValue": null },
         { "id": "product_name", "type": "text", "label": "Produit", "required": true, "options": [], "validation": { "maxLength": 500 }, "defaultValue": null },
+        { "id": "payment_method", "type": "select", "label": "Mode de paiement", "required": true, "options": [{ "value": "Cash on Delivery", "label": "Paiement à la livraison" }, { "value": "Card", "label": "Carte bancaire (CIB / Edahabia)" }, { "value": "CCP", "label": "Versement CCP" }, { "value": "Bank Transfer", "label": "Virement bancaire" }], "validation": { "minLength": 1 }, "defaultValue": null },
+        { "id": "shipping_method", "type": "text", "label": "Mode de livraison", "required": true, "options": [], "validation": { "maxLength": 100 }, "defaultValue": null },
+        { "id": "shipping_cost", "type": "number", "label": "Frais de livraison (DA)", "required": false, "options": [], "validation": { "min": 0 }, "defaultValue": null },
         { "id": "order_date", "type": "date", "label": "Date de commande", "required": false, "options": [], "validation": {}, "defaultValue": null }
       ]
     },
@@ -205,10 +210,18 @@ Content-Type: application/json
 | `description` | oui | Entre 10 et 2000 caractères, sans HTML. |
 
 Champs optionnels supplémentaires pris en compte s'ils sont fournis (améliorent la
-précision de l'analyse automatique) : `order_total`, `product_price`,
+précision de l'analyse automatique) : `customer_id`, `order_total`, `product_price`,
 `product_quantity`, `product_category`, `customer_age`, `customer_gender`,
 `customer_wilaya`, `payment_method`, `shipping_method`, `shipping_cost`,
 `order_address`.
+
+> `customer_id` (votre identifiant client interne), `customer_wilaya`,
+> `payment_method`, `shipping_method` et `shipping_cost` sont conservés sur la
+> réclamation et exportés vers le moteur ML (`Customer_ID`, `Customer_Wilaya`,
+> `Payment_Method`, `Shipping_Method`, `Shipping_Cost_DA`). Transmettez-les dès que
+> vous les connaissez : le formulaire générique les demande désormais au client
+> (`customer_wilaya`, `payment_method` et `shipping_method` y sont **requis**), et
+> toute valeur que vous fournissez évite au client d'avoir à la ressaisir.
 
 ### Réponse `201`
 

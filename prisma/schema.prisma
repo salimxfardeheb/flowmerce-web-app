@@ -135,10 +135,15 @@ model ReturnSession {
   token         String    @unique
   vendorId      String
   orderId       String
+  customerId    String?
   customerEmail String
   productName   String
   customerName  String
   customerPhone String    @default("")
+  customerWilaya  String?
+  paymentMethod   String?
+  shippingMethod  String?
+  shippingCost    Float?
   orderDate       String    @default("")
   shopName        String    @default("")
   productPrice    Float?
@@ -155,6 +160,7 @@ model Claim {
   vendorId      String
   apiKeyId      String?
   orderId       String
+  customerId    String?
   customerName  String
   customerEmail String
   customerPhone String?

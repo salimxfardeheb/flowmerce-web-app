@@ -18,6 +18,7 @@ describe('buildMLPayload', () => {
   it('construit le payload ML avec les champs requis', async () => {
     const { buildMLPayload } = await import('@/lib/services/ml')
     const payload = buildMLPayload({
+      customerId: 'CUST-1024',
       shopName: 'Ma Boutique',
       productCategory: 'Electronics',
       productPrice: 5000,
@@ -34,6 +35,7 @@ describe('buildMLPayload', () => {
       returnWindowDays: 14,
     })
 
+    expect(payload.Customer_ID).toBe('CUST-1024')
     expect(payload.Shop_Name).toBe('Ma Boutique')
     expect(payload.Product_Price_DA).toBe(5000)
     expect(payload.Order_Quantity).toBe(2)
@@ -45,6 +47,7 @@ describe('buildMLPayload', () => {
   it('utilise des valeurs par défaut pour les champs optionnels', async () => {
     const { buildMLPayload } = await import('@/lib/services/ml')
     const payload = buildMLPayload({
+      customerId: null,
       shopName: 'Test',
       productCategory: null,
       productPrice: null,
@@ -62,9 +65,50 @@ describe('buildMLPayload', () => {
     })
 
     expect(payload.Product_Category).toBe('Unknown')
+    expect(payload.Customer_ID).toBe('')
     expect(payload.Customer_Age).toBe(0)
     expect(payload.Product_Price_DA).toBe(1)
     expect(payload.Order_Quantity).toBe(1)
+  })
+})
+
+describe('buildReclamationInputFromClaim', () => {
+  const baseClaim = {
+    orderId:     'CMD-1',
+    productName: 'Nike Air Max',
+    orderDate:   new Date('2026-07-01'),
+    createdAt:   new Date('2026-07-05'),
+    type:        'REFUND' as const,
+    aiDecision:  'Exchange',
+    vendor:      { companyName: 'Caba Store' },
+  }
+
+  it('prend Customer_ID et Fraud_Score sur les colonnes de la claim', async () => {
+    const { buildReclamationInputFromClaim } = await import('@/lib/services/ml')
+    const row = buildReclamationInputFromClaim({
+      ...baseClaim,
+      customerId: 'CUST-1024',
+      fraudScore: 45,
+      mlInput:    { Customer_ID: 'ancien', Fraud_Score: 0, Customer_Wilaya: 'Alger', Payment_Method: 'CCP' },
+    })
+
+    expect(row.Customer_ID).toBe('CUST-1024')
+    expect(row.Fraud_Score).toBe(45)
+    expect(row.Customer_Wilaya).toBe('Alger')
+    expect(row.Payment_Method).toBe('CCP')
+  })
+
+  it('retombe sur mlInput quand les colonnes sont absentes (claims historiques)', async () => {
+    const { buildReclamationInputFromClaim } = await import('@/lib/services/ml')
+    const row = buildReclamationInputFromClaim({
+      ...baseClaim,
+      customerId: null,
+      fraudScore: null,
+      mlInput:    { Customer_ID: 'CUST-legacy', Fraud_Score: 30 },
+    })
+
+    expect(row.Customer_ID).toBe('CUST-legacy')
+    expect(row.Fraud_Score).toBe(30)
   })
 })
 
