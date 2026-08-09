@@ -16,6 +16,9 @@
 //   "customer_phone": "0555123456",       // optionnel
 //   "customer_id":     "CUST-1024",        // optionnel  id client côté boutique
 //   "customer_wilaya": "Alger",            // optionnel  pré-remplit le formulaire
+//   "customer_age":    34,                 // optionnel  jamais demandé au client
+//   "customer_birth_date": "1992-05-14",   // optionnel  âge dérivé, prime sur customer_age
+//   "customer_gender": "Male",             // optionnel  jamais demandé au client
 //   "payment_method":  "Cash on Delivery", // optionnel  pré-remplit le formulaire
 //   "shipping_method": "Livraison à domicile", // optionnel  pré-remplit le formulaire
 //   "shipping_cost":   500,                // optionnel  DA, pré-remplit le formulaire
@@ -39,6 +42,7 @@ import { prisma }           from '@/lib/prisma'
 import { env }              from '@/lib/env'
 import { validateApiKey }   from '@/lib/api-key-auth'
 import { PAYMENT_METHODS }  from '@/lib/constants'
+import { computeAgeFromBirthDate, MAX_CUSTOMER_AGE } from '@/lib/utils'
 import { log }              from '@/lib/logger'
 import { randomBytes }      from 'node:crypto'
 
@@ -81,6 +85,14 @@ export async function POST(req: NextRequest) {
   const customerPhone   = str('customer_phone')
   const customerId      = str('customer_id')
   const customerWilaya  = str('customer_wilaya')
+  // Profil client : connu de la boutique, jamais demandé sur la page de retour.
+  // Ce sont des features du modèle (Customer_Age / Customer_Gender) — sans eux,
+  // l'ingestion retombe sur ses valeurs de repli ('Unknown' / 30).
+  // Seul l'âge est stocké : la date de naissance n'a aucun consommateur en aval
+  // et ce serait une donnée personnelle conservée pour rien.
+  const birthDate       = str('customer_birth_date')
+  const customerAge     = birthDate ? computeAgeFromBirthDate(birthDate) : intPos('customer_age')
+  const customerGender  = str('customer_gender')
   const paymentMethod   = str('payment_method')
   const shippingMethod  = str('shipping_method')
   const shippingCost    = numGe0('shipping_cost')
@@ -104,9 +116,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Champ trop long' }, { status: 400 })
   if (customerId.length > 100 || customerWilaya.length > 100 || shippingMethod.length > 100)
     return NextResponse.json({ error: 'Champ trop long' }, { status: 400 })
+  if (customerGender.length > 50)
+    return NextResponse.json({ error: 'Champ trop long' }, { status: 400 })
   if (HTML_RE.test(customerName) || HTML_RE.test(productName) || HTML_RE.test(shopName) ||
-      HTML_RE.test(customerId)   || HTML_RE.test(customerWilaya) || HTML_RE.test(shippingMethod))
+      HTML_RE.test(customerId)   || HTML_RE.test(customerWilaya) || HTML_RE.test(shippingMethod) ||
+      HTML_RE.test(customerGender))
     return NextResponse.json({ error: 'Contenu HTML non autorisé' }, { status: 400 })
+  // Borne l'âge : au-delà, la valeur est une erreur d'intégration et fausserait
+  // la feature Customer_Age plutôt que de l'enrichir. On échoue explicitement
+  // au lieu d'ignorer en silence — sinon la boutique croit avoir transmis
+  // l'information alors que le claim repart avec le repli 30.
+  if (birthDate && customerAge === null)
+    return NextResponse.json(
+      { error: `customer_birth_date invalide (date ISO-8601 passée attendue, âge obtenu entre 1 et ${MAX_CUSTOMER_AGE})` },
+      { status: 400 },
+    )
+  if (!birthDate && body.customer_age != null && body.customer_age !== '' &&
+      (customerAge === null || customerAge > MAX_CUSTOMER_AGE))
+    return NextResponse.json(
+      { error: `customer_age invalide (entier attendu entre 1 et ${MAX_CUSTOMER_AGE})` },
+      { status: 400 },
+    )
   if (paymentMethod && !(PAYMENT_METHODS as readonly string[]).includes(paymentMethod))
     return NextResponse.json(
       { error: `payment_method invalide (valeurs acceptées : ${PAYMENT_METHODS.join(', ')})` },
@@ -142,6 +172,8 @@ export async function POST(req: NextRequest) {
       customerName,
       customerPhone:   customerPhone || '',
       customerWilaya:  customerWilaya || null,
+      customerAge,
+      customerGender:  customerGender || null,
       paymentMethod:   paymentMethod || null,
       shippingMethod:  shippingMethod || null,
       shippingCost,

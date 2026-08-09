@@ -141,6 +141,8 @@ model ReturnSession {
   customerName  String
   customerPhone String    @default("")
   customerWilaya  String?
+  customerAge     Int?
+  customerGender  String?
   paymentMethod   String?
   shippingMethod  String?
   shippingCost    Float?

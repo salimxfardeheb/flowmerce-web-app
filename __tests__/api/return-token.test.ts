@@ -53,6 +53,8 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     customerEmail:   'ahmed@exemple.com',
     customerPhone:   '0555123456',
     customerWilaya:  null,
+    customerAge:     null,
+    customerGender:  null,
     paymentMethod:   null,
     shippingMethod:  null,
     shippingCost:    null,
@@ -143,6 +145,35 @@ describe('POST /api/return/[token]', () => {
       prediction: expect.objectContaining({
         shippingMethod: 'Stopdesk',
         shippingCost:   400,
+      }),
+    }))
+  })
+
+  it("reprend l'âge et le genre transmis par la boutique", async () => {
+    mockFindUnique.mockResolvedValue(makeSession({
+      customerAge:    34,
+      customerGender: 'Male',
+    }))
+
+    const res = await callPost({ answers: CLIENT_ANSWERS })
+
+    expect(res.status).toBe(201)
+    expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+      prediction: expect.objectContaining({
+        customerAge:    34,
+        customerGender: 'Male',
+      }),
+    }))
+  })
+
+  it("retombe sur les replis quand la boutique n'a transmis ni âge ni genre", async () => {
+    const res = await callPost({ answers: CLIENT_ANSWERS })
+
+    expect(res.status).toBe(201)
+    expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+      prediction: expect.objectContaining({
+        customerAge:    30,
+        customerGender: 'Unknown',
       }),
     }))
   })

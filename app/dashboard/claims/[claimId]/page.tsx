@@ -6,6 +6,7 @@ import Link                   from 'next/link'
 import { checkVendorAccess }  from '@/lib/vendorGuard'
 import { ClaimActions }       from '@/components/claims/ClaimActions'
 import { formatClaimType, formatDate } from '@/lib/utils'
+import { formatCustomerGender }        from '@/lib/constants'
 import { ArrowLeft, Brain, Sparkles, AlertTriangle, User, Package, FileText, ShieldAlert } from 'lucide-react'
 
 export default async function ClaimDetailPage({
@@ -52,6 +53,10 @@ export default async function ClaimDetailPage({
     typeof v === 'string' && v.trim() !== '' && v !== 'Unknown' ? v : null
   const customerWilaya = unknown(prediction?.customerWilaya)
   const paymentMethod  = unknown(prediction?.paymentMethod)
+  const customerGender = formatCustomerGender(prediction?.customerGender)
+  const customerAge    = typeof prediction?.customerAge === 'number' && prediction.customerAge > 0
+    ? prediction.customerAge
+    : null
 
   // Drapeau informatif calculé côté web app (jamais par le ML)
   const refundEligible = prediction?.refundEligible === true
@@ -65,11 +70,13 @@ export default async function ClaimDetailPage({
     IN_PROGRESS: { label: 'En cours',   cls: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'     },
   }
 
-  // Contrat 3 classes : la reco ML ne contient jamais 'Refund'.
+  // Reco ML : 3 classes. 'Refund' n'apparaît que si le vendeur a tranché pour
+  // un remboursement — le modèle ne le recommande jamais.
   const resolutionConfig: Record<string, { label: string; cls: string; dot: string }> = {
-    Exchange: { label: 'Échange',    cls: 'text-blue-700 bg-blue-50 ring-1 ring-blue-200',     dot: 'bg-blue-500'   },
-    Repair:   { label: 'Réparation', cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200',  dot: 'bg-amber-400'  },
-    Reject:   { label: 'Refus',      cls: 'text-red-700 bg-red-50 ring-1 ring-red-200',        dot: 'bg-red-500'    },
+    Exchange: { label: 'Échange',       cls: 'text-blue-700 bg-blue-50 ring-1 ring-blue-200',           dot: 'bg-blue-500'    },
+    Repair:   { label: 'Réparation',    cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200',        dot: 'bg-amber-400'   },
+    Refund:   { label: 'Remboursement', cls: 'text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200',  dot: 'bg-emerald-500' },
+    Reject:   { label: 'Refus',         cls: 'text-red-700 bg-red-50 ring-1 ring-red-200',              dot: 'bg-red-500'     },
   }
 
   const riskLevel = fraudScore === null || fraudScore === undefined ? null
@@ -115,8 +122,9 @@ export default async function ClaimDetailPage({
           <ClaimActions
             claimId={claim.id}
             currentStatus={claim.status}
-            aiDecision={claim.aiDecision}
+            aiDecision={displayDecision}
             aiScore={claim.aiScore}
+            claimType={claim.type}
           />
         </div>
       </div>
@@ -154,6 +162,22 @@ export default async function ClaimDetailPage({
               <div>
                 <p className="text-xs text-gray-400">Wilaya</p>
                 <p className="text-sm text-gray-700">{customerWilaya}</p>
+              </div>
+            )}
+            {(customerAge !== null || customerGender) && (
+              <div className="flex gap-6">
+                {customerAge !== null && (
+                  <div>
+                    <p className="text-xs text-gray-400">Âge</p>
+                    <p className="text-sm text-gray-700">{customerAge} ans</p>
+                  </div>
+                )}
+                {customerGender && (
+                  <div>
+                    <p className="text-xs text-gray-400">Genre</p>
+                    <p className="text-sm text-gray-700">{customerGender}</p>
+                  </div>
+                )}
               </div>
             )}
             {paymentMethod && (

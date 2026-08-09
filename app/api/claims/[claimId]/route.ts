@@ -6,7 +6,7 @@ import { Prisma }                    from '@prisma/client'
 import { getSessionServer }          from '@/lib/getSession'
 import { notifyCustomer }            from '@/lib/services/notification'
 import { log }                       from '@/lib/logger'
-import { AI_DECISIONS, isAIDecision, type AIDecision } from '@/lib/constants'
+import { VENDOR_DECISIONS, isVendorDecision, type VendorDecision } from '@/lib/constants'
 
 const ALLOWED_STATUSES = ['APPROVED', 'REJECTED', 'IN_PROGRESS'] as const
 type AllowedStatus = (typeof ALLOWED_STATUSES)[number]
@@ -63,17 +63,38 @@ export async function PATCH(
     )
   }
 
-  if (body.aiDecision !== undefined && !isAIDecision(body.aiDecision)) {
+  // Le vendeur tranche parmi 4 décisions (les 3 classes ML + Refund) : il peut
+  // accorder un remboursement que le ML ne sait pas recommander.
+  if (body.aiDecision !== undefined && !isVendorDecision(body.aiDecision)) {
     return NextResponse.json(
-      { error: `Décision invalide. Valeurs acceptées : ${AI_DECISIONS.join(', ')}` },
+      { error: `Décision invalide. Valeurs acceptées : ${VENDOR_DECISIONS.join(', ')}` },
       { status: 400 },
     )
   }
 
+  const decision = body.aiDecision as VendorDecision | undefined
+  const note     = body.note?.trim() || body.overrideNote?.trim() || null
+
+  // Une décision qui diverge de la reco ML est un override vendeur : on le trace
+  // dans `prediction.override`, la forme que lisent les deux pages dashboard
+  // (badge « Modifiée manuellement » + note de révision).
+  const isOverride = !!decision && decision !== claim.aiDecision
+
   const existingPrediction = (claim.prediction as Prisma.JsonObject | null) ?? {}
   const updatedPrediction: Prisma.InputJsonValue = {
     ...existingPrediction,
-    ...(body.aiDecision   ? { aiDecision:   body.aiDecision }   : {}),
+    ...(decision ? { aiDecision: decision } : {}),
+    ...(isOverride
+      ? {
+          override: {
+            resolution: decision,
+            mlDecision: claim.aiDecision,
+            note,
+            at: new Date().toISOString(),
+            by: user.email ?? user.id,
+          },
+        }
+      : {}),
     ...(body.overrideNote ? { overrideNote: body.overrideNote } : {}),
     ...(body.note?.trim() ? { vendorNote: body.note.trim(), vendorNoteAt: new Date().toISOString() } : {}),
   }
@@ -84,14 +105,15 @@ export async function PATCH(
       status:      newStatus as AllowedStatus,
       processedAt: new Date(),
       prediction:  updatedPrediction,
-      // Persister aiDecision sur la colonne directe si fourni
-      ...(body.aiDecision ? { aiDecision: body.aiDecision } : {}),
+      // Colonne `aiDecision` = décision effective sur la réclamation (reco ML
+      // à la création, puis choix du vendeur s'il tranche autrement).
+      ...(decision ? { aiDecision: decision } : {}),
     },
     select: { id: true, status: true, processedAt: true },
   })
 
-  // Décision ML : priorité au body (override admin), sinon celle déjà sur le claim
-  const aiDecision = (body.aiDecision ?? claim.aiDecision) as string | null | undefined
+  // Décision notifiée : priorité au choix du vendeur, sinon celle déjà sur le claim
+  const finalDecision = (decision ?? claim.aiDecision) as VendorDecision | null
 
   notifyCustomer({
     customerName:  claim.customerName,
@@ -99,10 +121,18 @@ export async function PATCH(
     customerPhone: claim.customerPhone,
     orderId:       claim.orderId,
     status:        newStatus as AllowedStatus,
-    aiDecision:    aiDecision as AIDecision | null,
+    aiDecision:    finalDecision,
     claimType:     claim.type,
-    note:          body.note ?? body.overrideNote ?? null,
+    note,
   }).catch(err => log.error('claims.notification_error', { err: String(err) }))
+
+  log.info('claims.decision', {
+    claimId,
+    status:     newStatus,
+    decision:   finalDecision,
+    mlDecision: claim.aiDecision,
+    overridden: isOverride,
+  })
 
   return NextResponse.json({ claim: updated })
 }

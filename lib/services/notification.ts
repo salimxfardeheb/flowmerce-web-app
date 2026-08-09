@@ -14,7 +14,7 @@ import path       from 'path'
 import fs         from 'fs'
 import { env }    from '@/lib/env'
 import { log }    from '@/lib/logger'
-import type { AIDecision } from '@/lib/constants'
+import type { VendorDecision } from '@/lib/constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ export interface NotificationPayload {
   customerPhone?: string | null
   orderId:        string
   status:         NotificationStatus
-  aiDecision?:    AIDecision | null
+  aiDecision?:    VendorDecision | null
   claimType?:     string | null
   note?:          string | null
 }
@@ -79,8 +79,18 @@ const DECISION_CONFIG: Record<string, {
     bg:       '#fef2f2',
     bodyText: "Après examen de votre dossier, votre demande de retour n'a malheureusement pas pu être acceptée. Si vous pensez qu'il s'agit d'une erreur, n'hésitez pas à contacter notre support.",
   },
-  // Approbation sans décision ML (ex : remboursement accordé manuellement par
-  // le vendeur — le remboursement n'est jamais une sortie ML).
+  // Remboursement : jamais une sortie ML, toujours une décision vendeur.
+  // Pas d'icône dédiée sur disque — on réutilise 'clock' avec l'accent vert
+  // de l'approbation.
+  Refund: {
+    label:    'Remboursement accordé',
+    iconKey:  'clock',
+    accent:   '#16a34a',
+    bg:       '#f0fdf4',
+    bodyText: 'Votre demande a été examinée et un <strong style="color:#16a34a">remboursement</strong> a été accordé. Notre équipe vous contactera prochainement pour convenir des modalités de versement.',
+  },
+  // Approbation sans décision explicite (statut approuvé, aucune résolution
+  // enregistrée sur la réclamation).
   APPROVED: {
     label:    'Demande approuvée',
     iconKey:  'clock',

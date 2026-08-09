@@ -95,12 +95,17 @@ export async function POST(
   const productQuantity = session.productQuantity ?? intPos('order_quantity') ?? intPos('product_quantity') ?? 1
   const orderTotal      = session.orderTotal      ?? numPos('order_total')
 
+  // Profil client : données de la boutique (features ML Customer_Age /
+  // Customer_Gender). Le formulaire ne les demande pas — elles viennent de la
+  // session. Les replis 'Unknown' / 30 ne s'appliquent que si la boutique ne
+  // les a pas transmises à la création du lien.
+  const customerGender  = session.customerGender || str('customer_gender') || 'Unknown'
+  const customerAge     = session.customerAge    ?? intPos('customer_age') ?? 30
+
   // Données saisies par le client uniquement
   const reason            = str('reason')
   const desiredResolution = str('desired_resolution').toUpperCase()
   const description       = str('description')
-  const customerGender    = str('customer_gender')  || 'Unknown'
-  const customerAge       = intPos('customer_age')   ?? 30
   const productCategory   = str('product_category')
   const orderAddress      = str('order_address')
 

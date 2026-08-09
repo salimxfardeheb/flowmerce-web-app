@@ -615,6 +615,7 @@ x-api-key: flk_votre_cle_api`}
                         <FieldRow name="customer_phone"   type="string" desc="Téléphone client (renforce la détection de fraude)" />
                         <FieldRow name="customer_id"      type="string" desc="Identifiant du client dans votre système (exporté en Customer_ID)" />
                         <FieldRow name="customer_age"     type="number" desc="Âge du client" />
+                        <FieldRow name="customer_birth_date" type="string" desc="Date de naissance ISO-8601 — l'âge en est déduit et prime sur customer_age" />
                         <FieldRow name="customer_gender"  type="string" desc="Genre du client" />
                         <FieldRow name="customer_wilaya"  type="string" desc="Wilaya (région) du client" />
                         <FieldRow name="product_category" type="string" desc="Catégorie produit (ex: Electronics, Clothing)" />
@@ -818,6 +819,9 @@ x-api-key: flk_votre_cle_api`}
                         <FieldRow name="customer_phone"   type="string" desc="Téléphone du client" />
                         <FieldRow name="customer_id"      type="string" desc="Identifiant du client dans votre système (repris sur la réclamation)" />
                         <FieldRow name="customer_wilaya"  type="string" desc="Wilaya du client — sinon demandée au client sur la page de retour" />
+                        <FieldRow name="customer_age"     type="number" desc="Âge du client (1–120) — jamais demandé au client : repli 30 si absent" />
+                        <FieldRow name="customer_birth_date" type="string" desc="Date de naissance ISO-8601 (ex: 1992-05-14) — l'âge en est déduit et prime sur customer_age" />
+                        <FieldRow name="customer_gender"  type="string" desc="Genre du client — jamais demandé au client : repli 'Unknown' si absent" />
                         <FieldRow name="payment_method"   type="string" desc="Cash on Delivery | Card | CCP | Bank Transfer — sinon demandé au client" />
                         <FieldRow name="shipping_method"  type="string" desc="Mode de livraison (Livraison à domicile, Stopdesk…) — jamais demandé au client : repli 'Standard' si absent" />
                         <FieldRow name="shipping_cost"    type="number" desc="Frais de livraison en DA — jamais demandés au client : repli 0 si absent" />

@@ -29,6 +29,7 @@ import {
 import { buildMLPayload }            from '@/lib/services/ml'
 import { checkReturnPolicy }         from '@/lib/services/return-policy'
 import { ingestClaim }               from '@/lib/services/claim-ingestion'
+import { computeAgeFromBirthDate }   from '@/lib/utils'
 import { log }                       from '@/lib/logger'
 
 // ─────────────────────────────────────────────────────────────
@@ -161,7 +162,9 @@ export async function POST(req: NextRequest) {
   const shippingMethod   = strOrNull(ans.shipping_method) ?? 'Standard'
   const shippingCost     = numOrNull(ans.shipping_cost)   ?? 0
   const customerGender   = strOrNull(ans.customer_gender) ?? 'Unknown'
-  const customerAge      = numOrNull(ans.customer_age)
+  // Une date de naissance, si fournie, prime sur l'âge direct.
+  const customerAge      = computeAgeFromBirthDate(ans.customer_birth_date)
+                        ?? numOrNull(ans.customer_age)
   const customerWilaya   = strOrNull(ans.customer_wilaya) ?? 'Unknown'
   const productCategory  = strOrNull(ans.product_category)
 

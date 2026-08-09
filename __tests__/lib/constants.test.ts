@@ -6,9 +6,12 @@ import {
   CLAIM_STATUSES,
   DOCUMENT_TYPES,
   isAIDecision,
+  VENDOR_DECISIONS,
+  isVendorDecision,
   formatClaimType,
   CLAIM_TYPE_LABELS,
   AI_DECISION_LABELS,
+  VENDOR_DECISION_LABELS,
   CLAIM_STATUS_LABELS,
   DOCUMENT_TYPE_LABELS,
   VENDOR_STATUS_LABELS,
@@ -76,6 +79,31 @@ describe('constants', () => {
     })
   })
 
+  describe('isVendorDecision', () => {
+    it('accepte les 3 classes ML plus Refund', () => {
+      expect(isVendorDecision('Exchange')).toBe(true)
+      expect(isVendorDecision('Repair')).toBe(true)
+      expect(isVendorDecision('Reject')).toBe(true)
+      expect(isVendorDecision('Refund')).toBe(true)
+    })
+
+    it('retourne false pour une valeur invalide', () => {
+      expect(isVendorDecision('INVALID')).toBe(false)
+      expect(isVendorDecision('')).toBe(false)
+      expect(isVendorDecision(null)).toBe(false)
+      expect(isVendorDecision(undefined)).toBe(false)
+      expect(isVendorDecision(123)).toBe(false)
+    })
+
+    it("n'élargit pas le contrat ML 3 classes", () => {
+      expect(AI_DECISIONS).not.toContain('Refund')
+      expect(VENDOR_DECISIONS).toHaveLength(AI_DECISIONS.length + 1)
+      for (const d of AI_DECISIONS) {
+        expect(isVendorDecision(d)).toBe(true)
+      }
+    })
+  })
+
   describe('formatClaimType', () => {
     it('retourne le label français pour un type valide', () => {
       expect(formatClaimType('EXCHANGE')).toBe('Échange')
@@ -100,6 +128,11 @@ describe('constants', () => {
 
     it('AI_DECISION_LABELS a toutes les clés', () => {
       expect(Object.keys(AI_DECISION_LABELS)).toEqual(['Exchange', 'Repair', 'Reject'])
+    })
+
+    it('VENDOR_DECISION_LABELS a toutes les clés', () => {
+      expect(Object.keys(VENDOR_DECISION_LABELS)).toEqual(['Exchange', 'Repair', 'Refund', 'Reject'])
+      expect(VENDOR_DECISION_LABELS.Refund).toBe('Remboursement')
     })
 
     it('CLAIM_STATUS_LABELS a toutes les clés', () => {

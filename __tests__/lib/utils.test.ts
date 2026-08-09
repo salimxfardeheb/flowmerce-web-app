@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { cn, generateApiKey, hashApiKey, apiKeyPrefix, formatDate } from '@/lib/utils'
+import {
+  cn,
+  generateApiKey,
+  hashApiKey,
+  apiKeyPrefix,
+  formatDate,
+  computeAgeFromBirthDate,
+} from '@/lib/utils'
 
 describe('utils', () => {
   describe('cn', () => {
@@ -68,6 +75,51 @@ describe('utils', () => {
 
     it('accepte une chaîne ISO', () => {
       expect(formatDate('2025-06-01T00:00:00.000Z')).toBe('01/06/2025')
+    })
+  })
+
+  describe('computeAgeFromBirthDate', () => {
+    // Date de référence figée : sinon le test change de résultat chaque année.
+    const now = new Date('2026-08-10T12:00:00.000Z')
+
+    it("calcule l'âge révolu quand l'anniversaire est passé", () => {
+      expect(computeAgeFromBirthDate('1992-05-14', now)).toBe(34)
+    })
+
+    it("retire un an quand l'anniversaire n'est pas encore passé", () => {
+      expect(computeAgeFromBirthDate('1992-11-20', now)).toBe(33)
+    })
+
+    it("compte l'année le jour même de l'anniversaire", () => {
+      expect(computeAgeFromBirthDate('1992-08-10', now)).toBe(34)
+    })
+
+    it("ne la compte pas la veille de l'anniversaire", () => {
+      expect(computeAgeFromBirthDate('1992-08-11', now)).toBe(33)
+    })
+
+    it('accepte un horodatage ISO complet et un objet Date', () => {
+      expect(computeAgeFromBirthDate('1992-05-14T08:30:00.000Z', now)).toBe(34)
+      expect(computeAgeFromBirthDate(new Date('1992-05-14'), now)).toBe(34)
+    })
+
+    it('rejette une date future', () => {
+      expect(computeAgeFromBirthDate('2030-01-01', now)).toBeNull()
+    })
+
+    it('rejette un âge hors bornes plausibles', () => {
+      expect(computeAgeFromBirthDate('1850-01-01', now)).toBeNull()
+      // Né cette année → 0 an, sous MIN_CUSTOMER_AGE.
+      expect(computeAgeFromBirthDate('2026-01-01', now)).toBeNull()
+    })
+
+    it('rejette une valeur non exploitable', () => {
+      expect(computeAgeFromBirthDate('pas-une-date', now)).toBeNull()
+      expect(computeAgeFromBirthDate('', now)).toBeNull()
+      expect(computeAgeFromBirthDate('   ', now)).toBeNull()
+      expect(computeAgeFromBirthDate(null, now)).toBeNull()
+      expect(computeAgeFromBirthDate(undefined, now)).toBeNull()
+      expect(computeAgeFromBirthDate(34, now)).toBeNull()
     })
   })
 })

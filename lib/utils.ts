@@ -29,6 +29,47 @@ export function apiKeyPrefix(raw: string): string {
   return raw.slice(0, 12);
 }
 
+// ─────────────────────────────────────────────────────────────
+// Âge client — feature Customer_Age du modèle.
+// Les boutiques transmettent soit un âge direct (`customer_age`),
+// soit une date de naissance (`customer_birth_date`) dont l'âge est
+// dérivé ici. Une date de naissance prime sur un âge direct : c'est
+// la donnée précise, et elle reste juste quelle que soit la date à
+// laquelle la réclamation est déposée.
+// ─────────────────────────────────────────────────────────────
+export const MIN_CUSTOMER_AGE = 1;
+export const MAX_CUSTOMER_AGE = 120;
+
+/**
+ * Âge révolu, en années, à partir d'une date de naissance.
+ * Retourne null si la valeur n'est pas une date exploitable, si elle est
+ * dans le futur, ou si l'âge obtenu sort des bornes plausibles — dans tous
+ * ces cas l'appelant doit traiter l'entrée comme invalide plutôt que de
+ * laisser une valeur aberrante alimenter le modèle.
+ */
+export function computeAgeFromBirthDate(
+  value: unknown,
+  now: Date = new Date(),
+): number | null {
+  if (!(value instanceof Date) && typeof value !== "string") return null;
+
+  const birth = value instanceof Date ? value : new Date(value.trim());
+  if (Number.isNaN(birth.getTime())) return null;
+  if (birth.getTime() > now.getTime()) return null;
+
+  // Comparaison en UTC de bout en bout : les dates ISO nues ('1992-05-14')
+  // sont parsées à minuit UTC, mélanger avec le fuseau local décalerait
+  // l'anniversaire d'un jour.
+  let age = now.getUTCFullYear() - birth.getUTCFullYear();
+  const monthDiff = now.getUTCMonth() - birth.getUTCMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getUTCDate() < birth.getUTCDate())) {
+    age--; // anniversaire pas encore passé cette année
+  }
+
+  if (age < MIN_CUSTOMER_AGE || age > MAX_CUSTOMER_AGE) return null;
+  return age;
+}
+
 export function formatDate(date: Date | string): string {
   return new Date(date).toLocaleDateString("fr-FR", {
     day: "2-digit",

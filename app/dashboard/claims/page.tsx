@@ -8,6 +8,7 @@ import { getSessionServer }                       from '@/lib/getSession'
 import { prisma }                                 from '@/lib/prisma'
 import { redirect }                               from 'next/navigation'
 import { CLAIM_STATUS_LABELS, formatClaimType, formatDate } from '@/lib/utils'
+import { formatCustomerGender }                   from '@/lib/constants'
 import { ClaimActions }                           from '@/components/claims/ClaimActions'
 import { AutoApproveToggle }                      from '@/components/claims/AutoApproveToggle' 
 import { checkVendorAccess }                      from '@/lib/vendorGuard'
@@ -105,11 +106,13 @@ export default async function ClaimsPage({
     IN_PROGRESS: { label: 'En cours',   cls: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'      },
   }
 
-  // Contrat 3 classes : la reco ML ne contient jamais 'Refund'.
+  // Reco ML : 3 classes. 'Refund' n'apparaît que si le vendeur a tranché pour
+  // un remboursement — le modèle ne le recommande jamais.
   const resolutionConfig: Record<string, { label: string; cls: string; dot: string }> = {
-    Exchange: { label: 'Échange',    cls: 'text-blue-700 bg-blue-50 ring-1 ring-blue-200',     dot: 'bg-blue-500'   },
-    Repair:   { label: 'Réparation', cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200',  dot: 'bg-amber-400'  },
-    Reject:   { label: 'Refus',      cls: 'text-red-700 bg-red-50 ring-1 ring-red-200',        dot: 'bg-red-500'    },
+    Exchange: { label: 'Échange',       cls: 'text-blue-700 bg-blue-50 ring-1 ring-blue-200',           dot: 'bg-blue-500'    },
+    Repair:   { label: 'Réparation',    cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200',        dot: 'bg-amber-400'   },
+    Refund:   { label: 'Remboursement', cls: 'text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200',  dot: 'bg-emerald-500' },
+    Reject:   { label: 'Refus',         cls: 'text-red-700 bg-red-50 ring-1 ring-red-200',              dot: 'bg-red-500'     },
   }
 
   const activeFilter = params.status || params.risk || params.ml
@@ -374,6 +377,15 @@ export default async function ClaimsPage({
                   : claim.aiDecision
                 const isOverridden = !!overrideData
 
+                // Profil client transmis par la boutique (absent si non fourni).
+                const customerGender = formatCustomerGender(prediction?.customerGender)
+                const customerAge    = typeof prediction?.customerAge === 'number' && prediction.customerAge > 0
+                  ? prediction.customerAge
+                  : null
+                const customerProfile = [customerGender, customerAge !== null ? `${customerAge} ans` : null]
+                  .filter(Boolean)
+                  .join(' · ')
+
                 const productPrice = typeof prediction?.productPrice    === 'number' ? prediction.productPrice    : null
                 const productQty   = typeof prediction?.productQuantity === 'number' ? prediction.productQuantity : null
                 const orderTotal   = typeof prediction?.orderTotal      === 'number' ? prediction.orderTotal      : null
@@ -425,6 +437,9 @@ export default async function ClaimsPage({
                         <p className="font-medium text-gray-900">{claim.customerName}</p>
                       </a>
                       <p className="text-xs text-gray-500">{claim.customerEmail}</p>
+                      {customerProfile && (
+                        <p className="text-xs text-gray-400 mt-0.5">{customerProfile}</p>
+                      )}
                       <p className="text-xs text-gray-400 font-mono mt-0.5">{claim.orderId}</p>
                       {source === 'HOSTED_PAGE' && (
                         <span className="text-xs text-indigo-500 mt-0.5 block">Page de retour</span>
@@ -531,8 +546,9 @@ export default async function ClaimsPage({
                         <ClaimActions
                           claimId={claim.id}
                           currentStatus={claim.status}
-                          aiDecision={claim.aiDecision}
+                          aiDecision={displayDecision}
                           aiScore={claim.aiScore}
+                          claimType={claim.type}
                         />
                       </div>
                     </td>

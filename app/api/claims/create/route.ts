@@ -17,6 +17,7 @@ import { EXTERNAL_RETURN_REASONS, CLAIM_TYPES } from '@/lib/constants'
 import { ingestClaim }               from '@/lib/services/claim-ingestion'
 import { buildMLPayload }            from '@/lib/services/ml'
 import { checkReturnPolicy }         from '@/lib/services/return-policy'
+import { computeAgeFromBirthDate }   from '@/lib/utils'
 import { log }                       from '@/lib/logger'
 
 const VALID_RESOLUTIONS = new Set<string>(CLAIM_TYPES)
@@ -151,7 +152,9 @@ export async function POST(req: NextRequest) {
   const orderTotal      = typeof body.order_total      === 'number' ? body.order_total      : null
   const productPrice    = typeof body.product_price    === 'number' ? body.product_price    : null
   const productQuantity = typeof body.product_quantity === 'number' ? body.product_quantity : null
-  const customerAge     = typeof body.customer_age     === 'number' ? body.customer_age     : null
+  // Une date de naissance, si fournie, prime sur l'âge direct.
+  const customerAge     = computeAgeFromBirthDate(body.customer_birth_date)
+                       ?? (typeof body.customer_age === 'number' ? body.customer_age : null)
   const shippingCost    = typeof body.shipping_cost    === 'number' ? body.shipping_cost    : 0
   const customerGender  = body.customer_gender  ? String(body.customer_gender)  : 'Unknown'
   const customerWilaya  = body.customer_wilaya  ? String(body.customer_wilaya)  : 'Unknown'

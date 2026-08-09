@@ -42,11 +42,24 @@ export type ExternalReturnReason = (typeof EXTERNAL_RETURN_REASONS)[number]
 export const CLAIM_TYPES = ['EXCHANGE', 'REFUND', 'REPAIR'] as const
 export type ClaimTypeValue = (typeof CLAIM_TYPES)[number]
 
+// Contrat ML : 3 classes. Le modèle ne prédit JAMAIS 'Refund' — c'est ce que
+// valide callMLPredict sur la réponse de /predict. Ne pas élargir cette liste.
 export const AI_DECISIONS = ['Exchange', 'Repair', 'Reject'] as const
 export type AIDecision = (typeof AI_DECISIONS)[number]
 
 export function isAIDecision(value: unknown): value is AIDecision {
   return typeof value === 'string' && (AI_DECISIONS as readonly string[]).includes(value)
+}
+
+// Décision effective du vendeur : les 3 classes ML + 'Refund'. Le remboursement
+// reste hors du contrat ML (le modèle ne peut pas le recommander) mais le
+// vendeur doit pouvoir l'accorder — notamment quand le client l'a demandé
+// (claim.type = REFUND) et que le ML a recommandé autre chose.
+export const VENDOR_DECISIONS = ['Exchange', 'Repair', 'Refund', 'Reject'] as const
+export type VendorDecision = (typeof VENDOR_DECISIONS)[number]
+
+export function isVendorDecision(value: unknown): value is VendorDecision {
+  return typeof value === 'string' && (VENDOR_DECISIONS as readonly string[]).includes(value)
 }
 
 // ── Statuts de réclamation (enum Prisma ClaimStatus) ─────────────────────────
@@ -103,9 +116,39 @@ export function formatClaimType(type: ClaimTypeValue | string | null | undefined
   return CLAIM_TYPE_LABELS[type as ClaimTypeValue] ?? type
 }
 
+// Le genre est transmis librement par la boutique (champ Customer_Gender du
+// dataset ML, pas de liste figée côté API). On traduit les valeurs courantes
+// pour l'affichage et on restitue la valeur brute pour tout le reste.
+// 'Unknown' est la valeur de repli des routes d'ingestion : elle signifie
+// « non transmis », donc rien à afficher.
+const GENDER_LABELS: Record<string, string> = {
+  male:   'Homme',
+  m:      'Homme',
+  homme:  'Homme',
+  female: 'Femme',
+  f:      'Femme',
+  femme:  'Femme',
+  other:  'Autre',
+  autre:  'Autre',
+}
+
+export function formatCustomerGender(gender: unknown): string | null {
+  if (typeof gender !== 'string') return null
+  const raw = gender.trim()
+  if (!raw || raw.toLowerCase() === 'unknown') return null
+  return GENDER_LABELS[raw.toLowerCase()] ?? raw
+}
+
 export const AI_DECISION_LABELS: Record<AIDecision, string> = {
   Exchange: 'Échange',
   Repair:   'Réparation',
+  Reject:   'Refus',
+}
+
+export const VENDOR_DECISION_LABELS: Record<VendorDecision, string> = {
+  Exchange: 'Échange',
+  Repair:   'Réparation',
+  Refund:   'Remboursement',
   Reject:   'Refus',
 }
 
