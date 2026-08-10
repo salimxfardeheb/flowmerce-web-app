@@ -36,6 +36,9 @@ export default async function ClaimDetailPage({
 
   if (!claim) notFound()
   if (!isAdmin && claim.vendorId !== vendorId) notFound()
+  // Hors politique : refusée d'office, invisible du vendeur jusque dans l'URL
+  // directe — sinon elle resterait atteignable en devinant l'identifiant.
+  if (!isAdmin && claim.policyRejected) notFound()
 
   const prediction  = claim.prediction as Record<string, unknown> | null
   const overrideData = prediction?.override as Record<string, unknown> | undefined

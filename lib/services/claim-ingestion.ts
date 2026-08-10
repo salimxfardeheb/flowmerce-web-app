@@ -122,6 +122,18 @@ export interface IngestClaimInput {
   // Typé `object` pour accepter à la fois MLPayload (interface fermée) et
   // un Record générique sans avoir besoin de cast côté appelant.
   mlPayload?: object | null
+
+  // Réclamation hors politique vendeur. Quand il est fourni, le claim est
+  // refusé d'office : aucune prédiction n'est demandée (le ML n'a rien à
+  // arbitrer, la règle est déterministe) et le vendeur ne le voit pas.
+  // Le `mlInput` reste persisté : ces réclamations sont précisément les
+  // exemples négatifs qui manquent au dataset d'entraînement.
+  //
+  // `notify` : envoyer le mail de refus au client. Vrai sur la page hébergée,
+  // où Flowmerce porte la relation client. Faux sur les API directes : la
+  // boutique reçoit un 422 et informe son client elle-même — un mail de notre
+  // part ferait doublon avec le sien.
+  policyViolation?: { code: string; message: string; notify: boolean } | null
 }
 
 export type IngestClaimResult =
@@ -133,9 +145,10 @@ export type IngestClaimResult =
         type:         'EXCHANGE' | 'REFUND' | 'REPAIR'
         createdAt:    Date
         aiDecision:   AIDecision | null
-        fraudScore:   number
-        autoApproved: boolean
-        autoRejected: boolean
+        fraudScore:     number
+        autoApproved:   boolean
+        autoRejected:   boolean
+        policyRejected: boolean
       }
       customerPastReturns: number
     }
@@ -148,6 +161,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   const customerEmailNorm = input.customerEmail.trim().toLowerCase()
   const customerPhoneNorm = input.customerPhone?.trim() || null
   const customerIdNorm    = input.customerId?.trim() || null
+  const policyViolation   = input.policyViolation ?? null
 
   // 1. Fraud score
   const { record: fraudRecord } = await findOrCreateFraudRecord(
@@ -220,11 +234,17 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
           type:          input.type,
           description:   input.description,
           source:        input.source,
-          status:        'PENDING',
+          // Hors politique : refus immédiat et définitif, le claim naît
+          // tranché. Sinon PENDING, en attente du ML ou du vendeur.
+          status:        policyViolation ? 'REJECTED' : 'PENDING',
+          processedAt:   policyViolation ? new Date() : null,
+          policyRejected: !!policyViolation,
           fraudScore,
           ipAddress:     input.ipAddress ?? null,
-          aiDecision:    null,
-          prediction:    predictionData as unknown as Prisma.InputJsonValue,
+          aiDecision:    policyViolation ? 'Reject' : null,
+          prediction:    (policyViolation
+            ? { ...predictionData, policyViolation }
+            : predictionData) as unknown as Prisma.InputJsonValue,
           mlInput:       enrichedMlPayload
             ? (enrichedMlPayload as Prisma.InputJsonValue)
             : Prisma.JsonNull,
@@ -254,6 +274,48 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
     prisma.apiKey
       .update({ where: { id: input.apiKeyId }, data: { lastUsedAt: new Date() } })
       .catch((e) => log.error('claim_ingestion.api_key_update_error', { err: String(e) }))
+  }
+
+  // 4 bis. Hors politique : le dossier est clos avant même le ML. On notifie le
+  // client (il a soumis, il mérite une réponse) et on s'arrête là — pas de
+  // prédiction, pas d'auto-approve, rien à afficher au vendeur.
+  if (policyViolation) {
+    if (policyViolation.notify) {
+      notifyCustomer({
+        customerName:  claim.customerName,
+        customerEmail: claim.customerEmail,
+        customerPhone: claim.customerPhone,
+        orderId:       claim.orderId,
+        status:        'REJECTED',
+        aiDecision:    'Reject',
+        claimType:     claim.type,
+        note:          policyViolation.message,
+      }).catch((err) => log.error('claim_ingestion.notification_error', { err: String(err) }))
+    }
+
+    log.info('claim_ingestion.policy_rejected', {
+      claimId:  claim.id,
+      vendorId: input.vendor.id,
+      orderId:  input.orderId,
+      code:     policyViolation.code,
+      notified: policyViolation.notify,
+    })
+
+    return {
+      ok: true,
+      claim: {
+        id:             claim.id,
+        status:         claim.status,
+        type:           input.type,
+        createdAt:      claim.createdAt,
+        aiDecision:     'Reject',
+        fraudScore,
+        autoApproved:   false,
+        autoRejected:   true,
+        policyRejected: true,
+      },
+      customerPastReturns: pastReturns,
+    }
   }
 
   // 5. Appel ML (si payload fourni) — sur le payload enrichi persisté en 2 bis.
@@ -417,14 +479,15 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   return {
     ok: true,
     claim: {
-      id:           claim.id,
-      status:       claim.status,
-      type:         input.type,
-      createdAt:    claim.createdAt,
-      aiDecision:   finalAiDecision,
+      id:             claim.id,
+      status:         claim.status,
+      type:           input.type,
+      createdAt:      claim.createdAt,
+      aiDecision:     finalAiDecision,
       fraudScore,
       autoApproved,
       autoRejected,
+      policyRejected: false,
     },
     customerPastReturns: pastReturns,
   }

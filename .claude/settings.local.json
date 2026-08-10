@@ -68,7 +68,9 @@
       "Bash(cp /private/tmp/claude-502/-Users-salim-github-flowmerce-flowmerce-web-app/9929bfaa-1963-4c7e-b65c-50f027a39ec5/scratchpad/cols.mjs ./_cols_tmp.mjs)",
       "Bash(node --env-file=.env.local ./_cols_tmp.mjs)",
       "Bash(node --env-file=.env.local ./_ck_tmp.mjs)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(node --env-file=.env.local /private/tmp/claude-502/-Users-salim-github-flowmerce-flowmerce-web-app/05efe029-40a3-410c-9e38-0ca0d86c94be/scratchpad/check-cols.mjs)",
+      "Bash(node --env-file=.env.local ./check-cols.mjs)"
     ],
     "additionalDirectories": [
       "/Users/salim/github/flowmerce/flowmerce-web-app/prisma",

@@ -932,10 +932,16 @@ x-api-key: flk_votre_cle_api`}
                     <tbody>
                       <ErrorRow status={400} code="VALIDATION"   when="Champ requis manquant, email invalide, HTML détecté" action="Corriger le payload" />
                       <ErrorRow status={401} code="AUTH"         when="Clé API invalide ou désactivée" action="Vérifier la clé dans /dashboard/api-keys" />
-                      <ErrorRow status={422} code="RETURN_WINDOW_EXPIRED" when="order_date dépasse maxClaimDays (return policy)" action="Ne pas proposer le retour au client" />
+                      <ErrorRow status={400} code="ORDER_DATE"   when="order_date illisible ou dans le futur" action="Corriger la date de commande" />
                     </tbody>
                   </table>
                 </div>
+                <p className="text-xs text-gray-500 mt-4">
+                  Le dépassement du délai de retour ne provoque plus d&apos;erreur : le lien est créé
+                  normalement et la réponse porte <code className="font-mono text-gray-700">out_of_window: true</code>.
+                  La page s&apos;ouvre, le client peut déposer sa demande, mais elle sera enregistrée
+                  refusée d&apos;office à la soumission.
+                </p>
                 <p className="text-xs text-gray-400 mt-4">
                   Note : les erreurs ML / fraud / duplication surviennent à l'étape 2 (formulaire client) et sont
                   gérées par Flowmerce ; le client en est notifié sur la page hébergée.

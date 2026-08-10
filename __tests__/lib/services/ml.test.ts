@@ -44,6 +44,38 @@ describe('buildMLPayload', () => {
     expect(payload.Is_Suspicious).toBe(0)
   })
 
+  // Within_Return_Policy n'est plus une constante : depuis que la page hébergée
+  // accepte les demandes hors délai, la valeur doit refléter la réalité.
+  describe('Within_Return_Policy', () => {
+    const base = {
+      customerId: null, shopName: 'Test', productCategory: null,
+      productPrice: null, productQuantity: null, orderTotal: null,
+      paymentMethod: 'CCP', shippingMethod: 'Standard', shippingCost: 0,
+      customerGender: 'F', customerAge: null, customerWilaya: '31',
+      reason: 'Test',
+    }
+
+    it('vaut 1 dans la fenêtre', async () => {
+      const { buildMLPayload } = await import('@/lib/services/ml')
+      expect(buildMLPayload({ ...base, daysToReturn: 5, returnWindowDays: 14 })
+        .Within_Return_Policy).toBe(1)
+    })
+
+    it('vaut 1 le dernier jour de la fenêtre', async () => {
+      const { buildMLPayload } = await import('@/lib/services/ml')
+      expect(buildMLPayload({ ...base, daysToReturn: 14, returnWindowDays: 14 })
+        .Within_Return_Policy).toBe(1)
+    })
+
+    it('vaut 0 hors fenêtre', async () => {
+      const { buildMLPayload } = await import('@/lib/services/ml')
+      expect(buildMLPayload({ ...base, daysToReturn: 15, returnWindowDays: 14 })
+        .Within_Return_Policy).toBe(0)
+      expect(buildMLPayload({ ...base, daysToReturn: 212, returnWindowDays: 30 })
+        .Within_Return_Policy).toBe(0)
+    })
+  })
+
   it('utilise des valeurs par défaut pour les champs optionnels', async () => {
     const { buildMLPayload } = await import('@/lib/services/ml')
     const payload = buildMLPayload({

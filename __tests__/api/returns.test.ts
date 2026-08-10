@@ -220,6 +220,64 @@ describe('POST /api/v1/returns', () => {
     expect(body.code).toBe('DELAY_EXCEEDED')
   })
 
+  // Alignement : la réponse reste identique pour la plateforme cliente, mais
+  // les violations définitives sont enregistrées pour le dataset ML.
+  describe('enregistrement des violations de policy', () => {
+    const POLICY = {
+      maxClaimDays:            7,
+      acceptedTypes:           ['EXCHANGE', 'REFUND', 'REPAIR'],
+      nonRefundableCategories: [] as string[],
+      exchangeOnlyCategories:  [] as string[],
+    }
+
+    it('enregistre une violation définitive sans changer la réponse', async () => {
+      authOk()
+      vendor.returnPolicy = { ...POLICY }
+
+      const res = await callPost(validBody({
+        answers: { ...VALID_ANSWERS, order_date: '2020-01-01' },
+      }))
+
+      expect(res.status).toBe(422)
+      expect((await res.json()).code).toBe('DELAY_EXCEEDED')
+
+      // La réclamation part bien en base, refusée et sans mail au client.
+      expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+        policyViolation: { code: 'DELAY_EXCEEDED', message: expect.any(String), notify: false },
+      }))
+    })
+
+    it("n'enregistre rien quand la résolution demandée n'est pas acceptée", async () => {
+      authOk()
+      // Sur cette route, une résolution non acceptée est arrêtée encore plus
+      // tôt : le formulaire ne propose que les types de la policy, donc la
+      // validation des réponses répond 400 avant checkReturnPolicy.
+      // Ce qui compte ici : rien n'est créé, le réessai en EXCHANGE avec le
+      // même order_id reste possible.
+      vendor.returnPolicy = { ...POLICY, acceptedTypes: ['EXCHANGE'] }
+
+      const res = await callPost(validBody({
+        answers: { ...VALID_ANSWERS, desired_resolution: 'REFUND' },
+      }))
+
+      expect(res.status).toBe(400)
+      expect(mockIngestClaim).not.toHaveBeenCalled()
+    })
+
+    it('renvoie la raison métier, pas 409, si la réclamation refusée existe déjà', async () => {
+      authOk()
+      vendor.returnPolicy = { ...POLICY }
+      mockIngestClaim.mockResolvedValue({ ok: false, code: 'DUPLICATE_CLAIM' })
+
+      const res = await callPost(validBody({
+        answers: { ...VALID_ANSWERS, order_date: '2020-01-01' },
+      }))
+
+      expect(res.status).toBe(422)
+      expect((await res.json()).code).toBe('DELAY_EXCEEDED')
+    })
+  })
+
   it('renvoie 409 si un claim existe déjà pour la commande', async () => {
     authOk()
     mockIngestClaim.mockResolvedValue({ ok: false, code: 'DUPLICATE_CLAIM' })

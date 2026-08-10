@@ -27,9 +27,9 @@ import {
   validateReturnFormAnswers,
 }                                    from '@/lib/services/return-form-validation'
 import { buildMLPayload }            from '@/lib/services/ml'
-import { checkReturnPolicy }         from '@/lib/services/return-policy'
+import { checkReturnPolicy, isPermanentPolicyViolation } from '@/lib/services/return-policy'
 import { ingestClaim }               from '@/lib/services/claim-ingestion'
-import { computeAgeFromBirthDate }   from '@/lib/utils'
+import { computeAgeFromBirthDate, parseOrderDate, daysSinceOrder } from '@/lib/utils'
 import { log }                       from '@/lib/logger'
 
 // ─────────────────────────────────────────────────────────────
@@ -100,11 +100,21 @@ export async function POST(req: NextRequest) {
   const desiredResolution = str(ans.desired_resolution).toUpperCase() as 'EXCHANGE' | 'REFUND' | 'REPAIR'
   const description      = str(ans.description)
 
-  const orderDateRaw = ans.order_date ? new Date(String(ans.order_date)) : null
-  const orderDate    = orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null
-  const daysToReturn = orderDate
-    ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
-    : 0
+  // Une commande dans le futur est une erreur d'intégration : refusée plutôt
+  // que ramenée à un Days_to_Return de 0 qui polluerait le dataset.
+  const parsedOrderDate = parseOrderDate(ans.order_date)
+  if (!parsedOrderDate.ok) {
+    return NextResponse.json(
+      {
+        error: parsedOrderDate.reason === 'future'
+          ? 'order_date ne peut pas être dans le futur'
+          : 'order_date invalide (date ISO-8601 attendue)',
+      },
+      { status: 400 },
+    )
+  }
+  const orderDate    = parsedOrderDate.date
+  const daysToReturn = daysSinceOrder(orderDate)
 
   // 5. Rate limiting — identique à /api/claims/create :
   //    par IP+order, puis par client/jour (anti fraud-score poisoning)
@@ -135,12 +145,29 @@ export async function POST(req: NextRequest) {
     daysToReturn,
     claimType: desiredResolution,
   })
-  if (!policyCheck.ok) {
-    return NextResponse.json(
-      { error: policyCheck.message, code: policyCheck.code, ...policyCheck.extra },
+  // Réponse inchangée pour la plateforme cliente : 422 avec le même code.
+  // Sur une violation *définitive*, la réclamation est tout de même enregistrée
+  // (refusée, masquée au vendeur) pour alimenter le dataset. Sur une violation
+  // corrigeable, on sort sans rien créer, sinon le réessai légitime avec une
+  // autre résolution butterait sur la contrainte unique (vendorId, orderId).
+  const policyFailure = policyCheck.ok
+    ? null
+    : { code: policyCheck.code, message: policyCheck.message, extra: policyCheck.extra }
+
+  const policy422 = () =>
+    NextResponse.json(
+      { error: policyFailure!.message, code: policyFailure!.code, ...policyFailure!.extra },
       { status: 422 },
     )
+
+  if (policyFailure && !isPermanentPolicyViolation(policyFailure.code)) {
+    return policy422()
   }
+
+  // notify: false — la plateforme reçoit le 422 et informe son client elle-même.
+  const policyViolation = policyFailure
+    ? { code: policyFailure.code, message: policyFailure.message, notify: false }
+    : null
 
   // 7. Payload ML + ingestion unifiée (fraud score, dédup, auto-approve)
   //    Champs optionnels du formulaire : lus depuis `ans` quand la plateforme
@@ -219,14 +246,21 @@ export async function POST(req: NextRequest) {
       productQuantity,
     },
     mlPayload,
+    policyViolation,
   })
 
   if (!result.ok) {
+    // Doublon sur une violation définitive : la réclamation refusée existe
+    // déjà, la plateforme doit quand même recevoir sa raison métier.
+    if (policyFailure) return policy422()
     return NextResponse.json(
       { error: 'Une demande de retour existe déjà pour cette commande.' },
       { status: 409 },
     )
   }
+
+  // Violation définitive : enregistrée en base, réponse identique à avant.
+  if (policyFailure) return policy422()
 
   // 8. Log structuré (lastUsedAt est mis à jour par ingestClaim en best-effort)
   log.info('return_submitted', {

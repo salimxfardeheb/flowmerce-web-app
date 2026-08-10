@@ -37,6 +37,7 @@ export async function PATCH(
       customerPhone: true,
       orderId:       true,
       type:          true,
+      policyRejected: true,
     },
   })
 
@@ -48,6 +49,13 @@ export async function PATCH(
     const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } })
     if (!vendor || vendor.id !== claim.vendorId) {
       return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 })
+    }
+    // Refus hors politique : déterministe, pas rattrapable par le vendeur.
+    if (claim.policyRejected) {
+      return NextResponse.json(
+        { error: 'Cette réclamation est hors de votre politique de retour et ne peut pas être traitée.' },
+        { status: 403 },
+      )
     }
   }
 

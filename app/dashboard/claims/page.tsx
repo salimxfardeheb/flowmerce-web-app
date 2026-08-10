@@ -67,8 +67,13 @@ export default async function ClaimsPage({
   }
 
   // ── Construction du filtre Prisma ─────────────────────────────────────────────
+  // Les réclamations hors politique sont refusées d'office : le vendeur n'a
+  // rien à trancher, elles n'encombrent pas son tableau. L'admin les voit.
   const where: Record<string, unknown> = {}
-  if (vendorId)               where.vendorId   = vendorId
+  if (vendorId) {
+    where.vendorId       = vendorId
+    where.policyRejected = false
+  }
   if (params.status)          where.status     = params.status
   if (params.type)            where.type       = params.type
   if (params.source)          where.source     = params.source
@@ -77,7 +82,9 @@ export default async function ClaimsPage({
   // Filtre par clé API exacte (si l'utilisateur a sélectionné une clé)
   if (params.apiKeyId)        where.apiKeyId   = params.apiKeyId
 
-  const scopeWhere = vendorId ? { vendorId } : {}
+  // Même exclusion pour les KPI : un refus hors politique ne doit pas gonfler
+  // les compteurs du vendeur.
+  const scopeWhere = vendorId ? { vendorId, policyRejected: false } : {}
 
   const [claims, allScopedClaims] = await Promise.all([
     prisma.claim.findMany({ where, orderBy: { createdAt: 'desc' } }),

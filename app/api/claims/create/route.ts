@@ -16,8 +16,8 @@ import { validateApiKey }            from '@/lib/api-key-auth'
 import { EXTERNAL_RETURN_REASONS, CLAIM_TYPES } from '@/lib/constants'
 import { ingestClaim }               from '@/lib/services/claim-ingestion'
 import { buildMLPayload }            from '@/lib/services/ml'
-import { checkReturnPolicy }         from '@/lib/services/return-policy'
-import { computeAgeFromBirthDate }   from '@/lib/utils'
+import { checkReturnPolicy, isPermanentPolicyViolation } from '@/lib/services/return-policy'
+import { computeAgeFromBirthDate, parseOrderDate, daysSinceOrder } from '@/lib/utils'
 import { log }                       from '@/lib/logger'
 
 const VALID_RESOLUTIONS = new Set<string>(CLAIM_TYPES)
@@ -126,11 +126,21 @@ export async function POST(req: NextRequest) {
   //    part dans aiDecision et ne modifie jamais claim.type.
   const desiredResolution = String(body.desired_resolution).toUpperCase() as 'EXCHANGE' | 'REFUND' | 'REPAIR'
 
-  const orderDateRaw = body.order_date ? new Date(String(body.order_date)) : null
-  const validOrderDate = orderDateRaw && !isNaN(orderDateRaw.getTime()) ? orderDateRaw : null
-  const daysToReturn = validOrderDate
-    ? Math.max(0, Math.floor((Date.now() - validOrderDate.getTime()) / 86_400_000))
-    : 0
+  // Une commande dans le futur est une erreur d'intégration : refusée plutôt
+  // que ramenée à un Days_to_Return de 0 qui polluerait le dataset.
+  const parsedOrderDate = parseOrderDate(body.order_date)
+  if (!parsedOrderDate.ok) {
+    return NextResponse.json(
+      {
+        error: parsedOrderDate.reason === 'future'
+          ? 'order_date ne peut pas être dans le futur'
+          : 'order_date invalide (date ISO-8601 attendue)',
+      },
+      { status: 400 },
+    )
+  }
+  const validOrderDate = parsedOrderDate.date
+  const daysToReturn   = daysSinceOrder(validOrderDate)
   const productCategory = body.product_category ? String(body.product_category) : undefined
 
   const returnPolicy = await prisma.returnPolicy.findUnique({
@@ -141,12 +151,33 @@ export async function POST(req: NextRequest) {
     productCategory,
     claimType: desiredResolution,
   })
-  if (!policyCheck.ok) {
-    return NextResponse.json(
-      { error: policyCheck.message, code: policyCheck.code, ...policyCheck.extra },
+
+  // Réponse inchangée pour la boutique : 422 avec le même code, comme documenté.
+  // Ce qui change est invisible d'elle — sur une violation *définitive*, la
+  // réclamation est tout de même enregistrée (refusée, masquée au vendeur) pour
+  // alimenter le dataset en exemples négatifs.
+  //
+  // Sur une violation corrigeable, on sort tout de suite sans rien créer :
+  // la boutique doit pouvoir réessayer le même order_id avec une autre
+  // résolution, ce que la contrainte unique (vendorId, orderId) interdirait.
+  const policyFailure = policyCheck.ok
+    ? null
+    : { code: policyCheck.code, message: policyCheck.message, extra: policyCheck.extra }
+
+  const policy422 = () =>
+    NextResponse.json(
+      { error: policyFailure!.message, code: policyFailure!.code, ...policyFailure!.extra },
       { status: 422 },
     )
+
+  if (policyFailure && !isPermanentPolicyViolation(policyFailure.code)) {
+    return policy422()
   }
+
+  // notify: false — la boutique reçoit le 422 et informe son client elle-même.
+  const policyViolation = policyFailure
+    ? { code: policyFailure.code, message: policyFailure.message, notify: false }
+    : null
 
   // 7. Extraction des champs optionnels pour enrichir prediction + ML payload
   const orderTotal      = typeof body.order_total      === 'number' ? body.order_total      : null
@@ -214,14 +245,22 @@ export async function POST(req: NextRequest) {
       orderAddress,
     },
     mlPayload,
+    policyViolation,
   })
 
   if (!result.ok) {
+    // Doublon sur une violation définitive : la réclamation refusée existe
+    // déjà, la boutique doit quand même recevoir sa raison métier.
+    if (policyFailure) return policy422()
     return NextResponse.json(
       { error: 'Une demande de retour existe déjà pour cette commande.' },
       { status: 409 },
     )
   }
+
+  // Violation définitive : enregistrée en base, mais la boutique voit
+  // exactement la même réponse qu'avant.
+  if (policyFailure) return policy422()
 
   // 8. Log structuré
   log.info('return_submitted', {

@@ -132,3 +132,56 @@ describe('POST /api/return-sessions — profil client', () => {
     expect(mockSessionCreate).not.toHaveBeenCalled()
   })
 })
+
+describe('POST /api/return-sessions — date de commande', () => {
+  it('rejette une commande dans le futur', async () => {
+    const future = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
+    const res = await callPost({ ...REQUIRED, order_date: future })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('futur')
+    expect(mockSessionCreate).not.toHaveBeenCalled()
+  })
+
+  it('rejette une date de commande illisible', async () => {
+    const res = await callPost({ ...REQUIRED, order_date: 'hier' })
+
+    expect(res.status).toBe(400)
+    expect(mockSessionCreate).not.toHaveBeenCalled()
+  })
+
+  it('accepte une commande du jour', async () => {
+    const today = new Date().toISOString().slice(0, 10)
+    const res = await callPost({ ...REQUIRED, order_date: today })
+
+    expect(res.status).toBe(201)
+    expect((await res.json()).out_of_window).toBe(false)
+  })
+})
+
+describe('POST /api/return-sessions — fenêtre de retour', () => {
+  // Le dépassement ne bloque plus la création du lien : la page doit s'ouvrir,
+  // c'est la soumission qui refuse.
+  it('crée quand même le lien hors délai et le signale', async () => {
+    vendor.returnPolicy = { maxClaimDays: 14 }
+    const old = new Date(Date.now() - 200 * 86_400_000).toISOString().slice(0, 10)
+
+    const res = await callPost({ ...REQUIRED, order_date: old })
+
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.out_of_window).toBe(true)
+    expect(body.url).toContain('/return/')
+    expect(mockSessionCreate).toHaveBeenCalled()
+  })
+
+  it('ne signale rien quand la commande est dans la fenêtre', async () => {
+    vendor.returnPolicy = { maxClaimDays: 30 }
+    const recent = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10)
+
+    const res = await callPost({ ...REQUIRED, order_date: recent })
+
+    expect(res.status).toBe(201)
+    expect((await res.json()).out_of_window).toBe(false)
+  })
+})

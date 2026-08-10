@@ -126,7 +126,7 @@ export interface MLPayload {
   Return_Reason:           string
   Days_to_Return:          number
   Shop_Return_Window_Days: number
-  Within_Return_Policy:    1
+  Within_Return_Policy:    0 | 1
   Fraud_Score:             number
   Customer_Satisfaction:   number
   Is_Suspicious:           0 | 1
@@ -150,7 +150,11 @@ export function buildMLPayload(input: BuildMLPayloadInput): MLPayload {
     Return_Reason:           input.reason,
     Days_to_Return:          input.daysToReturn,
     Shop_Return_Window_Days: input.returnWindowDays,
-    Within_Return_Policy:    1,
+    // Calculé, plus codé en dur : depuis que la page hébergée accepte les
+    // demandes hors délai (refusées d'office), la valeur varie réellement.
+    // Définition volontairement limitée à la fenêtre de rétractation, la seule
+    // règle que `Shop_Return_Window_Days` permet au modèle de recouper.
+    Within_Return_Policy:    input.daysToReturn <= input.returnWindowDays ? 1 : 0,
     Fraud_Score:             0, // recalculé par ingestClaim
     Customer_Satisfaction:   3,
     Is_Suspicious:           0, // recalculé par ingestClaim

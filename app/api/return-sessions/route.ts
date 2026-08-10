@@ -42,7 +42,7 @@ import { prisma }           from '@/lib/prisma'
 import { env }              from '@/lib/env'
 import { validateApiKey }   from '@/lib/api-key-auth'
 import { PAYMENT_METHODS }  from '@/lib/constants'
-import { computeAgeFromBirthDate, MAX_CUSTOMER_AGE } from '@/lib/utils'
+import { computeAgeFromBirthDate, MAX_CUSTOMER_AGE, parseOrderDate, daysSinceOrder } from '@/lib/utils'
 import { log }              from '@/lib/logger'
 import { randomBytes }      from 'node:crypto'
 
@@ -143,19 +143,34 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
 
-  // Vérifier la politique de retour (fenêtre de temps)
-  if (orderDate) {
-    const parsed = new Date(orderDate)
-    if (!isNaN(parsed.getTime())) {
-      const daysSince = Math.floor((Date.now() - parsed.getTime()) / 86_400_000)
-      const maxDays   = vendor.returnPolicy?.maxClaimDays ?? 14
-      if (daysSince > maxDays) {
-        return NextResponse.json(
-          { error: `Délai de retour dépassé (${maxDays} jours maximum)`, code: 'RETURN_WINDOW_EXPIRED' },
-          { status: 422 }
-        )
-      }
-    }
+  // Une commande dans le futur est une erreur d'intégration : refusée, sinon
+  // elle produit un Days_to_Return de 0 inventé dans le dataset ML.
+  const parsedOrderDate = parseOrderDate(orderDate)
+  if (!parsedOrderDate.ok)
+    return NextResponse.json(
+      {
+        error: parsedOrderDate.reason === 'future'
+          ? 'order_date ne peut pas être dans le futur'
+          : 'order_date invalide (date ISO-8601 attendue)',
+      },
+      { status: 400 },
+    )
+
+  // Le dépassement du délai de retour ne bloque PLUS la création du lien : la
+  // page hébergée s'ouvre normalement et le client peut déposer sa demande.
+  // C'est /api/return/[token] qui tranche à la soumission — la réclamation est
+  // enregistrée refusée, invisible du vendeur, mais exportable vers le dataset.
+  // Refuser ici privait le modèle de tous ses exemples hors délai.
+  const maxDays = vendor.returnPolicy?.maxClaimDays ?? 14
+  const outOfWindow =
+    !!parsedOrderDate.date && daysSinceOrder(parsedOrderDate.date) > maxDays
+  if (outOfWindow) {
+    log.info('return_session_out_of_window', {
+      vendorId: vendor.id,
+      orderId,
+      maxDays,
+      daysSince: daysSinceOrder(parsedOrderDate.date),
+    })
   }
 
   // ── 3. Générer token + session ──────────────────────────────────────────
@@ -200,6 +215,9 @@ export async function POST(req: NextRequest) {
       token,
       url:        `${BASE_URL}/return/${token}`,
       expires_at: expiresAt.toISOString(),
+      // La boutique sait ainsi que la demande sera refusée d'office à la
+      // soumission, sans avoir à recalculer le délai de son côté.
+      out_of_window: outOfWindow,
     },
     { status: 201 }
   )

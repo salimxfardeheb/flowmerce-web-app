@@ -22,8 +22,10 @@
 // jamais demandés au client ni lus depuis son body : ils proviennent
 // uniquement de la session, avec repli 'Standard' / 0.
 //
-// La return policy a déjà été vérifiée par /api/return-sessions au moment
-// de générer le lien — on ne re-vérifie pas ici.
+// La return policy est vérifiée ICI, à la soumission — /api/return-sessions ne
+// bloque plus la création du lien. Une demande hors politique n'est pas
+// refusée en amont : elle est enregistrée avec un refus d'office, sans appel
+// au ML, masquée au vendeur, et exportable vers le dataset d'entraînement.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma }                    from '@/lib/prisma'
@@ -32,6 +34,8 @@ import { buildReturnForm }           from '@/lib/services/return-form-builder'
 import { validateReturnFormAnswers } from '@/lib/services/return-form-validation'
 import { ingestClaim }               from '@/lib/services/claim-ingestion'
 import { buildMLPayload }            from '@/lib/services/ml'
+import { checkReturnPolicy }         from '@/lib/services/return-policy'
+import { parseOrderDate, daysSinceOrder } from '@/lib/utils'
 import { log }                       from '@/lib/logger'
 
 const HTML_RE  = /<[^>]*>/
@@ -159,12 +163,26 @@ export async function POST(
     return NextResponse.json({ error: 'Trop de tentatives pour cette commande. Réessayez dans 1 heure.' }, { status: 429 })
 
   // ── 5. Construction du payload ML enrichi ────────────────────────────────
-  const parsedOrderDate  = orderDateRaw ? new Date(orderDateRaw) : null
-  const orderDate        = parsedOrderDate && !isNaN(parsedOrderDate.getTime()) ? parsedOrderDate : null
+  const parsed           = parseOrderDate(orderDateRaw)
+  const orderDate        = parsed.ok ? parsed.date : null
   const returnWindowDays = apiKey.vendor.returnPolicy?.maxClaimDays ?? 14
-  const daysSinceOrder   = orderDate
-    ? Math.max(0, Math.floor((Date.now() - orderDate.getTime()) / 86_400_000))
-    : 0
+  const daysToReturn     = daysSinceOrder(orderDate)
+
+  // ── 5 bis. Politique de retour ───────────────────────────────────────────
+  // Vérifiée ICI, à la soumission, et non plus seulement à la génération du
+  // lien : celui-ci vit jusqu'à 30 jours et peut donc être utilisé après la
+  // fin de la fenêtre. Une demande hors politique n'est pas bloquée — elle
+  // est enregistrée refusée d'office, masquée au vendeur, et rejoint le
+  // dataset comme exemple négatif.
+  const policyCheck = checkReturnPolicy(apiKey.vendor.returnPolicy, {
+    daysToReturn,
+    productCategory: productCategory || undefined,
+    claimType:       desiredResolution,
+  })
+  // notify: true — sur la page hébergée, Flowmerce porte la relation client.
+  const policyViolation = policyCheck.ok
+    ? null
+    : { code: policyCheck.code, message: policyCheck.message, notify: true }
 
   const mlPayload = buildMLPayload({
     customerId:       customerId || null,
@@ -180,7 +198,7 @@ export async function POST(
     customerAge,
     customerWilaya,
     reason,
-    daysToReturn:     daysSinceOrder,
+    daysToReturn,
     returnWindowDays,
   })
 
@@ -219,6 +237,7 @@ export async function POST(
       productQuantity,
     },
     mlPayload,
+    policyViolation,
   })
 
   if (!result.ok) {
@@ -237,7 +256,24 @@ export async function POST(
     claimId: result.claim.id, vendorId: apiKey.vendorId,
     orderId, reason, fraudScore: result.claim.fraudScore,
     source: 'HOSTED_PAGE', ip,
+    policyRejected: result.claim.policyRejected,
   })
+
+  // Hors politique : la demande est bien enregistrée (201), mais le client
+  // doit comprendre qu'elle est refusée — pas « créée avec succès ».
+  if (result.claim.policyRejected) {
+    return NextResponse.json(
+      {
+        success:  true,
+        claimId:  result.claim.id,
+        rejected: true,
+        code:     policyViolation?.code,
+        message:  policyViolation?.message
+          ?? "Votre demande a été enregistrée mais ne peut pas être acceptée : elle est hors de la politique de retour du vendeur.",
+      },
+      { status: 201 },
+    )
+  }
 
   return NextResponse.json(
     { success: true, claimId: result.claim.id, message: 'Réclamation créée avec succès' },

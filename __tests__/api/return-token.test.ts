@@ -178,6 +178,76 @@ describe('POST /api/return/[token]', () => {
     }))
   })
 
+  // Hors politique : la page s'ouvre, la demande est acceptée en base mais
+  // refusée d'office — sans ML, invisible du vendeur, exportable vers le dataset.
+  describe('hors politique de retour', () => {
+    const OLD_ORDER = new Date(Date.now() - 200 * 86_400_000).toISOString().slice(0, 10)
+
+    beforeEach(() => {
+      vendor.returnPolicy = { maxClaimDays: 14, acceptedTypes: [], nonRefundableCategories: [], exchangeOnlyCategories: [] }
+      mockFindUnique.mockResolvedValue(makeSession({ orderDate: OLD_ORDER }))
+      mockIngestClaim.mockResolvedValue({
+        ok: true,
+        claim: {
+          id: 'claim_2', status: 'REJECTED', type: 'REFUND', createdAt: new Date(),
+          aiDecision: 'Reject', fraudScore: 15,
+          autoApproved: false, autoRejected: true, policyRejected: true,
+        },
+        customerPastReturns: 0,
+      })
+    })
+
+    it('transmet la violation à ingestClaim', async () => {
+      const res = await callPost({ answers: CLIENT_ANSWERS })
+
+      expect(res.status).toBe(201)
+      expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+        policyViolation: expect.objectContaining({ code: 'DELAY_EXCEEDED' }),
+      }))
+    })
+
+    it('répond que la demande est refusée, pas « créée avec succès »', async () => {
+      const res = await callPost({ answers: CLIENT_ANSWERS })
+      const body = await res.json()
+
+      expect(body.rejected).toBe(true)
+      expect(body.code).toBe('DELAY_EXCEEDED')
+      expect(body.message).not.toContain('succès')
+    })
+
+    it('passe un délai hors fenêtre au constructeur du payload ML', async () => {
+      // buildMLPayload est mocké en identité ici : on lit son entrée. Le calcul
+      // de Within_Return_Policy lui-même est couvert dans ml.test.ts.
+      await callPost({ answers: CLIENT_ANSWERS })
+
+      const mlInput = mockIngestClaim.mock.calls[0][0].mlPayload as Record<string, number>
+      expect(mlInput.daysToReturn).toBeGreaterThan(mlInput.returnWindowDays)
+    })
+
+    it("ne signale rien quand la commande est dans la fenêtre", async () => {
+      mockFindUnique.mockResolvedValue(makeSession({
+        orderDate: new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10),
+      }))
+      mockIngestClaim.mockResolvedValue({
+        ok: true,
+        claim: {
+          id: 'claim_3', status: 'PENDING', type: 'REFUND', createdAt: new Date(),
+          aiDecision: null, fraudScore: 15,
+          autoApproved: false, autoRejected: false, policyRejected: false,
+        },
+        customerPastReturns: 0,
+      })
+
+      const res = await callPost({ answers: CLIENT_ANSWERS })
+      const body = await res.json()
+
+      expect(body.rejected).toBeUndefined()
+      expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+        policyViolation: null,
+      }))
+    })
+  })
+
   it("n'exige pas la livraison quand la boutique ne l'a pas transmise", async () => {
     const res = await callPost({ answers: CLIENT_ANSWERS })
 

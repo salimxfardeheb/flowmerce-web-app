@@ -70,6 +70,35 @@ export function computeAgeFromBirthDate(
   return age;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Date de commande
+// Une commande ne peut pas être passée dans le futur : une telle valeur est
+// une erreur d'intégration. Laissée passer, elle produit un `Days_to_Return`
+// négatif ramené à 0 par les appelants — soit un 0 inventé injecté dans le
+// dataset ML, indiscernable d'un retour le jour même.
+// ─────────────────────────────────────────────────────────────
+export type OrderDateResult =
+  | { ok: true; date: Date | null }
+  | { ok: false; reason: "invalid" | "future" };
+
+export function parseOrderDate(value: unknown, now: Date = new Date()): OrderDateResult {
+  if (value === null || value === undefined || value === "") return { ok: true, date: null };
+
+  const date = value instanceof Date ? value : new Date(String(value).trim());
+  if (Number.isNaN(date.getTime())) return { ok: false, reason: "invalid" };
+  // Tolérance d'un jour : une commande passée aujourd'hui dans un fuseau en
+  // avance sur UTC ne doit pas être rejetée.
+  if (date.getTime() > now.getTime() + 86_400_000) return { ok: false, reason: "future" };
+
+  return { ok: true, date };
+}
+
+/** Jours écoulés depuis la commande, 0 si la date est absente. */
+export function daysSinceOrder(orderDate: Date | null, now: Date = new Date()): number {
+  if (!orderDate) return 0;
+  return Math.max(0, Math.floor((now.getTime() - orderDate.getTime()) / 86_400_000));
+}
+
 export function formatDate(date: Date | string): string {
   return new Date(date).toLocaleDateString("fr-FR", {
     day: "2-digit",

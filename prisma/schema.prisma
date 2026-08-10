@@ -185,11 +185,16 @@ model Claim {
   mlInput       Json?
   exportedToML  Boolean     @default(false)
   exportedAt    DateTime?
+  // Réclamation hors politique vendeur (délai dépassé, catégorie exclue…).
+  // Refusée d'office sans passer par le ML et masquée au vendeur : il n'a
+  // rien à trancher. Reste visible côté admin et exportable vers le dataset.
+  policyRejected Boolean    @default(false)
   vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([vendorId, orderId])
   @@index([vendorId, createdAt(sort: Desc)])
   @@index([vendorId, status])
+  @@index([vendorId, policyRejected])
   @@index([vendorId])
   @@index([status])
   @@index([orderId])

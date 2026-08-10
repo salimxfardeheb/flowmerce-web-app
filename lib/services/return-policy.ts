@@ -11,6 +11,25 @@ export type PolicyCheckResult =
   | { ok: true;  forceExchange: boolean }
   | { ok: false; code: string; message: string; extra?: Record<string, unknown> };
 
+// ─────────────────────────────────────────────────────────────
+// Violations définitives pour une commande donnée : réessayer avec le même
+// order_id ne peut pas aboutir (la date de commande et la catégorie produit
+// ne changeront pas). Elles peuvent donc être enregistrées en base sans
+// risque.
+//
+// CLAIM_TYPE_NOT_ACCEPTED en est volontairement absent : il se corrige en
+// changeant `desired_resolution`. Créer une réclamation dessus ferait butter
+// le réessai légitime sur la contrainte unique (vendorId, orderId).
+// ─────────────────────────────────────────────────────────────
+export const PERMANENT_POLICY_CODES = [
+  'DELAY_EXCEEDED',
+  'NON_REFUNDABLE_CATEGORY',
+] as const;
+
+export function isPermanentPolicyViolation(code: string): boolean {
+  return (PERMANENT_POLICY_CODES as readonly string[]).includes(code);
+}
+
 const norm = (s?: string | null) => (s ?? '').toLowerCase().trim();
 
 export function checkReturnPolicy(
