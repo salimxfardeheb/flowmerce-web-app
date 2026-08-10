@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import type { ReturnPolicy, Vendor } from '@prisma/client'
 import {
+  allFields,
   buildReturnForm,
+  merchantFieldIds,
   slugify,
   RETURN_FORM_VERSION,
+  RETURN_FORM_MIN_COMPATIBLE_VERSION,
 } from '@/lib/services/return-form-builder'
 import {
   RETURN_REASONS,
@@ -53,6 +56,45 @@ describe('slugify', () => {
 
   it('retourne une chaîne vide sans caractère alphanumérique', () => {
     expect(slugify('!!!')).toBe('')
+  })
+})
+
+// Le contrat de version est la seule chose qu'une boutique doit contrôler
+// avant de rendre le formulaire. Le casser bloque toutes les intégrations en
+// place, y compris sur une évolution parfaitement additive.
+describe('contrat de version', () => {
+  it('expose min_compatible_version à côté de version', () => {
+    const form = buildReturnForm(vendor, null)
+
+    expect(form.version).toBe(RETURN_FORM_VERSION)
+    expect(form.min_compatible_version).toBe(RETURN_FORM_MIN_COMPATIBLE_VERSION)
+  })
+
+  it('reste lisible par un moteur écrit pour une version antérieure', () => {
+    // Un consommateur v1 doit pouvoir rendre le formulaire courant : c'est
+    // précisément ce que min_compatible_version lui permet de vérifier.
+    expect(RETURN_FORM_MIN_COMPATIBLE_VERSION).toBeLessThanOrEqual(RETURN_FORM_VERSION)
+
+    const form = buildReturnForm(vendor, null)
+    const engineVersion = 1
+    expect(engineVersion).toBeGreaterThanOrEqual(form.min_compatible_version)
+  })
+
+  // Garde-fou : incrémenter `version` casse toutes les boutiques qui
+  // contrôlent encore `version` au lieu de `min_compatible_version`. Ce test
+  // n'autorise le bump que s'il est délibéré — et il ne l'est que sur une
+  // rupture réelle du contrat.
+  it('reste en v1 — aucune rupture du contrat à ce jour', () => {
+    expect(RETURN_FORM_VERSION).toBe(1)
+  })
+
+  it('le contrat de compatibilité est au premier niveau, pas dans meta', () => {
+    // `meta` est documenté comme un bloc informatif que les moteurs ignorent :
+    // y enterrer le contrat garantirait que personne ne le lise.
+    const form = buildReturnForm(vendor, null)
+
+    expect(form).toHaveProperty('min_compatible_version')
+    expect(form.meta).not.toHaveProperty('min_compatible_version')
   })
 })
 
@@ -153,48 +195,79 @@ describe('buildReturnForm', () => {
     expect(description.validation.maxLength).toBe(2000)
   })
 
-  it('collecte identifiant client, wilaya et mode de paiement', () => {
-    const form  = buildReturnForm(vendor, policy())
-    const order = form.sections.find(s => s.id === 'order')!
+  // Identifiant client, wilaya et mode de paiement sont des faits de la
+  // commande que la boutique possède déjà — et deux d'entre eux sont des
+  // features du modèle. Les faire saisir au client final ajouterait de la
+  // friction et lui donnerait prise sur la prédiction.
+  it('décrit chaque champ boutique avec son type et ses contraintes', () => {
+    const form = buildReturnForm(vendor, policy())
+    const byId = (id: string) => form.merchant_fields.find(f => f.id === id)!
 
-    const customerId = order.fields.find(f => f.id === 'customer_id')!
+    const customerId = byId('customer_id')
     expect(customerId.type).toBe('text')
-    expect(customerId.required).toBe(false)
+    expect(customerId.validation.maxLength).toBe(100)
 
-    const wilaya = order.fields.find(f => f.id === 'customer_wilaya')!
+    const wilaya = byId('customer_wilaya')
     expect(wilaya.type).toBe('text')
-    expect(wilaya.required).toBe(true)
+    expect(wilaya.validation.maxLength).toBe(100)
 
-    const payment = order.fields.find(f => f.id === 'payment_method')!
+    const payment = byId('payment_method')
     expect(payment.type).toBe('select')
-    expect(payment.required).toBe(true)
+    // Les options restent exposées : une boutique peut vouloir laisser son
+    // propre back-office choisir la valeur dans une liste contrôlée.
     expect(payment.options.map(o => o.value)).toEqual([...PAYMENT_METHODS])
     expect(payment.options[0].label).toBe(PAYMENT_METHOD_LABELS[PAYMENT_METHODS[0]])
-  })
 
-  it('expose le mode et les frais de livraison comme champs boutique, jamais requis du client', () => {
-    const order = buildReturnForm(vendor, policy()).sections.find(s => s.id === 'order')!
+    expect(byId('shipping_method').type).toBe('text')
 
-    const method = order.fields.find(f => f.id === 'shipping_method')!
-    expect(method.type).toBe('text')
-    expect(method.source).toBe('merchant')
-    expect(method.required).toBe(false)
-
-    const cost = order.fields.find(f => f.id === 'shipping_cost')!
+    const cost = byId('shipping_cost')
     expect(cost.type).toBe('number')
-    expect(cost.source).toBe('merchant')
-    expect(cost.required).toBe(false)
     expect(cost.validation.min).toBe(0)
+
+    for (const f of form.merchant_fields) expect(f.source).toBe('merchant')
   })
 
-  it('marque tous les autres champs comme saisis par le client', () => {
+  // Le point clé : un moteur de rendu qui boucle naïvement sur `sections` ne
+  // peut pas afficher un champ boutique, puisqu'il ne s'y trouve pas. La règle
+  // est structurelle, elle ne dépend plus de la vigilance de l'intégrateur.
+  it("garde les champs boutique hors des sections à afficher", () => {
     const form = buildReturnForm(vendor, policy())
-    const merchantFields = form.sections
-      .flatMap(s => s.fields)
-      .filter(f => f.source === 'merchant')
-      .map(f => f.id)
+    const rendus = form.sections.flatMap(s => s.fields)
 
-    expect(merchantFields).toEqual(['shipping_method', 'shipping_cost'])
+    expect(merchantFieldIds(form)).toEqual([
+      'customer_id',
+      'customer_wilaya',
+      'payment_method',
+      'shipping_method',
+      'shipping_cost',
+    ])
+    expect(rendus.some(f => f.source === 'merchant')).toBe(false)
+
+    // Ce qui reste à saisir : son identité, son produit, et son problème.
+    expect(rendus.map(f => f.id)).toEqual([
+      'order_id',
+      'customer_name',
+      'customer_email',
+      'customer_phone',
+      'product_name',
+      'order_date',
+      'reason',
+      'desired_resolution',
+      'description',
+    ])
+
+    // `allFields` reste la vue complète, pour la validation à la soumission.
+    expect(allFields(form)).toHaveLength(rendus.length + form.merchant_fields.length)
+  })
+
+  // Un champ boutique n'est jamais requis du client : la boutique peut ne pas
+  // avoir l'information, auquel cas l'ingestion retombe sur son repli neutre.
+  it('ne rend jamais un champ boutique obligatoire', () => {
+    // La boutique peut ne pas avoir l'information : l'exiger fermerait le
+    // formulaire à un client qui n'a aucun moyen de la fournir.
+    for (const f of buildReturnForm(vendor, policy()).merchant_fields) {
+      expect(f.required).toBe(false)
+    }
   })
 
   it('ne dépend d’aucun champ du vendeur autre que le nom', () => {

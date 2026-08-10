@@ -59,6 +59,8 @@ interface ReturnForm {
   title:       string
   description: string
   sections:    FormSection[]
+  /** Champs fournis par la boutique : affichés en récap, jamais en saisie. */
+  merchant_fields?: FormField[]
   meta: {
     shop:   { name: string; slug: string; website?: string | null }
     policy: { max_claim_days: number; processing_days: number }
@@ -256,19 +258,25 @@ export default function ReturnPage() {
     const recap: { field: FormField; value: string }[] = []
     const sections: FormSection[] = []
 
+    // `sections` ne contient plus que des champs destinés au client : connus de
+    // la session → récapitulatif en lecture seule, sinon à saisir.
     for (const section of form?.sections ?? []) {
       const fields: FormField[] = []
       for (const field of section.fields) {
         const known = prefill[field.id]
-        // Connu de la session → récapitulatif en lecture seule.
-        // Sinon : les champs `merchant` (livraison…) ne sont jamais demandés au
-        // client — faute de valeur transmise par la boutique, ils disparaissent
-        // simplement de la page.
-        if (known)                        recap.push({ field, value: known })
-        else if (field.source !== 'merchant') fields.push(field)
+        if (known) recap.push({ field, value: known })
+        else       fields.push(field)
       }
       if (fields.length > 0) sections.push({ ...section, fields })
     }
+
+    // `merchant_fields` n'est jamais proposé à la saisie : la boutique l'a
+    // transmis, on le restitue en récapitulatif ; sinon il disparaît de la page.
+    for (const field of form?.merchant_fields ?? []) {
+      const known = prefill[field.id]
+      if (known) recap.push({ field, value: known })
+    }
+
     return { recapFields: recap, inputSections: sections }
   }, [form, prefill])
 
@@ -325,9 +333,15 @@ export default function ReturnPage() {
         }
       }
 
-      const res  = await fetch(`/api/return/${token}`, {
+      // Canal unique : le jeton de session s'authentifie par en-tête, comme
+      // une clé API côté boutique. L'URL /return/<token> reste celle de la
+      // page — les liens déjà distribués aux clients ne bougent pas.
+      const res  = await fetch('/api/v1/returns', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type':   'application/json',
+          'X-Return-Token': token,
+        },
         body:    JSON.stringify({ answers: payload }),
       })
       const data = await res.json()

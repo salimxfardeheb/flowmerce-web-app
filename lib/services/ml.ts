@@ -86,8 +86,8 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
 
 // ─────────────────────────────────────────────────────────────
 // Construction du payload ML à partir des données métier d'une réclamation.
-// Source unique de vérité du format ML — utilisé par /claims/create et
-// /return/[token]. Fraud_Score, Customer_Past_Returns et Is_Suspicious
+// Source unique de vérité du format ML — utilisé par le canal de soumission
+// (return-submission). Fraud_Score, Customer_Past_Returns et Is_Suspicious
 // sont des placeholders : ils sont recalculés à l'intérieur d'ingestClaim
 // avant l'envoi effectif (cf. claim-ingestion.ts).
 // ─────────────────────────────────────────────────────────────
@@ -280,8 +280,8 @@ export function buildReclamationInputFromClaim(
 
   return {
     // Colonne DB `Claim.orderId` : seule source de vérité. Elle est validée et
-    // trimée aux trois points d'entrée (/claims/create, /return/[token],
-    // /v1/returns) et sert de clé de déduplication (vendorId, orderId).
+    // trimée au point d'entrée unique (/v1/returns, quel que soit le mode
+    // d'authentification) et sert de clé de déduplication (vendorId, orderId).
     // `mlInput` n'est volontairement pas consulté : c'est un blob JSONB figé à
     // la création, qui ne porte pas Order_ID et ne doit pas primer sur la base.
     Order_ID:                 claim.orderId,

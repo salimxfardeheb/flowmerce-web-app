@@ -23,7 +23,31 @@ import {
   RETURN_REASON_DESCRIPTIONS,
 } from '@/lib/constants'
 
-export const RETURN_FORM_VERSION = 2
+// ─────────────────────────────────────────────────────────────
+// Contrat de version du formulaire
+//
+// `version` n'est incrémentée que sur un changement de RUPTURE : champ
+// supprimé ou renommé, type modifié, contrainte durcie, sémantique changée.
+// Les évolutions additives — nouvelle propriété, nouveau champ optionnel,
+// contrainte relâchée, nouvelle option — ne l'incrémentent pas.
+//
+// `min_compatible_version` dit jusqu'où la définition reste lisible : un
+// consommateur écrit pour la version V peut rendre ce formulaire dès lors que
+// `V >= min_compatible_version`. C'est le seul contrôle à implémenter côté
+// boutique — comparer `version` à une liste blanche fermée bloque sur des
+// évolutions inoffensives.
+//
+// En contrepartie, un consommateur DOIT ignorer ce qu'il ne connaît pas :
+// propriétés inconnues sur un champ, types de champ inconnus, sections
+// inconnues. C'est ce qui permet d'enrichir le formulaire sans rupture.
+//
+// Le contrat n'a jamais connu de rupture : il est en v1 depuis l'origine.
+// L'ajout de `field.source` et le passage de `shipping_method` en optionnel
+// avaient brièvement fait passer la constante à 2 ; ces deux évolutions étant
+// additives, elles ne justifiaient pas d'incrément et il a été annulé.
+// ─────────────────────────────────────────────────────────────
+export const RETURN_FORM_VERSION = 1
+export const RETURN_FORM_MIN_COMPATIBLE_VERSION = 1
 
 // Qui renseigne la valeur d'un champ :
 //   'customer' → saisi par le client final dans le formulaire ;
@@ -77,9 +101,19 @@ export interface ReturnFormSection {
 
 export interface ReturnForm {
   version: number
+  /** Version de moteur la plus ancienne capable de rendre ce formulaire. */
+  min_compatible_version: number
   title: string
   description: string
+  /** Champs à AFFICHER au client final. Un moteur de rendu boucle ici. */
   sections: ReturnFormSection[]
+  /**
+   * Champs à FOURNIR depuis les données de commande, jamais à afficher.
+   * Volontairement hors de `sections` : un moteur qui boucle naïvement sur
+   * les sections fait ainsi la bonne chose sans avoir à connaître `source`.
+   * Ils restent validés à la soumission quand une valeur est transmise.
+   */
+  merchant_fields: ReturnFormField[]
   meta: {
     shop: {
       name: string
@@ -110,6 +144,24 @@ const DEFAULTS = {
 }
 
 const EMAIL_PATTERN = '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'
+
+// Ids des champs dont la valeur appartient à la boutique et jamais au client
+// final. Sur la page hébergée ils ne sont ni affichés ni acceptés depuis le
+// body : la ReturnSession fait foi, et un champ absent retombe sur son repli
+// neutre plutôt que d'être inventé par le client.
+export function merchantFieldIds(form: Pick<ReturnForm, 'merchant_fields'>): string[] {
+  return (form.merchant_fields ?? []).map(f => f.id)
+}
+
+/** Tous les champs du formulaire, affichés comme fournis par la boutique. */
+export function allFields(
+  form: Pick<ReturnForm, 'sections' | 'merchant_fields'>,
+): ReturnFormField[] {
+  return [
+    ...(form.sections ?? []).flatMap(s => s.fields ?? []),
+    ...(form.merchant_fields ?? []),
+  ]
+}
 
 // Slug d'une boutique dérivé de son nom (aucun champ slug en base).
 export function slugify(value: string): string {
@@ -169,6 +221,7 @@ export function buildReturnForm(vendor: VendorInput, policy: PolicyInput): Retur
 
   return {
     version: RETURN_FORM_VERSION,
+    min_compatible_version: RETURN_FORM_MIN_COMPATIBLE_VERSION,
     title:   'Demande de retour',
     description: 'Complétez le formulaire ci-dessous pour soumettre votre demande de retour.',
     sections: [
@@ -178,20 +231,10 @@ export function buildReturnForm(vendor: VendorInput, policy: PolicyInput): Retur
         description: 'Renseignez les informations de la commande concernée.',
         fields: [
           field({ id: 'order_id', type: 'text', label: 'Numéro de commande', required: true, placeholder: 'CMD-1234', validation: { maxLength: 200 } }),
-          field({ id: 'customer_id', type: 'text', label: 'Identifiant client', required: false, placeholder: 'CUST-1024', validation: { maxLength: 100 } }),
           field({ id: 'customer_name', type: 'text', label: 'Nom complet', required: true, placeholder: 'Ahmed Benali', validation: { maxLength: 200 } }),
           field({ id: 'customer_email', type: 'email', label: 'Adresse e-mail', required: true, placeholder: 'client@exemple.com', validation: { maxLength: 254, pattern: EMAIL_PATTERN } }),
           field({ id: 'customer_phone', type: 'tel', label: 'Téléphone', required: false, placeholder: '0555123456' }),
-          field({ id: 'customer_wilaya', type: 'text', label: 'Wilaya', required: true, placeholder: 'Alger', validation: { maxLength: 100 } }),
           field({ id: 'product_name', type: 'text', label: 'Produit', required: true, placeholder: 'Nike Air Max', validation: { maxLength: 500 } }),
-          field({ id: 'payment_method', type: 'select', label: 'Mode de paiement', required: true, placeholder: 'Sélectionnez un mode de paiement…', options: paymentOptions, validation: { minLength: 1 } }),
-          // Données logistiques : connues de la boutique, jamais saisies par le
-          // client. La page hébergée les lit sur la ReturnSession ; les
-          // intégrations externes les envoient depuis leurs données de commande.
-          field({ id: 'shipping_method', type: 'text', label: 'Mode de livraison', source: 'merchant', required: false, placeholder: 'Livraison à domicile', validation: { maxLength: 100 } }),
-          // Libellé sans unité : le champ n'est plus saisi, il est restitué en
-          // lecture seule avec sa devise (« 500 DA »).
-          field({ id: 'shipping_cost', type: 'number', label: 'Frais de livraison', source: 'merchant', required: false, placeholder: '500', validation: { min: 0 } }),
           field({ id: 'order_date', type: 'date', label: 'Date de commande', required: false }),
         ],
       },
@@ -238,6 +281,24 @@ export function buildReturnForm(vendor: VendorInput, policy: PolicyInput): Retur
           }),
         ],
       },
+    ],
+    // Faits de la commande, fournis par la boutique et jamais demandés au
+    // client. Aucun n'est `required` : la boutique peut ne pas avoir
+    // l'information, auquel cas l'ingestion retombe sur son repli neutre —
+    // l'exiger fermerait le formulaire à un client qui ne peut rien y faire.
+    merchant_fields: [
+      // Identifiant interne : le client ne le connaît pas, et une valeur
+      // inventée casserait le lien avec son historique de retours.
+      field({ id: 'customer_id', type: 'text', label: 'Identifiant client', source: 'merchant', required: false, placeholder: 'CUST-1024', validation: { maxLength: 100 } }),
+      // Wilaya et mode de paiement sont des faits de la commande, pas des
+      // déclarations du client — et deux features du modèle. Les lui faire
+      // saisir lui donnerait prise sur sa propre prédiction.
+      field({ id: 'customer_wilaya', type: 'text', label: 'Wilaya', source: 'merchant', required: false, placeholder: 'Alger', validation: { maxLength: 100 } }),
+      field({ id: 'payment_method', type: 'select', label: 'Mode de paiement', source: 'merchant', required: false, placeholder: 'Sélectionnez un mode de paiement…', options: paymentOptions }),
+      field({ id: 'shipping_method', type: 'text', label: 'Mode de livraison', source: 'merchant', required: false, placeholder: 'Livraison à domicile', validation: { maxLength: 100 } }),
+      // Libellé sans unité : le champ n'est pas saisi, il est restitué en
+      // lecture seule avec sa devise (« 500 DA »).
+      field({ id: 'shipping_cost', type: 'number', label: 'Frais de livraison', source: 'merchant', required: false, placeholder: '500', validation: { min: 0 } }),
     ],
     meta: {
       shop: {

@@ -7,6 +7,7 @@ Plateforme SaaS B2B de gestion des retours et détection de fraude pour e-commer
 ## Fonctionnalités
 
 - **Gestion des réclamations** — Création, suivi et résolution de réclamations via API ou portail client white-label
+- **Canal de soumission unique** — Un seul endpoint (`POST /api/v1/returns`) et une seule implémentation métier pour les deux usages : formulaire embarqué côté boutique (clé API) et portail hébergé (jeton de session)
 - **Formulaire de retour embarqué** — API JSON générique (`GET /api/v1/return-form` + `POST /api/v1/returns`) permettant à toute boutique e-commerce (Shopify, WooCommerce, Magento, PrestaShop…) d'embarquer le formulaire de retour Flowmerce sans dupliquer de logique métier
 - **Détection de fraude** — Score de fraude cross-vendeur (0–100) basé sur l'historique client
 - **Intégration ML** — Décisions automatiques via un modèle Python hébergé séparément
@@ -138,8 +139,8 @@ flowmerce-web-app/
 │   ├── return/[token]/           # Portail client white-label
 │   └── api/                      # Routes API REST
 │       ├── v1/
-│       │   ├── return-form/      # GET — définition JSON du formulaire embarqué
-│       │   └── returns/          # POST — soumission des réponses du formulaire
+│       │   ├── return-form/      # GET — définition JSON du formulaire
+│       │   └── returns/          # POST — canal unique de soumission
 │       ├── admin/claims/         # Vue admin, export dataset ML, save-claim
 │       ├── claims/               # CRUD réclamations
 │       │   └── validation-mode/  # PATCH — bascule MANUAL ↔ AI_AUTO
@@ -148,7 +149,7 @@ flowmerce-web-app/
 │       ├── return-policy/        # Politique de retour (+ `advanced/`)
 │       ├── return-sessions/      # Génération de liens portail
 │       ├── return/[token]/       # Lecture session + infos vendeur (portail)
-│       ├── checkout-session/     # Génération de lien portail (version simple)
+│       │                         #   POST — alias déprécié de /v1/returns
 │       ├── fraud/                # Rapports de refus
 │       ├── predict/              # Appel direct ML
 │       ├── cron/                 # Jobs planifiés (retry ML)
@@ -156,8 +157,11 @@ flowmerce-web-app/
 ├── components/                   # Composants React réutilisables
 ├── lib/
 │   ├── services/
+│   │   ├── return-submission.ts  # Canal unique de soumission (cœur métier)
+│   │   ├── return-credentials.ts # Clé API ou jeton de session → contexte
 │   │   ├── claim-ingestion.ts    # Service unifié de création de réclamation
 │   │   ├── return-form-builder.ts# Vendor + ReturnPolicy → formulaire JSON générique
+│   │   ├── return-form-validation.ts # Réponses validées contre la définition
 │   │   ├── ml.ts                 # Intégration modèle ML
 │   │   ├── notification.ts       # Notifications email
 │   │   └── return-policy.ts      # Logique politique de retour
@@ -201,7 +205,16 @@ Les modèles principaux de la base de données :
 
 ### Cycle de vie d'une réclamation
 
-Une réclamation peut être soumise par **trois canaux** : l'**API REST** (depuis la plateforme du vendeur), le **formulaire embarqué** (`POST /api/v1/returns`, formulaire JSON généré par `GET /api/v1/return-form`) ou le **portail white-label** (directement par le client final). Dans tous les cas, le traitement passe par le même service central `ingestClaim`. Le choix du canal n'affecte que l'authentification et le mapping des champs ; la validation de politique, le score de fraude, la déduplication et l'appel ML sont identiques.
+Une réclamation se soumet par un **canal unique** — `POST /api/v1/returns` — servi par un service unique, `lib/services/return-submission.ts`. Ce canal connaît **deux usages**, distingués par le seul identifiant présenté :
+
+| Usage | Identifiant | Qui soumet | Réponse sur refus de politique |
+|---|---|---|---|
+| **Formulaire embarqué** | clé API (`Bearer flk_…` / `x-api-key`) | la boutique, pour son client | `422` avec le code métier — la plateforme réagit |
+| **Portail white-label** | jeton de session (`X-Return-Token: ret_…`) | le client final, page hébergée | `201` + `rejected: true` — le client reçoit une explication et un mail |
+
+Tout le reste est commun : construction du formulaire, revalidation des réponses contre sa définition, rate limiting, score de fraude, contrôle de politique, payload ML et ingestion par `ingestClaim`. Le contexte de soumission (`lib/services/return-credentials.ts`) porte les seules différences : champs déjà connus du serveur, champs verrouillés, audience et `source` du claim.
+
+> `POST /api/return/[token]` subsiste comme **alias déprécié** du mode jeton, pour les intégrations qui pilotent elles-mêmes une session. Il délègue au même service et n'a aucun comportement propre.
 
 ```
 Client / API vendeur
@@ -388,6 +401,64 @@ Flowmerce est la **source de vérité unique** pour les retours : le formulaire 
 - **`GET /api/v1/return-form`** — identifie le vendeur par sa clé API (Bearer **ou** `x-api-key`), construit le formulaire via `buildReturnForm(vendor, returnPolicy)` (`lib/services/return-form-builder.ts`) : sections `order` / `reason` / `resolution` / `description`, options de motifs et de résolutions **filtrées** par la politique (`acceptedReturnReasons`, `acceptedTypes`), règles de validation pilotées par le JSON, et `meta.policy` résumé (délai, catégories non remboursables, échange seul…). Le JSON n'expose **jamais** les données sensibles de la politique.
 - **`POST /api/v1/returns`** — reçoit un body générique `{ orderId, productId, answers: { fieldId: valeur } }`. Chaque réponse est **revalidée côté serveur contre la définition du formulaire** (champs requis, types, longueurs, HTML, options valides), puis mappée vers `checkReturnPolicy` → `ingestClaim` (score de fraude, déduplication sur `vendorId + orderId`, appel ML, auto-approve `AI_AUTO`). Aucune règle de politique n'est dupliquée dans la route.
 
+### Versionnage et compatibilité
+
+Le JSON du formulaire porte deux entiers au premier niveau :
+
+```json
+{ "version": 1, "min_compatible_version": 1, "sections": [...], "merchant_fields": [...] }
+```
+
+| Champ | Sens |
+|---|---|
+| `version` | Version du contrat servie aujourd'hui. Incrémentée **uniquement sur une rupture** : champ supprimé ou renommé, type modifié, contrainte durcie, sémantique changée. |
+| `min_compatible_version` | Version de moteur la plus ancienne capable de rendre ce formulaire. |
+
+**Règle côté intégrateur** — un moteur écrit pour la version `V` accepte le formulaire si `V >= min_compatible_version`. C'est le **seul** contrôle à implémenter :
+
+```ts
+// ✅ résiste aux évolutions additives
+if (MY_ENGINE_VERSION < form.min_compatible_version) throw new Error('moteur trop ancien')
+
+// ❌ bloque sur un ajout inoffensif
+if (![1].includes(form.version)) throw new Error('version non supportée')
+```
+
+**Contrepartie obligatoire** — le consommateur doit **ignorer ce qu'il ne connaît pas** : propriétés inconnues sur un champ, types de champ inconnus, sections inconnues. C'est ce qui permet d'enrichir le formulaire sans casser les intégrations en place.
+
+Les évolutions **additives** ne changent pas `version` : nouvelle propriété sur un champ, nouveau champ optionnel, contrainte relâchée, nouvelle option dans un `select`. C'est le cas le plus fréquent — les motifs et résolutions varient déjà d'un vendeur à l'autre selon sa `ReturnPolicy`.
+
+> **Historique.** Le contrat n'a jamais rompu : il est en `v1` depuis l'origine. L'ajout de `field.source` et le passage de `shipping_method` en optionnel avaient brièvement fait passer `version` à `2` ; ces deux évolutions étant additives, l'incrément n'était pas justifié et a été annulé.
+
+#### Champs boutique — `merchant_fields`
+
+Le JSON sépare **ce qui s'affiche** de **ce qui se fournit** :
+
+```json
+{
+  "sections":        [ /* à AFFICHER au client final */ ],
+  "merchant_fields": [ /* à FOURNIR depuis vos données de commande */ ]
+}
+```
+
+Un moteur de rendu boucle sur `sections`. Les champs boutique n'y étant pas, il ne peut pas les afficher — **la règle est structurelle, elle ne dépend pas de la vigilance de l'intégrateur**. Chaque champ porte aussi `source: 'customer' | 'merchant'`, mais ce n'est plus qu'une indication : le placement suffit.
+
+Les `merchant_fields` sont des **faits de la commande** que la boutique possède déjà — jamais une saisie du client final :
+
+| Champ | Pourquoi la boutique |
+|---|---|
+| `customer_id` | Identifiant interne ; le client ne le connaît pas et une valeur inventée casserait le lien avec son historique |
+| `customer_wilaya` | Adresse de livraison de la commande. Feature du modèle (`Customer_Wilaya`) |
+| `payment_method` | Mode de paiement réellement utilisé. Feature du modèle (`Payment_Method`) |
+| `shipping_method` | Donnée logistique. Feature du modèle (`Shipping_Method`) |
+| `shipping_cost` | Donnée logistique. Feature du modèle (`Shipping_Cost_DA`) |
+
+Aucun n'est `required` : la boutique peut ne pas avoir l'information, auquel cas l'ingestion retombe sur son repli neutre (`Unknown`, `Standard`, `0`). L'exiger fermerait le formulaire à un client qui n'a aucun moyen de le renseigner. En revanche, dès qu'une valeur est transmise elle est **validée** contre sa définition — type, bornes, options — au même titre qu'un champ de `sections`.
+
+**Côté portail hébergé** — la règle est appliquée par le serveur : ces champs ne sont ni affichés, ni acceptés depuis le body. La `ReturnSession` fait foi, et le verrouillage est **dérivé du formulaire** (`merchantFieldIds`), pas d'une liste en dur — un futur champ boutique sera protégé sans rien changer.
+
+**Côté clé API** — la boutique reste libre d'afficher ce qu'elle veut, mais elle doit aller chercher ces champs hors de `sections` pour cela : le chemin par défaut est le bon. Flowmerce ne peut pas distinguer une valeur lue dans sa base d'une valeur relayée depuis un champ affiché au client ; laisser le client les saisir lui donnerait prise sur quatre features du payload ML, donc sur la prédiction.
+
 ### Exemple de soumission
 
 ```json
@@ -424,14 +495,14 @@ Réponse `201` : `{ success, claim_id, status, message }` — `status` ∈ `PEND
 | `422` | Refus par la politique du vendeur (`DELAY_EXCEEDED`, `CLAIM_TYPE_NOT_ACCEPTED`…) |
 | `429` | Rate limit dépassé (voir ci-dessous) |
 
-**Rate limiting** — deux compteurs persistés en base (`ReturnRateLimit`), appliqués aussi bien sur `POST /api/v1/returns` que sur `POST /api/claims/create` :
+**Rate limiting** — compteurs persistés en base (`ReturnRateLimit`) sur `POST /api/v1/returns` :
 
-| Portée | Limite | Fenêtre |
-|---|---|---|
-| IP + `orderId` | 3 tentatives | 1 heure |
-| Vendeur + email client + jour | 3 demandes | 24 heures |
+| Portée | Limite | Fenêtre | Appliqué à |
+|---|---|---|---|
+| IP + `orderId` | 3 tentatives | 1 heure | les deux usages |
+| Vendeur + email client + jour | 3 demandes | 24 heures | usage boutique uniquement |
 
-Le second compteur protège contre l'empoisonnement du score de fraude par soumissions répétées.
+Le second compteur protège contre l'empoisonnement du score de fraude par soumissions répétées. Il ne s'applique pas au portail hébergé, dont le lien est déjà à usage unique.
 
 > 📄 Guide d'intégration complet pour les plateformes partenaires : `integration-formulaire-retour-flowmerce.md`.
 
@@ -461,19 +532,18 @@ Les documents sont stockés sur Supabase Storage. L'admin peut demander des comp
 
 ### API — Authentification
 
-Les appels API externes (ingestion de réclamations) s'authentifient via une clé API dans l'en-tête :
+Les appels API externes (ingestion de réclamations) s'authentifient via une clé API dans l'en-tête, dans l'un ou l'autre format — les deux sont acceptés partout :
 
 ```
 Authorization: Bearer <api_key>
-```
-
-ou, pour les endpoints publics (`GET /api/v1/return-form`, `POST /api/v1/returns`), également via :
-
-```
 x-api-key: <api_key>
 ```
 
-**NB :** l'endpoint `POST /api/claims/create` n'accepte **que** `x-api-key`. Pour rester compatible partout, utilisez systématiquement `x-api-key`.
+Le portail hébergé, lui, ne dispose d'aucune clé API : le navigateur du client final s'authentifie avec le jeton de sa session de retour, sur le même endpoint.
+
+```
+X-Return-Token: ret_<token>
+```
 
 Les clés API sont générées depuis le dashboard vendeur (`/dashboard/api-keys`). Chaque clé trace sa dernière utilisation (`lastUsedAt`) et peut être révoquée individuellement.
 

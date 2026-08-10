@@ -72,14 +72,12 @@ function makeSession(overrides: Record<string, unknown> = {}) {
   }
 }
 
-// Ce que la page hébergée envoie réellement : la livraison n'y figure pas,
-// c'est une donnée boutique lue sur la session.
+// Ce que la page hébergée envoie réellement : ni la livraison, ni la wilaya,
+// ni le mode de paiement — ce sont des données boutique lues sur la session.
 const CLIENT_ANSWERS = {
   reason:             'Produit défectueux',
   desired_resolution: 'REFUND',
   description:        'Semelle décollée à la réception.',
-  customer_wilaya:    'Alger',
-  payment_method:     'Cash on Delivery',
 }
 
 beforeEach(() => {
@@ -121,11 +119,57 @@ describe('POST /api/return/[token]', () => {
       customerName: 'Ahmed Benali',
       source:       'HOSTED_PAGE',
       prediction:   expect.objectContaining({
-        customerWilaya: 'Alger',
-        paymentMethod:  'Cash on Delivery',
-        // Session sans livraison → repli, jamais une valeur du client.
+        // Session sans wilaya, paiement ni livraison → replis neutres, jamais
+        // une valeur du client.
+        customerWilaya: 'Unknown',
+        paymentMethod:  'Unknown',
         shippingMethod: 'Standard',
         shippingCost:   0,
+      }),
+    }))
+  })
+
+  it('reprend wilaya et mode de paiement depuis la session', async () => {
+    mockFindUnique.mockResolvedValue(makeSession({
+      customerWilaya: 'Alger',
+      paymentMethod:  'Cash on Delivery',
+    }))
+
+    const res = await callPost({ answers: CLIENT_ANSWERS })
+
+    expect(res.status).toBe(201)
+    expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+      prediction: expect.objectContaining({
+        customerWilaya: 'Alger',
+        paymentMethod:  'Cash on Delivery',
+      }),
+    }))
+  })
+
+  // Même logique que pour les frais de livraison : ce sont des features du
+  // modèle, le client final ne doit pas pouvoir les déclarer lui-même.
+  it('ignore wilaya, paiement et identifiant client envoyés par le client', async () => {
+    mockFindUnique.mockResolvedValue(makeSession({
+      customerWilaya: 'Oran',
+      paymentMethod:  'CCP',
+      customerId:     'CUST-1024',
+    }))
+
+    const res = await callPost({
+      answers: {
+        ...CLIENT_ANSWERS,
+        customer_wilaya: 'Alger',
+        payment_method:  'Card',
+        customer_id:     'CUST-9999',
+      },
+    })
+
+    expect(res.status).toBe(201)
+    expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+      customerId: 'CUST-1024',
+      prediction: expect.objectContaining({
+        customerWilaya: 'Oran',
+        paymentMethod:  'CCP',
       }),
     }))
   })
@@ -261,15 +305,23 @@ describe('POST /api/return/[token]', () => {
   })
 
   it('rejette un champ requis du formulaire manquant', async () => {
-    const withoutWilaya: Record<string, unknown> = { ...CLIENT_ANSWERS }
-    delete withoutWilaya.customer_wilaya
+    const withoutReason: Record<string, unknown> = { ...CLIENT_ANSWERS }
+    delete withoutReason.reason
 
-    const res = await callPost({ answers: withoutWilaya })
+    const res = await callPost({ answers: withoutReason })
 
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('customer_wilaya')
+    expect(body.error).toContain('reason')
     expect(mockIngestClaim).not.toHaveBeenCalled()
+  })
+
+  // Un champ boutique absent de la session ne bloque jamais le client : il
+  // n'a aucun moyen de le renseigner, l'exiger fermerait le formulaire.
+  it("n'exige aucun champ boutique que la session n'a pas transmis", async () => {
+    const res = await callPost({ answers: CLIENT_ANSWERS })
+
+    expect(res.status).toBe(201)
   })
 
   it('ne redemande pas les champs pré-remplis par la boutique', async () => {

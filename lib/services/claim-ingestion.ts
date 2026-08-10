@@ -1,6 +1,7 @@
 // lib/services/claim-ingestion.ts — Flowmerce
 //
-// Service unifié de création de claims (utilisé par /api/claims/create).
+// Service unifié de création de claims, en aval du canal unique de soumission
+// (lib/services/return-submission → POST /api/v1/returns).
 // Garantit que :
 //   - La structure `prediction` JSONB est identique (14 champs canoniques).
 //   - La déduplication se fait sur (vendorId, orderId).

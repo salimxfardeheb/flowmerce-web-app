@@ -171,38 +171,50 @@ type Lang = (typeof LANGS)[number]
 
 const CODE_A: Record<Lang, string> = {
   cURL: `# Appelé depuis VOTRE backend (jamais depuis le navigateur du client)
-curl -X POST https://flowmerce.app/api/claims/create \\
-  -H "x-api-key: flk_votre_cle_api" \\
+curl -X POST https://flowmerce.app/api/v1/returns \\
+  -H "Authorization: Bearer flk_votre_cle_api" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "shop_id":            "ma-boutique",
-    "order_id":           "CMD-123",
-    "customer_name":      "Ahmed Benali",
-    "customer_email":     "ahmed@exemple.com",
-    "product_name":       "Nike Air Max",
-    "reason":             "DEFECTIVE",
-    "desired_resolution": "REFUND",
-    "description":        "Produit reçu avec un défaut visible sur la semelle."
+    "orderId":   "CMD-123",
+    "productId": "PROD-5678",
+    "answers": {
+      "order_id":           "CMD-123",
+      "customer_name":      "Ahmed Benali",
+      "customer_email":     "ahmed@exemple.com",
+      "customer_wilaya":    "Alger",
+      "product_name":       "Nike Air Max",
+      "payment_method":     "Cash on Delivery",
+      "reason":             "Produit défectueux",
+      "desired_resolution": "REFUND",
+      "description":        "Défaut visible sur la semelle à la réception."
+    }
   }'`,
 
   JavaScript: `// Côté serveur uniquement (Node.js, Next.js API route, Express, etc.)
 // Ne JAMAIS exposer la clé API au navigateur du client.
 
-const res = await fetch("https://flowmerce.app/api/claims/create", {
+// Les champs et les valeurs acceptées viennent de GET /api/v1/return-form :
+// ne les codez pas en dur, rendez le formulaire à partir de sa définition.
+const res = await fetch("https://flowmerce.app/api/v1/returns", {
   method: "POST",
   headers: {
-    "x-api-key":    process.env.FLOWMERCE_API_KEY,  // depuis vos env vars
-    "Content-Type": "application/json",
+    "Authorization": \`Bearer \${process.env.FLOWMERCE_API_KEY}\`,
+    "Content-Type":  "application/json",
   },
   body: JSON.stringify({
-    shop_id:            "ma-boutique",
-    order_id:           "CMD-123",
-    customer_name:      "Ahmed Benali",
-    customer_email:     "ahmed@exemple.com",
-    product_name:       "Nike Air Max",
-    reason:             "DEFECTIVE",            // voir liste autorisée
-    desired_resolution: "REFUND",               // EXCHANGE | REFUND | REPAIR
-    description:        "Produit reçu défectueux.",
+    orderId:   "CMD-123",
+    productId: "PROD-5678",
+    answers: {
+      order_id:           "CMD-123",
+      customer_name:      "Ahmed Benali",
+      customer_email:     "ahmed@exemple.com",
+      customer_wilaya:    "Alger",
+      product_name:       "Nike Air Max",
+      payment_method:     "Cash on Delivery",
+      reason:             "Produit défectueux",   // option du formulaire
+      desired_resolution: "REFUND",               // EXCHANGE | REFUND | REPAIR
+      description:        "Produit reçu défectueux.",
+    },
   }),
 })
 
@@ -217,20 +229,25 @@ if (!res.ok) throw new Error(data.error)
 import os, requests
 
 response = requests.post(
-    "https://flowmerce.app/api/claims/create",
+    "https://flowmerce.app/api/v1/returns",
     headers={
-        "x-api-key":    os.environ["FLOWMERCE_API_KEY"],
-        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.environ['FLOWMERCE_API_KEY']}",
+        "Content-Type":  "application/json",
     },
     json={
-        "shop_id":            "ma-boutique",
-        "order_id":           "CMD-123",
-        "customer_name":      "Ahmed Benali",
-        "customer_email":     "ahmed@exemple.com",
-        "product_name":       "Nike Air Max",
-        "reason":             "DEFECTIVE",
-        "desired_resolution": "REFUND",
-        "description":        "Produit reçu défectueux.",
+        "orderId":   "CMD-123",
+        "productId": "PROD-5678",
+        "answers": {
+            "order_id":           "CMD-123",
+            "customer_name":      "Ahmed Benali",
+            "customer_email":     "ahmed@exemple.com",
+            "customer_wilaya":    "Alger",
+            "product_name":       "Nike Air Max",
+            "payment_method":     "Cash on Delivery",
+            "reason":             "Produit défectueux",
+            "desired_resolution": "REFUND",
+            "description":        "Produit reçu défectueux.",
+        },
     },
 )
 
@@ -241,17 +258,22 @@ data = response.json()
   PHP: `<?php
 // Côté serveur Laravel — jamais côté client.
 $response = \\Illuminate\\Support\\Facades\\Http::withHeaders([
-    'x-api-key'    => env('FLOWMERCE_API_KEY'),
-    'Content-Type' => 'application/json',
-])->post('https://flowmerce.app/api/claims/create', [
-    'shop_id'            => 'ma-boutique',
-    'order_id'           => 'CMD-123',
-    'customer_name'      => 'Ahmed Benali',
-    'customer_email'     => 'ahmed@exemple.com',
-    'product_name'       => 'Nike Air Max',
-    'reason'             => 'DEFECTIVE',
-    'desired_resolution' => 'REFUND',
-    'description'        => 'Produit reçu défectueux.',
+    'Authorization' => 'Bearer ' . env('FLOWMERCE_API_KEY'),
+    'Content-Type'  => 'application/json',
+])->post('https://flowmerce.app/api/v1/returns', [
+    'orderId'   => 'CMD-123',
+    'productId' => 'PROD-5678',
+    'answers'   => [
+        'order_id'           => 'CMD-123',
+        'customer_name'      => 'Ahmed Benali',
+        'customer_email'     => 'ahmed@exemple.com',
+        'customer_wilaya'    => 'Alger',
+        'product_name'       => 'Nike Air Max',
+        'payment_method'     => 'Cash on Delivery',
+        'reason'             => 'Produit défectueux',
+        'desired_resolution' => 'REFUND',
+        'description'        => 'Produit reçu défectueux.',
+    ],
 ]);
 
 $data = $response->json();
@@ -428,7 +450,7 @@ export default function DocsPage() {
             <p className="text-gray-600 text-sm leading-relaxed">
               Toutes les requêtes API Flowmerce sont authentifiées via une{' '}
               <strong className="text-gray-800">clé API serveur</strong>.
-              Deux formats sont acceptés selon l'endpoint :
+              Deux formats équivalents sont acceptés :
             </p>
 
             <CodeBlock
@@ -436,7 +458,7 @@ export default function DocsPage() {
               code={`# Format Bearer (recommandé)
 Authorization: Bearer flk_votre_cle_api
 
-# OU format x-api-key (compatible /api/claims/create)
+# OU format x-api-key
 x-api-key: flk_votre_cle_api`}
             />
 
@@ -534,39 +556,128 @@ x-api-key: flk_votre_cle_api`}
               <H3 id="a-flux">Flux d'intégration</H3>
               <div className="bg-white border border-gray-200 rounded-2xl p-6">
                 <p className="text-sm text-gray-600 leading-relaxed mb-5">
-                  Le client remplit votre propre formulaire (sur votre site). Votre backend reçoit la
-                  demande, vérifie qu'elle est légitime, puis appelle Flowmerce. La clé API reste
-                  toujours côté serveur.
+                  Vous rendez le formulaire dans votre boutique à partir de sa définition JSON, puis
+                  votre backend transmet les réponses à Flowmerce. Les champs, les motifs et les
+                  résolutions proposés découlent de votre politique de retour — vous n'en codez
+                  aucun en dur. La clé API reste toujours côté serveur.
                 </p>
                 <CodeBlock
                   lang="Flux serveur → serveur"
-                  code={`[Navigateur client]
+                  code={`[Votre backend]
+       │  GET /api/v1/return-form
+       │  Authorization: Bearer flk_xxx
+       ▼
+[Flowmerce]
+       │  200 { sections, fields, options, meta.policy }
+       ▼
+[Navigateur client]
+       │  1. Rend le formulaire à partir de cette définition
+       │  2. Le client saisit et envoie
+       │
        │  POST /api/orders/return   (votre endpoint local)
        ▼
 [Votre backend]
-       │  1. Vérifie que la commande appartient bien à l'utilisateur
-       │  2. Évite les doublons (claim déjà existant ?)
-       │  3. Mappe les champs vers le format Flowmerce
+       │  3. Vérifie que la commande appartient bien à l'utilisateur
+       │  4. Transmet les réponses telles quelles
        │
-       │  POST /api/claims/create
-       │  x-api-key: flk_xxx
+       │  POST /api/v1/returns
+       │  Authorization: Bearer flk_xxx
+       │  { orderId, productId, answers }
        ▼
 [Flowmerce]
-       │  4. Validation, rate limit, vérification policy
-       │  5. Création du claim + appel ML synchrone
-       │  6. Auto-approve / auto-reject / pending
-       │  7. Email automatique au client
+       │  5. Revalide les réponses contre la définition du formulaire
+       │  6. Rate limit, score de fraude, vérification policy
+       │  7. Création du claim + appel ML synchrone
+       │  8. Auto-approve / auto-reject / pending
+       │  9. Email automatique au client
        │
        │  201 { claim_id, status, message }
        ▼
 [Votre backend]
-       │  8. Sauvegarde claim_id pour traçabilité
-       │
-       │  200 OK
-       ▼
-[Navigateur client]
-       9. Affiche "Demande enregistrée" au client`}
+      10. Sauvegarde claim_id pour traçabilité`}
                 />
+              </div>
+            </section>
+
+            {/* Versionnage */}
+            <section>
+              <H3 id="a-versioning">Versionnage et compatibilité</H3>
+              <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4">
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  La définition renvoyée par{' '}
+                  <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">GET /api/v1/return-form</code>{' '}
+                  porte deux entiers au premier niveau. Le contrôle de compatibilité de votre moteur
+                  doit se faire sur <strong>le second</strong>.
+                </p>
+
+                <CodeBlock
+                  lang="JSON"
+                  code={`{
+  "version": 1,
+  "min_compatible_version": 1,
+  "sections":        [ /* à AFFICHER au client */ ],
+  "merchant_fields": [ /* à FOURNIR depuis vos données de commande */ ]
+}`}
+                />
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      <FieldRow name="version" type="number" desc="Version servie aujourd'hui. Incrémentée uniquement sur une RUPTURE : champ supprimé ou renommé, type modifié, contrainte durcie." />
+                      <FieldRow name="min_compatible_version" type="number" desc="Version de moteur la plus ancienne capable de rendre ce formulaire." />
+                    </tbody>
+                  </table>
+                </div>
+
+                <CodeBlock
+                  lang="Contrôle de compatibilité"
+                  code={`// ✅ résiste aux évolutions additives
+if (MY_ENGINE_VERSION < form.min_compatible_version) {
+  throw new Error("moteur trop ancien")
+}
+
+// ❌ bloque sur un ajout inoffensif
+if (![1].includes(form.version)) {
+  throw new Error("version non supportée")
+}`}
+                />
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+                  <p className="font-semibold mb-1">Contrepartie obligatoire</p>
+                  <p>
+                    Votre moteur doit <strong>ignorer ce qu&apos;il ne connaît pas</strong> : propriétés
+                    inconnues sur un champ, types de champ inconnus, sections inconnues. C&apos;est ce qui
+                    permet d&apos;enrichir le formulaire sans casser les intégrations en place. Les
+                    évolutions additives — nouvelle propriété, champ optionnel, contrainte relâchée,
+                    nouvelle option de <code className="font-mono text-xs bg-amber-100 px-1 py-0.5 rounded">select</code> —
+                    ne changent pas <code className="font-mono text-xs bg-amber-100 px-1 py-0.5 rounded">version</code>.
+                  </p>
+                </div>
+
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-900">
+                  <p className="font-semibold mb-1">
+                    Champs <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">source: &quot;merchant&quot;</code>
+                  </p>
+                  <p>
+                    Chaque champ porte <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">source</code>{' '}
+                    valant <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">customer</code> ou{' '}
+                    <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">merchant</code>. Un champ{' '}
+                    <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">merchant</code> est un fait de la
+                    commande que vous connaissez déjà : <strong>ne l&apos;affichez pas au client</strong>, renseignez-le
+                    depuis vos données de commande. Le laisser saisir ajoute de la friction sur une information
+                    que vous possédez, et permet au client d&apos;influencer la prédiction IA.
+                  </p>
+                  <p className="mt-2">
+                    Vous n&apos;avez rien à filtrer : ces champs vivent dans{' '}
+                    <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">merchant_fields</code>, hors de{' '}
+                    <code className="font-mono text-xs bg-indigo-100 px-1 py-0.5 rounded">sections</code>. Une boucle de
+                    rendu sur les sections fait donc la bonne chose par construction.
+                  </p>
+                  <p className="mt-2">
+                    Sur le portail hébergé, où Flowmerce contrôle le navigateur, ces champs ne sont ni affichés
+                    ni acceptés depuis le body : la session fait foi.
+                  </p>
+                </div>
               </div>
             </section>
 
@@ -577,12 +688,12 @@ x-api-key: flk_votre_cle_api`}
 
                 <div className="p-6 flex items-center gap-3 flex-wrap">
                   <span className="bg-indigo-100 text-indigo-700 text-xs font-black px-2.5 py-1 rounded-md">POST</span>
-                  <code className="text-sm font-mono text-gray-700">https://flowmerce.app/api/claims/create</code>
+                  <code className="text-sm font-mono text-gray-700">https://flowmerce.app/api/v1/returns</code>
                 </div>
 
-                {/* Champs obligatoires */}
+                {/* Corps de la requête */}
                 <div className="p-6 space-y-4">
-                  <h4 className="text-sm font-semibold text-gray-800">Champs obligatoires</h4>
+                  <h4 className="text-sm font-semibold text-gray-800">Corps de la requête</h4>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
@@ -593,41 +704,91 @@ x-api-key: flk_votre_cle_api`}
                         </tr>
                       </thead>
                       <tbody>
-                        <FieldRow name="shop_id"            type="string" required desc="Identifiant unique de votre boutique (libre, ex: ma-boutique)" />
-                        <FieldRow name="order_id"           type="string" required desc="Identifiant de la commande dans votre système" />
-                        <FieldRow name="customer_name"      type="string" required desc="Nom complet du client" />
-                        <FieldRow name="customer_email"     type="string" required desc="Email du client (format vérifié)" />
-                        <FieldRow name="product_name"       type="string" required desc="Nom du produit concerné" />
-                        <FieldRow name="reason"             type="enum"   required desc="DEFECTIVE | WRONG_ITEM | DESCRIPTION | CHANGE_MIND" />
-                        <FieldRow name="desired_resolution" type="enum"   required desc="EXCHANGE | REFUND | REPAIR (choix du client)" />
-                        <FieldRow name="description"        type="string" required desc="Description du problème (10–2000 caractères, pas de HTML)" />
+                        <FieldRow name="orderId"   type="string" required desc="Identifiant de la commande dans votre système (clé de déduplication)" />
+                        <FieldRow name="productId" type="string" required desc="Identifiant du produit concerné dans votre système" />
+                        <FieldRow name="answers"   type="object" required desc="Réponses du formulaire, indexées par l'id de champ renvoyé par GET /api/v1/return-form" />
                       </tbody>
                     </table>
                   </div>
                 </div>
 
-                {/* Champs optionnels */}
+                {/* answers — obligatoires */}
                 <div className="p-6 space-y-4">
-                  <h4 className="text-sm font-semibold text-gray-800">Champs optionnels (améliorent fortement la prédiction IA)</h4>
+                  <h4 className="text-sm font-semibold text-gray-800">
+                    <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">answers</code> — champs obligatoires
+                  </h4>
+                  <p className="text-sm text-gray-500">
+                    Cette liste est celle du formulaire par défaut. Elle varie avec votre politique de
+                    retour : fiez-vous toujours à <code className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">GET /api/v1/return-form</code>,
+                    qui fait foi.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider pb-2 pr-4">Champ</th>
+                          <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider pb-2 pr-4">Type</th>
+                          <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider pb-2">Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <FieldRow name="order_id"           type="string" required desc="Numéro de commande (repris de orderId s'il est absent)" />
+                        <FieldRow name="customer_name"      type="string" required desc="Nom complet du client" />
+                        <FieldRow name="customer_email"     type="string" required desc="Email du client (format vérifié)" />
+                        <FieldRow name="product_name"       type="string" required desc="Nom du produit concerné" />
+                        <FieldRow name="reason"             type="enum"   required desc="Motif de retour — une des options du formulaire (ex: Produit défectueux)" />
+                        <FieldRow name="desired_resolution" type="enum"   required desc="EXCHANGE | REFUND | REPAIR (choix du client, filtré par votre policy)" />
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* answers — champs boutique */}
+                <div className="p-6 space-y-4">
+                  <h4 className="text-sm font-semibold text-gray-800">
+                    <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">answers</code> — champs boutique
+                    <span className="ml-2 font-normal text-gray-400">source: &quot;merchant&quot;</span>
+                  </h4>
+                  <p className="text-sm text-gray-500">
+                    Ces champs sont des <strong>faits de la commande</strong>, pas des saisies du client. Ils sont
+                    renvoyés dans <code className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">merchant_fields</code>,
+                    hors de <code className="font-mono text-xs bg-gray-100 px-1 py-0.5 rounded">sections</code> : votre
+                    formulaire ne les affiche donc pas, vous les renseignez depuis vos données de commande.
+                    Aucun n&apos;est obligatoire — un champ absent retombe sur une valeur neutre, mais la
+                    prédiction y perd. Toute valeur transmise est validée contre sa définition.
+                  </p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <tbody>
+                        <FieldRow name="customer_id"      type="string" desc="Identifiant du client dans votre système (exporté en Customer_ID). Le client ne le connaît pas." />
+                        <FieldRow name="customer_wilaya"  type="string" desc="Wilaya (région) de livraison. Feature du modèle." />
+                        <FieldRow name="payment_method"   type="enum"   desc="Cash on Delivery | Card | CCP | Bank Transfer. Feature du modèle." />
+                        <FieldRow name="shipping_method"  type="string" desc="Mode de livraison." />
+                        <FieldRow name="shipping_cost"    type="number" desc="Frais de livraison en DA. Feature du modèle." />
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* answers — optionnels */}
+                <div className="p-6 space-y-4">
+                  <h4 className="text-sm font-semibold text-gray-800">
+                    <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">answers</code> — champs optionnels (améliorent fortement la prédiction IA)
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <tbody>
+                        <FieldRow name="description"      type="string" desc="Description du problème (max 2000 caractères, pas de HTML)" />
                         <FieldRow name="customer_phone"   type="string" desc="Téléphone client (renforce la détection de fraude)" />
-                        <FieldRow name="customer_id"      type="string" desc="Identifiant du client dans votre système (exporté en Customer_ID)" />
                         <FieldRow name="customer_age"     type="number" desc="Âge du client" />
                         <FieldRow name="customer_birth_date" type="string" desc="Date de naissance ISO-8601 — l'âge en est déduit et prime sur customer_age" />
                         <FieldRow name="customer_gender"  type="string" desc="Genre du client" />
-                        <FieldRow name="customer_wilaya"  type="string" desc="Wilaya (région) du client" />
-                        <FieldRow name="product_category" type="string" desc="Catégorie produit (ex: Electronics, Clothing)" />
+                        <FieldRow name="product_category" type="string" desc="Catégorie produit — requise pour appliquer vos catégories non remboursables" />
                         <FieldRow name="product_price"    type="number" desc="Prix unitaire en DA" />
-                        <FieldRow name="product_quantity" type="number" desc="Quantité commandée" />
+                        <FieldRow name="order_quantity"   type="number" desc="Quantité commandée" />
                         <FieldRow name="order_total"      type="number" desc="Montant total de la commande en DA" />
-                        <FieldRow name="shipping_cost"    type="number" desc="Frais de livraison en DA" />
-                        <FieldRow name="payment_method"   type="string" desc="Mode de paiement (Cash on Delivery, Card…)" />
-                        <FieldRow name="shipping_method"  type="string" desc="Mode de livraison (Home Delivery, Standard…)" />
                         <FieldRow name="order_date"       type="string" desc="Date de commande ISO-8601 (calcule les jours écoulés)" />
                         <FieldRow name="order_address"    type="string" desc="Adresse de livraison" />
-                        <FieldRow name="source"           type="string" desc='Marquer la source ("hosted_page" si tunnel hébergé)' />
                       </tbody>
                     </table>
                   </div>
@@ -775,8 +936,9 @@ x-api-key: flk_votre_cle_api`}
 [Flowmerce sert la page]
        │  Formulaire pré-rempli (PII masquées)
        │
-       │  POST /api/return/ret_xxx   (soumission)
-       │  body: { reason, description, desired_resolution, ... }
+       │  POST /api/v1/returns       (soumission)
+       │  X-Return-Token: ret_xxx
+       │  body: { answers: { reason, desired_resolution, … } }
        ▼
 [Flowmerce]
        │  Validation, fraud score, appel ML, décision
@@ -863,19 +1025,31 @@ x-api-key: flk_votre_cle_api`}
               <H3 id="b-endpoint-2">Endpoint étape 2 — Soumission du formulaire</H3>
               <div className="bg-white border border-gray-200 rounded-2xl p-6">
                 <p className="text-sm text-gray-600 leading-relaxed mb-4">
-                  Cette route est appelée automatiquement par la page Flowmerce
-                  (<code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">/return/[token]</code>)
+                  C'est <strong>le même endpoint que le scénario A</strong> — seul l'identifiant change :
+                  le jeton de session remplace la clé API. Il est appelé automatiquement par la page
+                  Flowmerce (<code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">/return/[token]</code>)
                   quand le client soumet le formulaire. <strong>Vous n'avez normalement pas à l'appeler vous-même</strong>,
                   mais voici les détails pour information :
                 </p>
 
                 <div className="flex items-center gap-3 flex-wrap mb-4">
                   <span className="bg-gray-100 text-gray-700 text-xs font-black px-2.5 py-1 rounded-md">POST</span>
-                  <code className="text-sm font-mono text-gray-700">https://flowmerce.app/api/return/&#123;token&#125;</code>
+                  <code className="text-sm font-mono text-gray-700">https://flowmerce.app/api/v1/returns</code>
                 </div>
 
                 <ul className="text-sm text-gray-600 space-y-1.5 list-disc list-inside">
-                  <li>Auth : <strong>token dans l'URL</strong> (pas de clé API)</li>
+                  <li>
+                    Auth : <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">X-Return-Token: ret_xxx</code>{' '}
+                    (ou <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">Authorization: Bearer ret_xxx</code>) — pas de clé API
+                  </li>
+                  <li>
+                    <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">orderId</code> et{' '}
+                    <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">productId</code> ne sont pas attendus : ils viennent de la session
+                  </li>
+                  <li>
+                    L'ancienne route <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">POST /api/return/&#123;token&#125;</code>{' '}
+                    reste acceptée mais est <strong>dépréciée</strong>
+                  </li>
                   <li>Le token est à usage unique — une fois utilisé, il devient invalide</li>
                   <li>Rate limit : 1 tentative par IP+commande par heure</li>
                   <li>Source du claim créé : <code className="text-xs bg-gray-100 px-1 py-0.5 rounded font-mono">HOSTED_PAGE</code></li>

@@ -9,6 +9,12 @@ vi.mock('@/lib/api-key-auth', () => ({
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
 }))
 
+// La route résout aussi les jetons de session (usage page hébergée) : son
+// graphe d'import touche Prisma même quand seule la clé API est exercée ici.
+vi.mock('@/lib/prisma', () => ({
+  prisma: { returnSession: { findUnique: vi.fn(), update: vi.fn() } },
+}))
+
 vi.mock('@/lib/rate-limit', () => ({
   checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
 }))
@@ -34,8 +40,9 @@ const vendor = {
 }
 
 const keyRecord = {
-  id:     'k_1',
-  key:    'hash',
+  id:       'k_1',
+  key:      'hash',
+  vendorId: 'v_1',
   vendor,
 }
 
@@ -166,6 +173,32 @@ describe('POST /api/v1/returns', () => {
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('reason')
+  })
+
+  // Les champs boutique ne sont plus dans `sections`, mais la plateforme les
+  // transmet toujours depuis ses données de commande : leur définition doit
+  // continuer de les valider dès qu'une valeur arrive.
+  it('valide les champs boutique transmis par la plateforme', async () => {
+    authOk()
+
+    const res = await callPost(validBody({
+      answers: { ...VALID_ANSWERS, payment_method: 'Bitcoin' },
+    }))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('payment_method')
+    expect(mockIngestClaim).not.toHaveBeenCalled()
+  })
+
+  it('rejette des frais de livraison négatifs', async () => {
+    authOk()
+
+    const res = await callPost(validBody({
+      answers: { ...VALID_ANSWERS, shipping_cost: -5 },
+    }))
+
+    expect(res.status).toBe(400)
+    expect(mockIngestClaim).not.toHaveBeenCalled()
   })
 
   it('rejette un email invalide', async () => {

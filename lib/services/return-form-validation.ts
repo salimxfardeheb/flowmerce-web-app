@@ -5,10 +5,10 @@
 // son caractère obligatoire et ses options/contraintes proviennent tous du
 // JSON produit par le builder — source de vérité unique.
 //
-// Couche réutilisable (aucune duplication de logique) :
-//   - POST /api/v1/returns          (formulaire embarqué côté boutique)
-//   - POST /api/return/[token]      (page hébergée Flowmerce)
+// Appelée depuis le canal unique de soumission (return-submission), pour les
+// deux usages : formulaire embarqué côté boutique et page hébergée Flowmerce.
 
+import { allFields } from '@/lib/services/return-form-builder'
 import type { ReturnForm, ReturnFormField } from '@/lib/services/return-form-builder'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -133,12 +133,13 @@ export function validateReturnFormAnswers(
 ): string | null {
   const skip = new Set(opts.skipFields ?? [])
 
-  for (const section of form.sections ?? []) {
-    for (const field of section.fields ?? []) {
-      if (skip.has(field.id)) continue
-      const error = validateAnswer(field, answers[field.id])
-      if (error) return error
-    }
+  // `merchant_fields` est parcouru au même titre que les sections : ces champs
+  // ne sont jamais affichés ni requis, mais dès qu'une valeur est transmise
+  // elle doit respecter le type, les bornes et les options de sa définition.
+  for (const field of allFields(form)) {
+    if (skip.has(field.id)) continue
+    const error = validateAnswer(field, answers[field.id])
+    if (error) return error
   }
   return null
 }
@@ -147,5 +148,5 @@ export function validateReturnFormAnswers(
 // donné : liste des ids exposés par le builder, utile aux appelants qui
 // veulent parcourir le formulaire sans le reconstruire.
 export function formFieldIds(form: ReturnForm): string[] {
-  return (form.sections ?? []).flatMap(s => (s.fields ?? []).map(f => f.id))
+  return allFields(form).map(f => f.id)
 }
