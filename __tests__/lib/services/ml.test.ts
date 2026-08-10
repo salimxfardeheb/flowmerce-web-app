@@ -104,6 +104,34 @@ describe('buildMLPayload', () => {
   })
 })
 
+describe('Customer_Satisfaction', () => {
+  it("n'est plus produit par buildMLPayload", async () => {
+    const { buildMLPayload } = await import('@/lib/services/ml')
+    const payload = buildMLPayload({
+      customerId: null, shopName: 'Test', productCategory: null,
+      productPrice: null, productQuantity: null, orderTotal: null,
+      paymentMethod: 'CCP', shippingMethod: 'Standard', shippingCost: 0,
+      customerGender: 'F', customerAge: null, customerWilaya: '31',
+      reason: 'Test', daysToReturn: 2, returnWindowDays: 14,
+    })
+
+    expect('Customer_Satisfaction' in payload).toBe(false)
+  })
+
+  it('part à null vers le dataset, même sur un ancien mlInput qui portait un 3', async () => {
+    const { buildReclamationInputFromClaim } = await import('@/lib/services/ml')
+    const row = buildReclamationInputFromClaim({
+      orderId: 'CMD-1', customerId: null, fraudScore: 0,
+      productName: 'X', orderDate: null, createdAt: null,
+      type: 'REFUND', aiDecision: 'Exchange',
+      vendor: { companyName: 'Caba Store' },
+      mlInput: { Customer_Satisfaction: 3 },
+    })
+
+    expect(row.Customer_Satisfaction).toBeNull()
+  })
+})
+
 describe('buildReclamationInputFromClaim', () => {
   const baseClaim = {
     orderId:     'CMD-1',

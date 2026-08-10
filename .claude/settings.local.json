@@ -70,7 +70,10 @@
       "Bash(node --env-file=.env.local ./_ck_tmp.mjs)",
       "Bash(git stash *)",
       "Bash(node --env-file=.env.local /private/tmp/claude-502/-Users-salim-github-flowmerce-flowmerce-web-app/05efe029-40a3-410c-9e38-0ca0d86c94be/scratchpad/check-cols.mjs)",
-      "Bash(node --env-file=.env.local ./check-cols.mjs)"
+      "Bash(node --env-file=.env.local ./check-cols.mjs)",
+      "Bash(node --env-file=.env.local ./probe2.mjs)",
+      "Bash(node --env-file=.env.local ./probe3.mjs)",
+      "Bash(node --env-file=.env.local ./audit.mjs)"
     ],
     "additionalDirectories": [
       "/Users/salim/github/flowmerce/flowmerce-web-app/prisma",

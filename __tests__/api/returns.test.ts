@@ -30,7 +30,7 @@ const vendor = {
   companyName: 'Caba Store',
   website:     'https://caba.example.com',
   status:      'APPROVED',
-  returnPolicy: null,
+  returnPolicy: null as Record<string, unknown> | null,
 }
 
 const keyRecord = {

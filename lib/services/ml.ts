@@ -128,7 +128,6 @@ export interface MLPayload {
   Shop_Return_Window_Days: number
   Within_Return_Policy:    0 | 1
   Fraud_Score:             number
-  Customer_Satisfaction:   number
   Is_Suspicious:           0 | 1
 }
 
@@ -156,7 +155,10 @@ export function buildMLPayload(input: BuildMLPayloadInput): MLPayload {
     // règle que `Shop_Return_Window_Days` permet au modèle de recouper.
     Within_Return_Policy:    input.daysToReturn <= input.returnWindowDays ? 1 : 0,
     Fraud_Score:             0, // recalculé par ingestClaim
-    Customer_Satisfaction:   3,
+    // Customer_Satisfaction est volontairement absent : Flowmerce ne mesure
+    // aucune satisfaction, et le modèle d'entrée de /predict (ReturnRequest)
+    // ne l'expose pas. Le `3` qu'on envoyait était une valeur inventée,
+    // ignorée à l'inférence et fausse dans le dataset.
     Is_Suspicious:           0, // recalculé par ingestClaim
   }
 }
@@ -318,12 +320,12 @@ export function buildReclamationInputFromClaim(
     // `mlInput.Fraud_Score` (figé à la création) n'est qu'un repli.
     Fraud_Score:               toNum(claim.fraudScore ?? mlv.Fraud_Score, 0),
     Is_Suspicious:             toFlag(mlv.Is_Suspicious, 0),
-    Customer_Satisfaction:
-      mlv.Customer_Satisfaction === null ||
-      mlv.Customer_Satisfaction === undefined ||
-      mlv.Customer_Satisfaction === ''
-        ? null
-        : toNum(mlv.Customer_Satisfaction, 3),
+    // Toujours null, jamais lu depuis mlInput : la satisfaction n'est mesurée
+    // nulle part dans Flowmerce. Les claims créées avant ce changement portent
+    // encore le `3` en dur dans leur mlInput figé — le renvoyer ferait entrer
+    // une note fabriquée dans le dataset. `null` dit la vérité : non mesuré.
+    // Le champ est optionnel et nullable côté contrat /save_claim.
+    Customer_Satisfaction:     null,
   }
 }
 
