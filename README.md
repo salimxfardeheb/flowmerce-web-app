@@ -504,7 +504,12 @@ Réponse `201` : `{ success, claim_id, status, message }` — `status` ∈ `PEND
 
 Le second compteur protège contre l'empoisonnement du score de fraude par soumissions répétées. Il ne s'applique pas au portail hébergé, dont le lien est déjà à usage unique.
 
-> 📄 Guide d'intégration complet pour les plateformes partenaires : `integration-formulaire-retour-flowmerce.md`.
+### Notes d'intégration
+
+- **La clé API ne doit jamais atteindre le navigateur.** Les deux endpoints s'appellent depuis le backend de la boutique, qui ne relaie au client que le JSON du formulaire et les erreurs. Une clé exposée côté client permet de soumettre des réclamations au nom du vendeur.
+- **Mettre en cache la définition du formulaire.** Elle ne change que lorsque le vendeur modifie sa `ReturnPolicy` : un cache serveur de l'ordre de 5 minutes évite un appel à chaque ouverture du formulaire. Rafraîchir le cache si un changement de politique n'apparaît pas après le TTL.
+- **Pas de suivi de statut public.** `app/api/v1/` n'expose que `return-form` et `returns` : aucun endpoint de consultation ni webhook sortant. La boutique conserve le `claim_id` renvoyé au 201 et affiche un état « en attente » par défaut.
+- **Types de champ à rendre** — le formulaire n'émet que `text`, `textarea`, `select`, `number`, `email`, `tel`, `date`, `checkbox` (`ReturnFormFieldType`). Il n'y a ni upload de fichier, ni signature, ni scan : un moteur de rendu couvrant ces huit types couvre tout le contrat. Conformément à la règle de versionnage ci-dessus, il doit malgré tout **ignorer** un type inconnu plutôt qu'échouer.
 
 ---
 
