@@ -92,7 +92,8 @@
       "Read(//Users/salim/github/Caba-Store/components/retours/**)",
       "Bash(sed -n '105,135p' /Users/salim/github/Caba-Store/components/retours/ClientRetourView.tsx)",
       "Bash(perl -i -pe ' *)",
-      "Bash(sed -n '120,175p' /Users/salim/github/Caba-Store/components/retours/flowmerce/FlowmerceReturnForm.tsx)"
+      "Bash(sed -n '120,175p' /Users/salim/github/Caba-Store/components/retours/flowmerce/FlowmerceReturnForm.tsx)",
+      "Bash(perl -pi -e 's/policy422\\\\\\(\\\\\\)/policy422\\(policyFailure\\)/g' lib/services/return-submission.ts)"
     ],
     "additionalDirectories": [
       "/Users/salim/github/flowmerce/flowmerce-web-app/prisma",

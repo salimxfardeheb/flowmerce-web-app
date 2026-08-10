@@ -113,6 +113,11 @@ const PREFILL_BY_FIELD: Record<string, keyof SubmissionPrefill> = {
   order_date:      'orderDate',
 }
 
+// Table figée : la paire (champ, clé) est parcourue à chaque soumission, elle
+// est matérialisée une fois pour toutes au chargement du module.
+const PREFILL_ENTRIES = Object.entries(PREFILL_BY_FIELD) as
+  ReadonlyArray<readonly [string, keyof SubmissionPrefill]>
+
 /** IP appelante, telle que vue derrière le proxy de déploiement. */
 export function clientIp(req: NextRequest): string {
   return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
@@ -150,22 +155,26 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
   // sera protégé sans rien changer ici. Face à une plateforme, au contraire,
   // ces champs sont précisément ce qu'elle est censée transmettre depuis ses
   // données de commande.
-  const lockedFields = new Set<string>(ctx.lockedFields)
+  // Un seul jeu suffit pour les deux rôles : il porte les champs verrouillés à
+  // l'entrée, puis s'enrichit des champs effectivement pré-remplis. Les deux
+  // populations sont traitées à l'identique en aval — valeur non revalidée —
+  // et un champ n'est jamais testé après y avoir été ajouté (une entrée de
+  // PREFILL_BY_FIELD est visitée une fois).
+  const serverControlled = new Set<string>(ctx.lockedFields)
   if (!isMerchant) {
-    for (const id of merchantFieldIds(form)) lockedFields.add(id)
+    for (const id of merchantFieldIds(form)) serverControlled.add(id)
   }
 
   // Fusion prefill ↔ réponses : la valeur serveur prime toujours ; un champ
   // verrouillé ignore purement et simplement ce que le client a envoyé.
   const answers: Record<string, unknown> = { ...rawAnswers }
-  const serverFilled = new Set<string>(lockedFields)
 
-  for (const [fieldId, prefillKey] of Object.entries(PREFILL_BY_FIELD)) {
+  for (const [fieldId, prefillKey] of PREFILL_ENTRIES) {
     const value = ctx.prefill[prefillKey]
     if (isPresent(value)) {
       answers[fieldId] = value
-      serverFilled.add(fieldId)
-    } else if (lockedFields.has(fieldId)) {
+      serverControlled.add(fieldId)
+    } else if (serverControlled.has(fieldId)) {
       delete answers[fieldId]
     }
   }
@@ -175,24 +184,30 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
   // déjà été contrôlée à la création du jeton de session ou vient de la
   // plateforme elle-même. `desired_resolution` est comparé en majuscules aux
   // options du formulaire.
+  // Normalisée en place : `answers` est déjà une copie locale, la réécrire
+  // évite de dupliquer tout l'objet juste pour la validation.
   const desiredResolution = String(answers.desired_resolution ?? '').trim().toUpperCase()
+  answers.desired_resolution = desiredResolution
 
-  const validationError = validateReturnFormAnswers(
-    form,
-    { ...answers, desired_resolution: desiredResolution },
-    { skipFields: serverFilled },
-  )
+  const validationError = validateReturnFormAnswers(form, answers, { skipFields: serverControlled })
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 })
   }
 
   // ── 4. Mapping des réponses validées vers les champs métier ──────────────
-  const str = (k: string) => String(answers[k] ?? '').trim()
-  const numOrNull = (k: string) => {
-    const n = Number(answers[k])
-    return answers[k] != null && answers[k] !== '' && Number.isFinite(n) ? n : null
+  const str = (k: string): string => {
+    const v = answers[k]
+    return v == null ? '' : String(v).trim()
   }
-  const intPos = (k: string) => {
+  const numOrNull = (k: string): number | null => {
+    const v = answers[k]
+    if (v == null || v === '') return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  const intPos = (k: string): number | null => {
+    // `Number.isFinite` reste nécessaire : parseInt renvoie Infinity sur une
+    // suite de chiffres assez longue pour dépasser Number.MAX_VALUE.
     const n = parseInt(String(answers[k]), 10)
     return Number.isFinite(n) && n > 0 ? n : null
   }
@@ -302,15 +317,9 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
     claimType:       desiredResolution,
   })
 
-  const policyFailure = policyCheck.ok
+  const policyFailure: PolicyFailure | null = policyCheck.ok
     ? null
     : { code: policyCheck.code, message: policyCheck.message, extra: policyCheck.extra }
-
-  const policy422 = () =>
-    NextResponse.json(
-      { error: policyFailure!.message, code: policyFailure!.code, ...policyFailure!.extra },
-      { status: 422 },
-    )
 
   // Côté boutique, une violation *corrigeable* sort sans rien créer : le
   // réessai légitime sur le même order_id avec une autre résolution butterait
@@ -319,7 +328,7 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
   // au dataset d'entraînement. Côté client final, tout est enregistré : la
   // demande est déposée, elle mérite une trace et une réponse motivée.
   if (isMerchant && policyFailure && !isPermanentPolicyViolation(policyFailure.code)) {
-    return policy422()
+    return policy422(policyFailure)
   }
 
   const policyViolation = policyFailure
@@ -345,11 +354,11 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
     returnWindowDays: ctx.returnPolicy?.maxClaimDays ?? 14,
   })
 
-  const fullDescription = [
-    productName,
-    `Motif : ${reason}`,
-    description ? `Détails : ${description}` : null,
-  ].filter(Boolean).join(' — ')
+  // `productName` et `reason` sont garantis non vides par le garde-fou de
+  // l'étape 5 : seul le détail libre est conditionnel.
+  const fullDescription = description
+    ? `${productName} — Motif : ${reason} — Détails : ${description}`
+    : `${productName} — Motif : ${reason}`
 
   const result = await ingestClaim({
     vendor:        { id: ctx.vendorId, companyName: ctx.vendor.companyName },
@@ -385,7 +394,7 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
   if (!result.ok) {
     // Doublon sur une violation définitive : la réclamation refusée existe
     // déjà, l'appelant doit quand même recevoir sa raison métier.
-    if (isMerchant && policyFailure) return policy422()
+    if (isMerchant && policyFailure) return policy422(policyFailure)
     return NextResponse.json(
       { error: 'Une demande de retour existe déjà pour cette commande.' },
       { status: 409 },
@@ -415,7 +424,7 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
   // ── 11. Réponse ──────────────────────────────────────────────────────────
   // Violation définitive côté boutique : enregistrée en base, mais la réponse
   // reste le 422 documenté, inchangé pour l'intégrateur.
-  if (isMerchant && policyFailure) return policy422()
+  if (isMerchant && policyFailure) return policy422(policyFailure)
 
   if (isMerchant) {
     return NextResponse.json(
@@ -449,6 +458,24 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
   return NextResponse.json(
     { success: true, claimId: result.claim.id, message: 'Réclamation créée avec succès' },
     { status: 201 },
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Refus de politique
+// ─────────────────────────────────────────────────────────────
+
+interface PolicyFailure {
+  code:    string
+  message: string
+  extra?:  Record<string, unknown>
+}
+
+/** 422 documenté pour l'intégrateur : message métier, code, contexte. */
+function policy422(failure: PolicyFailure): NextResponse {
+  return NextResponse.json(
+    { error: failure.message, code: failure.code, ...failure.extra },
+    { status: 422 },
   )
 }
 

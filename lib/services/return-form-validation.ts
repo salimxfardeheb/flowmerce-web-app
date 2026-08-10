@@ -131,7 +131,11 @@ export function validateReturnFormAnswers(
   answers: Record<string, unknown>,
   opts:    ValidateAnswersOptions = {},
 ): string | null {
-  const skip = new Set(opts.skipFields ?? [])
+  // Un Set fourni est consulté tel quel (lecture seule ici) : le recopier à
+  // chaque soumission ne servirait à rien.
+  const skip = opts.skipFields instanceof Set
+    ? opts.skipFields as ReadonlySet<string>
+    : new Set(opts.skipFields ?? [])
 
   // `merchant_fields` est parcouru au même titre que les sections : ces champs
   // ne sont jamais affichés ni requis, mais dès qu'une valeur est transmise
