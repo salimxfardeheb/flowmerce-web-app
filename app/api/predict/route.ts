@@ -223,7 +223,9 @@ export async function POST(req: NextRequest) {
   });
 
   // 6. Appel ML
-  const mlResult = await callMLPredict(mlInput);
+  const mlResult = await callMLPredict(mlInput, {
+    context: { vendorId: keyRecord.vendorId, origin: "api_predict" },
+  });
 
   if (!mlResult.ok) {
     if (mlResult.timedOut) {

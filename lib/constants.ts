@@ -62,6 +62,20 @@ export function isVendorDecision(value: unknown): value is VendorDecision {
   return typeof value === 'string' && (VENDOR_DECISIONS as readonly string[]).includes(value)
 }
 
+// Résolution demandée par le client (`ClaimType`) → résolution correspondante
+// dans le vocabulaire des décisions. Sert à deux endroits qui doivent rester
+// d'accord : l'export vers le dataset ML, et la lecture des résolutions
+// autorisées par le vendeur (`ReturnPolicy.acceptedTypes`, qui est une liste de
+// `ClaimType`) pour filtrer la recommandation du modèle.
+//
+// `Reject` n'y figure volontairement pas : ce n'est pas une résolution qu'un
+// client demande ni qu'un vendeur « offre », c'est un refus.
+export const TYPE_TO_RESOLUTION = {
+  EXCHANGE: 'Exchange',
+  REFUND:   'Refund',
+  REPAIR:   'Repair',
+} as const satisfies Record<ClaimTypeValue, VendorDecision>
+
 // ── Statuts de réclamation (enum Prisma ClaimStatus) ─────────────────────────
 export const CLAIM_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'IN_PROGRESS'] as const
 export type ClaimStatusValue = (typeof CLAIM_STATUSES)[number]

@@ -209,6 +209,156 @@ describe('applyMLDecision', () => {
     expect(mockNotify).not.toHaveBeenCalled()
   })
 
+  // ── P1.1 — La recommandation respecte les résolutions autorisées ────────
+  it('persiste la meilleure résolution autorisée, pas la classe dominante', async () => {
+    // Le vendeur n'offre ni réparation ni refus ; le modèle place Repair en tête.
+    const { applyMLDecision } = await import('@/lib/services/claim-decision')
+    const r = await applyMLDecision(
+      claimEnAttente,
+      {
+        resolution: {
+          prediction:    'Repair',
+          probabilities: { Repair: 0.55, Refund: 0.30, Exchange: 0.15, Reject: 0 },
+        },
+      } as never,
+      {
+        returnPolicy: { ...policy, acceptedTypes: ['REFUND', 'EXCHANGE'] } as never,
+        origin: 'ingestion',
+      },
+    )
+
+    expect(r.decision).toBe('Refund')
+    expect(r.aiScore).toBe(0.30)          // score du modèle, non renormalisé
+    expect(mockPrisma.claim.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ aiDecision: 'Refund', aiScore: 0.30 }),
+      }),
+    )
+  })
+
+  it('trace l\'arbitrage dans le JSON de prédiction', async () => {
+    const { applyMLDecision } = await import('@/lib/services/claim-decision')
+    await applyMLDecision(
+      claimEnAttente,
+      {
+        resolution: {
+          prediction:    'Repair',
+          probabilities: { Repair: 0.55, Refund: 0.30, Exchange: 0.15 },
+        },
+      } as never,
+      {
+        returnPolicy: { ...policy, acceptedTypes: ['REFUND', 'EXCHANGE'] } as never,
+        origin: 'ingestion',
+      },
+    )
+
+    const data = mockPrisma.claim.update.mock.calls[0][0].data
+    expect(data.prediction.recommendation).toMatchObject({
+      resolution: 'Refund',
+      score:      0.30,
+      mlTop:      'Repair',
+      mlTopScore: 0.55,
+      filtered:   true,
+      allowed:    ['Refund', 'Exchange'],
+    })
+  })
+
+  it('n\'auto-approuve jamais une résolution que le vendeur n\'offre pas', async () => {
+    // Mode AI_AUTO : sans filtrage, Repair aurait été approuvé automatiquement
+    // chez un vendeur qui ne répare pas.
+    const { applyMLDecision } = await import('@/lib/services/claim-decision')
+    const r = await applyMLDecision(
+      claimEnAttente,
+      {
+        resolution: {
+          prediction:    'Repair',
+          probabilities: { Repair: 0.90, Exchange: 0.10 },
+        },
+      } as never,
+      {
+        returnPolicy: { ...policy, acceptedTypes: ['EXCHANGE'] } as never,
+        origin: 'ingestion',
+      },
+    )
+
+    expect(r.decision).toBe('Exchange')
+    expect(r.autoApproved).toBe(true)
+    expect(mockNotify.mock.calls[0][0]).toMatchObject({ aiDecision: 'Exchange' })
+  })
+
+  it('laisse la réclamation au vendeur quand aucune résolution n\'est autorisée', async () => {
+    const { applyMLDecision } = await import('@/lib/services/claim-decision')
+    const r = await applyMLDecision(
+      claimEnAttente,
+      {
+        resolution: { prediction: 'Repair', probabilities: { Repair: 0.90, Reject: 0.10 } },
+      } as never,
+      {
+        returnPolicy: { ...policy, acceptedTypes: ['REFUND', 'EXCHANGE'] } as never,
+        origin: 'ingestion',
+      },
+    )
+
+    expect(r.decision).toBeNull()
+    expect(r.aiScore).toBeNull()
+    expect(r.status).toBe('PENDING')
+    expect(r.autoApproved).toBe(false)
+    expect(r.autoRejected).toBe(false)
+    // Aucune transition de statut, aucune notification : le vendeur tranche.
+    expect(mockPrisma.claim.updateMany).not.toHaveBeenCalled()
+    expect(mockNotify).not.toHaveBeenCalled()
+
+    const data = mockPrisma.claim.update.mock.calls[0][0].data
+    expect(data.aiDecision).toBeNull()
+    expect(data.prediction.recommendation.reason).toBe('NO_ALLOWED_RESOLUTION')
+    // Rien n'a été décidé : l'origine de décision reste vide (C-04).
+    expect(data.resolutionSource).toBeUndefined()
+  })
+
+  it('la reprise applique le même filtrage que l\'ingestion', async () => {
+    const { applyMLDecision } = await import('@/lib/services/claim-decision')
+    const prediction = {
+      resolution: {
+        prediction:    'Repair',
+        probabilities: { Repair: 0.55, Refund: 0.30, Exchange: 0.15 },
+      },
+    } as never
+    const opts = {
+      returnPolicy: { ...policy, acceptedTypes: ['REFUND', 'EXCHANGE'] } as never,
+    }
+
+    const parIngestion = await applyMLDecision(claimEnAttente, prediction, {
+      ...opts, origin: 'ingestion',
+    })
+    const parReprise = await applyMLDecision(claimEnAttente, prediction, {
+      ...opts, origin: 'retry',
+    })
+
+    expect(parReprise.decision).toBe(parIngestion.decision)
+    expect(parReprise.aiScore).toBe(parIngestion.aiScore)
+  })
+
+  it('charge la politique du vendeur de la réclamation, jamais d\'un autre', async () => {
+    // Isolation multi-tenant : `vendorId` vient de la ligne en base.
+    mockPrisma.returnPolicy.findUnique.mockResolvedValue({
+      ...policy, acceptedTypes: ['EXCHANGE'],
+    })
+
+    const { applyMLDecision } = await import('@/lib/services/claim-decision')
+    const r = await applyMLDecision(
+      { ...claimEnAttente, vendorId: 'vendor-42' },
+      {
+        resolution: { prediction: 'Repair', probabilities: { Repair: 0.8, Exchange: 0.2 } },
+      } as never,
+      { origin: 'retry' },   // pas de policy fournie → chargement en base
+    )
+
+    expect(mockPrisma.returnPolicy.findUnique).toHaveBeenCalledWith({
+      where: { vendorId: 'vendor-42' },
+    })
+    expect(r.decision).toBe('Exchange')
+  })
+
   // ── Échec de notification ───────────────────────────────────────────────
   it('applique la décision même si la notification échoue', async () => {
     mockNotify.mockRejectedValueOnce(new Error('SMTP down'))

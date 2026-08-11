@@ -109,6 +109,7 @@ describe('POST /api/predict', () => {
 
     expect(mockML.callMLPredict).toHaveBeenCalledWith(
       expect.objectContaining({ Fraud_Score: 42 }),
+      expect.anything(),
     )
     expect(body.fraud_score_applied).toEqual({ value: 42, source: 'caller' })
   })
@@ -134,6 +135,7 @@ describe('POST /api/predict', () => {
 
     expect(mockML.callMLPredict).toHaveBeenCalledWith(
       expect.objectContaining({ Fraud_Score: 42 }),
+      expect.anything(),
     )
   })
 
@@ -143,6 +145,7 @@ describe('POST /api/predict', () => {
 
     expect(mockML.callMLPredict).toHaveBeenCalledWith(
       expect.objectContaining({ Fraud_Score: 85, Is_Suspicious: 1 }),
+      expect.anything(),
     )
   })
 
@@ -159,6 +162,7 @@ describe('POST /api/predict', () => {
         Customer_Gender:  'Female',
         Customer_Wilaya:  'Alger',
       }),
+      expect.anything(),
     )
   })
 

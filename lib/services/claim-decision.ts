@@ -35,7 +35,7 @@ import { prisma } from '@/lib/prisma'
 import { notifyCustomer } from '@/lib/services/notification'
 import { checkReturnPolicy } from '@/lib/services/return-policy'
 import { log } from '@/lib/logger'
-import type { AIDecision } from '@/lib/constants'
+import { TYPE_TO_RESOLUTION, VENDOR_DECISIONS, type AIDecision } from '@/lib/constants'
 import type { MLPredictionOutput } from '@/lib/services/ml'
 
 // Réclamation telle que les deux appelants savent la fournir.
@@ -66,7 +66,8 @@ export interface ApplyMLDecisionOptions {
 }
 
 export interface ApplyMLDecisionResult {
-  decision:     AIDecision
+  /** Résolution recommandée, ou `null` si aucune n'est autorisée par le vendeur. */
+  decision:     AIDecision | null
   aiScore:      number | null
   status:       'PENDING' | 'APPROVED' | 'REJECTED' | 'IN_PROGRESS'
   autoApproved: boolean
@@ -74,6 +75,119 @@ export interface ApplyMLDecisionResult {
   /** Faux quand la réclamation avait déjà été tranchée (reprise idempotente). */
   applied:      boolean
   refundEligible: boolean
+  recommendation: ResolutionRecommendation
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recommandation ≠ classe de score maximal
+//
+// Le vendeur configure les résolutions qu'il offre (`ReturnPolicy.acceptedTypes`).
+// Le modèle, lui, score toutes ses classes sans connaître cette configuration.
+// Prendre son argmax tel quel revenait à recommander une résolution que le
+// vendeur ne propose pas — une réparation à une boutique qui ne répare pas.
+//
+//   scores du modèle → résolutions autorisées → filtrage → meilleure autorisée
+//
+// Deux principes tenus ici :
+//
+//   1. Le score affiché reste **le score du modèle** pour la résolution retenue.
+//      Aucune renormalisation : si le modèle donne 30 % à Refund, la
+//      recommandation Refund vaut 30 %, pas 67 % obtenus en redistribuant la
+//      masse des classes écartées. Renormaliser laisserait croire à une
+//      confiance que le modèle n'a jamais exprimée.
+//
+//   2. `Reject` n'est pas une résolution offerte, c'est un refus — il n'est donc
+//      pas soumis au filtre. Il ne peut pas non plus l'emporter par élimination :
+//      il n'est retenu que s'il est la classe de score maximal du modèle, ce qui
+//      préserve exactement la règle existante « un Reject du ML refuse la
+//      réclamation ». Sans cette réserve, une réclamation que le modèle voulait
+//      réparer deviendrait un refus dès que la réparation n'est pas offerte.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Aucune des résolutions offertes par le vendeur n'est scorée par le modèle. */
+export const NO_ALLOWED_RESOLUTION = 'NO_ALLOWED_RESOLUTION' as const
+
+export type ResolutionRecommendation =
+  | {
+      ok:         true
+      resolution: AIDecision
+      /** Probabilité du modèle pour cette résolution. Jamais renormalisée. */
+      score:      number | null
+      /** Classe de score maximal du modèle, avant filtrage. */
+      mlTop:      AIDecision
+      mlTopScore: number | null
+      /** Vrai quand la résolution retenue n'est pas celle de score maximal. */
+      filtered:   boolean
+      allowed:    string[]
+    }
+  | {
+      ok:         false
+      reason:     typeof NO_ALLOWED_RESOLUTION
+      mlTop:      AIDecision
+      mlTopScore: number | null
+      allowed:    string[]
+    }
+
+function score(probabilities: Record<string, number>, resolution: string): number | null {
+  const v = probabilities[resolution]
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+/**
+ * Sélectionne la meilleure résolution parmi celles que le vendeur autorise.
+ *
+ * `acceptedTypes` vide ou absent = aucune restriction configurée — même
+ * convention que `checkReturnPolicy`, qui n'applique la règle qu'à partir d'une
+ * liste non vide.
+ */
+export function selectRecommendation(
+  prediction:    MLPredictionOutput,
+  acceptedTypes: readonly string[] | null | undefined,
+): ResolutionRecommendation {
+  const probabilities = prediction.resolution?.probabilities ?? {}
+  const mlTop         = prediction.resolution.prediction
+  const mlTopScore    = score(probabilities, mlTop)
+
+  // Résolutions offertes par le vendeur, exprimées dans le vocabulaire du
+  // modèle. `TYPE_TO_RESOLUTION` est la table déjà utilisée par l'export dataset.
+  const configured = acceptedTypes ?? []
+  const allowed: string[] = configured.length
+    ? configured
+        .map((t) => TYPE_TO_RESOLUTION[t as keyof typeof TYPE_TO_RESOLUTION] as string | undefined)
+        .filter((r): r is string => typeof r === 'string')
+    : [...VENDOR_DECISIONS]
+
+  // Un refus l'emporte s'il est la classe dominante du modèle — règle inchangée.
+  if (mlTop === 'Reject') {
+    return {
+      ok: true, resolution: 'Reject', score: mlTopScore,
+      mlTop, mlTopScore, filtered: false, allowed,
+    }
+  }
+
+  // Candidats : les classes scorées par le modèle qui sont à la fois autorisées
+  // et de vraies résolutions (Reject exclu — il ne gagne pas par élimination).
+  const candidates = Object.entries(probabilities)
+    .filter(([resolution, p]) =>
+      resolution !== 'Reject' &&
+      allowed.includes(resolution) &&
+      typeof p === 'number' && Number.isFinite(p))
+    .sort((a, b) => b[1] - a[1])
+
+  if (candidates.length === 0) {
+    return { ok: false, reason: NO_ALLOWED_RESOLUTION, mlTop, mlTopScore, allowed }
+  }
+
+  const [resolution, p] = candidates[0]
+  return {
+    ok:         true,
+    resolution: resolution as AIDecision,
+    score:      p,
+    mlTop,
+    mlTopScore,
+    filtered:   resolution !== mlTop,
+    allowed,
+  }
 }
 
 /**
@@ -85,15 +199,31 @@ export async function applyMLDecision(
   prediction: MLPredictionOutput,
   opts:       ApplyMLDecisionOptions,
 ): Promise<ApplyMLDecisionResult> {
-  const probs   = prediction.resolution?.probabilities ?? {}
-  const aiScore = Object.values(probs).length ? Math.max(...Object.values(probs)) : null
-  // Garanti ∈ {Exchange, Repair, Reject} par la validation dans ml.ts.
-  const decision: AIDecision = prediction.resolution.prediction
-
+  // Politique du vendeur **de cette réclamation** : `claim.vendorId` vient de la
+  // ligne en base, jamais de l'entrée. Un vendeur ne peut pas voir sa
+  // recommandation calculée avec les résolutions autorisées d'un autre.
   const returnPolicy =
     opts.returnPolicy !== undefined
       ? opts.returnPolicy
       : await prisma.returnPolicy.findUnique({ where: { vendorId: claim.vendorId } })
+
+  // Recommandation = meilleure résolution parmi celles que le vendeur offre,
+  // et non classe de score maximal du modèle.
+  const recommendation = selectRecommendation(prediction, returnPolicy?.acceptedTypes)
+  const decision: AIDecision | null = recommendation.ok ? recommendation.resolution : null
+  const aiScore = recommendation.ok ? recommendation.score : null
+
+  if (recommendation.ok && recommendation.filtered) {
+    log.info('claim_decision.recommendation_filtered', {
+      claimId:    claim.id,
+      vendorId:   claim.vendorId,
+      mlTop:      recommendation.mlTop,
+      mlTopScore: recommendation.mlTopScore,
+      retenue:    recommendation.resolution,
+      score:      recommendation.score,
+      allowed:    recommendation.allowed,
+    })
+  }
 
   const existingPrediction = (claim.prediction as Prisma.JsonObject | null) ?? {}
 
@@ -117,11 +247,26 @@ export async function applyMLDecision(
 
   // 1. Résultat de la prédiction — toujours écrit, quel que soit le statut.
   //    `resolutionSource: MODEL` : cette décision vient du modèle, elle n'est
-  //    pas une vérité terrain (C-04).
+  //    pas une vérité terrain (C-04). Sans recommandation exploitable, aucune
+  //    décision n'est posée : l'origine reste nulle.
+  //
+  //    Le bloc `recommendation` conserve la trace de l'arbitrage — classe
+  //    dominante du modèle, résolution retenue, résolutions autorisées. C'est ce
+  //    que lit le dashboard, et ce qui permet de comprendre après coup pourquoi
+  //    la reco affichée n'est pas celle que le modèle a le mieux notée.
   const mergedPrediction: Prisma.JsonObject = {
     ...existingPrediction,
     ...(prediction as unknown as Prisma.JsonObject),
     refundEligible,
+    recommendation: {
+      resolution: recommendation.ok ? recommendation.resolution : null,
+      score:      recommendation.ok ? recommendation.score : null,
+      mlTop:      recommendation.mlTop,
+      mlTopScore: recommendation.mlTopScore,
+      filtered:   recommendation.ok ? recommendation.filtered : true,
+      allowed:    recommendation.allowed,
+      ...(recommendation.ok ? {} : { reason: recommendation.reason }),
+    },
   }
 
   await prisma.claim.update({
@@ -131,15 +276,34 @@ export async function applyMLDecision(
       aiScore,
       mlFailed:         false,
       mlAttempts:       { increment: 1 },
-      resolutionSource: 'MODEL',
+      ...(decision ? { resolutionSource: 'MODEL' as const } : {}),
       prediction:       mergedPrediction as unknown as Prisma.InputJsonValue,
     },
   })
 
   // 2. Décision métier.
+  //    - aucune reco autorisée       → reste PENDING, le vendeur tranche.
+  //      Flowmerce n'invente pas une résolution que le vendeur n'offre pas, et
+  //      ne retombe pas sur la classe du modèle qu'il a écartée.
   //    - Reject                      → refus, quel que soit le mode de validation
   //    - Exchange/Repair + AI_AUTO   → approbation, sauf demande de remboursement
   //    - sinon                       → reste PENDING, le vendeur tranche
+  if (!recommendation.ok) {
+    log.warn('claim_decision.no_allowed_resolution', {
+      claimId:    claim.id,
+      vendorId:   claim.vendorId,
+      mlTop:      recommendation.mlTop,
+      mlTopScore: recommendation.mlTopScore,
+      allowed:    recommendation.allowed,
+      origin:     opts.origin,
+    })
+    return {
+      decision: null, aiScore: null, status: claim.status,
+      autoApproved: false, autoRejected: false, applied: true,
+      refundEligible, recommendation,
+    }
+  }
+
   const autoReject = decision === 'Reject'
   const autoApprove =
     !autoReject &&
@@ -155,7 +319,8 @@ export async function applyMLDecision(
     })
     return {
       decision, aiScore, status: claim.status,
-      autoApproved: false, autoRejected: false, applied: true, refundEligible,
+      autoApproved: false, autoRejected: false, applied: true,
+      refundEligible, recommendation,
     }
   }
 
@@ -185,7 +350,8 @@ export async function applyMLDecision(
     })
     return {
       decision, aiScore, status: claim.status,
-      autoApproved: false, autoRejected: false, applied: false, refundEligible,
+      autoApproved: false, autoRejected: false, applied: false,
+      refundEligible, recommendation,
     }
   }
 
@@ -215,5 +381,6 @@ export async function applyMLDecision(
     autoRejected: autoReject,
     applied:      true,
     refundEligible,
+    recommendation,
   }
 }

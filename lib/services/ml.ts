@@ -1,6 +1,6 @@
 import { env } from '@/lib/env'
 import { log } from '@/lib/logger'
-import { isAIDecision, type AIDecision } from '@/lib/constants'
+import { TYPE_TO_RESOLUTION, isAIDecision, type AIDecision } from '@/lib/constants'
 import {
   CONTRACT_VERSION_HEADER,
   FEATURE_CONTRACT_VERSION,
@@ -13,11 +13,27 @@ import {
   normalizeShippingMethod,
 } from '@/lib/ml-contract'
 
+// Ré-export : la constante vit dans lib/constants.ts — elle sert aussi au
+// filtrage de la recommandation (claim-decision), qui n'a rien à faire du
+// transport ML. Les appelants historiques continuent de la lire ici.
+export { TYPE_TO_RESOLUTION }
+
 export interface MLPredictionOutput {
   resolution: {
     // Contrat 3 classes : l'API ML ne renvoie jamais 'Refund'.
     prediction:    AIDecision;
+    // Probabilité de la classe retenue (= max des `probabilities`). Renvoyée par
+    // l'API ML ; la web app recalcule la sienne à partir de la recommandation
+    // filtrée, mais la valeur brute reste utile en journal.
+    confidence?:   number;
     probabilities: Record<string, number>;
+  };
+  // Signaux de risque dérivés de l'entrée, renvoyés par l'API ML.
+  risk_flag?: {
+    is_suspicious:   boolean;
+    fraud_score:     number;
+    seuil_risque:    number;
+    client_a_risque: boolean;
   };
   // État du contrat de features pour cette prédiction. Renseigné par l'API ML
   // depuis l'encodeur réellement chargé : `degraded` signale qu'une partie du
@@ -36,14 +52,84 @@ export type MLResult =
   | { ok: true;  prediction: MLPredictionOutput }
   | { ok: false; timedOut: boolean; error: string; retryable: boolean; attempts: number }
 
+/**
+ * Contexte d'appel — repris tel quel dans les journaux pour rattacher une
+ * réponse ML à la réclamation et au vendeur concernés. Purement descriptif :
+ * il n'influence jamais la requête envoyée au modèle.
+ */
+export type MLCallContext = {
+  claimId?:  string
+  vendorId?: string
+  origin?:   'ingestion' | 'retry' | 'api_predict'
+}
+
 interface CallOptions {
   retries?:   number
   timeoutMs?: number
+  context?:   MLCallContext
 }
 
-async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
+// ─────────────────────────────────────────────────────────────
+// Journalisation de la réponse du modèle.
+//
+// Jusqu'ici, seuls les échecs laissaient une trace : une prédiction réussie
+// disparaissait sans rien écrire. Impossible, après coup, de savoir ce que le
+// modèle avait réellement répondu sur une réclamation donnée — ni de vérifier
+// pourquoi la recommandation affichée n'était pas sa classe dominante (P1.1).
+//
+// Ce que l'on journalise, et pourquoi :
+//   • les probabilités de TOUTES les classes — c'est la seule donnée qui permet
+//     de rejouer l'arbitrage de `selectRecommendation` ;
+//   • l'état du contrat de features — dit si le vecteur d'entrée était amputé ;
+//   • la latence — l'appel ML est dans le chemin critique de la soumission.
+//
+// Ce que l'on ne journalise PAS : le payload envoyé. Il contient des données
+// client (âge, wilaya, genre) et il est de toute façon déjà persisté —
+// `Claim.mlInput` pour le canal de soumission, `PredictionLog.input` pour
+// `/api/predict`. Le journal n'a pas à en garder un second exemplaire.
+// ─────────────────────────────────────────────────────────────
+function logMLResponse(
+  prediction: MLPredictionOutput,
+  meta: { durationMs: number; context?: MLCallContext },
+): void {
+  const probabilities = prediction.resolution?.probabilities ?? {}
+  const contract      = prediction.contract
+
+  log.info('ml.response', {
+    ...meta.context,
+    prediction:    prediction.resolution?.prediction,
+    confidence:    prediction.resolution?.confidence ?? null,
+    // Classes triées par score décroissant : le journal se lit sans retraitement.
+    probabilities: Object.fromEntries(
+      Object.entries(probabilities).sort((a, b) => b[1] - a[1]),
+    ),
+    riskFlag: prediction.risk_flag
+      ? {
+          isSuspicious:  prediction.risk_flag.is_suspicious,
+          fraudScore:    prediction.risk_flag.fraud_score,
+          clientARisque: prediction.risk_flag.client_a_risque,
+        }
+      : null,
+    contract: contract
+      ? {
+          version:  contract.version,
+          degraded: contract.degraded,
+          coverage: contract.categorical_coverage,
+          unknown:  contract.unknown_categories,
+        }
+      : null,
+    durationMs: meta.durationMs,
+  })
+}
+
+async function attempt(
+  input:     object,
+  timeoutMs: number,
+  context?:  MLCallContext,
+): Promise<MLResult> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const startedAt = Date.now()
   try {
     const res = await fetch(`${env.ML_API_URL}/predict`, {
       method:  'POST',
@@ -65,10 +151,17 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
       // le même refus : c'est un incident de déploiement, pas une panne passagère.
       if (res.status === 409) {
         log.error('ml.contract_version_mismatch', {
+          ...context,
           webAppVersion: FEATURE_CONTRACT_VERSION,
           detail:        JSON.stringify(detail),
         })
       }
+      log.warn('ml.response_error', {
+        ...context,
+        httpStatus: res.status,
+        detail:     JSON.stringify(detail),
+        durationMs: Date.now() - startedAt,
+      })
       return {
         ok:        false,
         timedOut:  false,
@@ -86,8 +179,10 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
     const predicted = prediction?.resolution?.prediction
     if (!isAIDecision(predicted)) {
       log.error('ml.invalid_prediction_class', {
+        ...context,
         prediction: String(predicted),
         expected:   'Exchange | Repair | Reject',
+        durationMs: Date.now() - startedAt,
       })
       return {
         ok:        false,
@@ -103,6 +198,7 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
     const contractState = prediction?.contract
     if (contractState?.alert_features?.length) {
       log.error('ml.unknown_categories', {
+        ...context,
         features:   contractState.alert_features,
         values:     contractState.unknown_categories,
         coverage:   contractState.categorical_coverage,
@@ -110,10 +206,18 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
       })
     }
 
+    logMLResponse(prediction, { durationMs: Date.now() - startedAt, context })
+
     return { ok: true, prediction }
   } catch (err: unknown) {
     const name     = (err as { name?: string })?.name
     const timedOut = name === 'AbortError' || name === 'TimeoutError'
+    log.warn('ml.response_unreachable', {
+      ...context,
+      timedOut,
+      error:      String((err as { message?: string })?.message ?? err),
+      durationMs: Date.now() - startedAt,
+    })
     return {
       ok:        false,
       timedOut,
@@ -330,11 +434,6 @@ export interface BuildReclamationInputFromClaimInput {
   mlInput: Record<string, unknown> | null
 }
 
-export const TYPE_TO_RESOLUTION = {
-  EXCHANGE: 'Exchange',
-  REFUND:   'Refund',
-  REPAIR:   'Repair',
-} as const
 
 function toNum(v: unknown, fallback: number): number {
   if (v === null || v === undefined || v === '') return fallback
@@ -484,14 +583,17 @@ export async function callMLPredict(
   let last: MLResult = { ok: false, timedOut: false, error: 'no_attempt', retryable: false, attempts: 0 }
 
   for (let i = 0; i <= retries; i++) {
-    const r = await attempt(input, timeoutMs)
+    const r = await attempt(input, timeoutMs, opts.context)
     if (r.ok) return r
 
     last = { ...r, attempts: i + 1 }
     if (!r.retryable || i === retries) break
 
     const backoff = 250 * 2 ** i + Math.floor(Math.random() * 100)
-    log.warn('ml.retry', { attempt: i + 1, nextDelayMs: backoff, error: r.error })
+    log.warn('ml.retry', {
+      ...opts.context,
+      attempt: i + 1, nextDelayMs: backoff, error: r.error,
+    })
     await new Promise<void>((resolve) => setTimeout(resolve, backoff))
   }
 

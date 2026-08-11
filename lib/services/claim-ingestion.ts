@@ -333,7 +333,9 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   let autoRejected = false
 
   if (enrichedMlPayload) {
-    const mlResult = await callMLPredict(enrichedMlPayload)
+    const mlResult = await callMLPredict(enrichedMlPayload, {
+      context: { claimId: claim.id, vendorId: input.vendor.id, origin: 'ingestion' },
+    })
     if (mlResult.ok) {
       const outcome = await applyMLDecision(
         {

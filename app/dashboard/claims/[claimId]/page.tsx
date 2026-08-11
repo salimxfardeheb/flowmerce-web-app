@@ -66,6 +66,14 @@ export default async function ClaimDetailPage({
   const confidence   = claim.aiScore != null ? Math.round(claim.aiScore * 100) : null
   const fraudScore   = claim.fraudScore
 
+  // Arbitrage recommandation / résolutions autorisées, calculé côté serveur
+  // (claim-decision). Le modèle a pu noter au plus haut une résolution que ce
+  // vendeur n'offre pas : on affiche celle qu'il offre, et on dit pourquoi.
+  const recommendation = prediction?.recommendation as Record<string, unknown> | undefined
+  const noAllowedResolution = recommendation?.reason === 'NO_ALLOWED_RESOLUTION'
+  const mlTopLabel = typeof recommendation?.mlTop === 'string' ? recommendation.mlTop : null
+  const wasFiltered = recommendation?.filtered === true && !noAllowedResolution && !!mlTopLabel
+
   const statusConfig: Record<string, { label: string; cls: string }> = {
     PENDING:     { label: 'En attente', cls: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'  },
     APPROVED:    { label: 'Approuvée',  cls: 'bg-green-50 text-green-700 ring-1 ring-green-200'  },
@@ -252,7 +260,7 @@ export default async function ClaimDetailPage({
         </div>
 
         {/* ── Décision IA ── */}
-        {(claim.aiDecision || claim.aiScore != null) && (
+        {(claim.aiDecision || claim.aiScore != null || noAllowedResolution) && (
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <div className="flex items-center gap-2 mb-4">
               <Brain className="w-4 h-4 text-indigo-500" />
@@ -274,6 +282,30 @@ export default async function ClaimDetailPage({
                       Modifiée manuellement
                     </div>
                   )}
+                  {wasFiltered && !isOverridden && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Le modèle plaçait en tête «&nbsp;
+                      {resolutionConfig[mlTopLabel!]?.label ?? mlTopLabel}
+                      &nbsp;», que votre politique de retour ne propose pas.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {noAllowedResolution && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">Décision recommandée</p>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-gray-600 bg-gray-50 ring-1 ring-gray-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                    Aucune recommandation disponible
+                  </span>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Le modèle n&apos;a proposé aucune résolution que votre politique de
+                    retour autorise
+                    {mlTopLabel
+                      ? ` (il plaçait en tête « ${resolutionConfig[mlTopLabel]?.label ?? mlTopLabel} »)`
+                      : ''}. À vous de trancher.
+                  </p>
                 </div>
               )}
               {refundEligible && (

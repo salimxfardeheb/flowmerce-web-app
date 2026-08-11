@@ -73,7 +73,9 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    const result = await callMLPredict(c.mlInput as Record<string, unknown>);
+    const result = await callMLPredict(c.mlInput as Record<string, unknown>, {
+      context: { claimId: c.id, vendorId: c.vendorId, origin: "retry" },
+    });
 
     if (result.ok) {
       // Même service que l'ingestion : la reprise mène exactement au même état
