@@ -1,6 +1,17 @@
 import { env } from '@/lib/env'
 import { log } from '@/lib/logger'
 import { isAIDecision, type AIDecision } from '@/lib/constants'
+import {
+  CONTRACT_VERSION_HEADER,
+  FEATURE_CONTRACT_VERSION,
+  diagnoseCategories,
+  normalizeCustomerGender,
+  normalizeCustomerWilaya,
+  normalizePaymentMethod,
+  normalizeProductCategory,
+  normalizeReturnReason,
+  normalizeShippingMethod,
+} from '@/lib/ml-contract'
 
 export interface MLPredictionOutput {
   resolution: {
@@ -8,9 +19,16 @@ export interface MLPredictionOutput {
     prediction:    AIDecision;
     probabilities: Record<string, number>;
   };
-  shipping_paid_by?: {
-    prediction:    string;
-    probabilities: Record<string, number>;
+  // État du contrat de features pour cette prédiction. Renseigné par l'API ML
+  // depuis l'encodeur réellement chargé : `degraded` signale qu'une partie du
+  // vecteur d'entrée était nulle faute de vocabulaire reconnu (C-02).
+  contract?: {
+    version:              string;
+    degraded:             boolean;
+    unknown_categories:   Record<string, string>;
+    alert_features:       string[];
+    expected_unknown:     string[];
+    categorical_coverage: number;
   };
 }
 
@@ -32,6 +50,10 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
       headers: {
         'Content-Type':   'application/json',
         'X-Internal-Key': env.ML_INTERNAL_SECRET,
+        // Version du vocabulaire sur lequel ce payload est construit. L'API ML
+        // répond 409 si elle sert un autre contrat : mieux vaut un échec
+        // explicite qu'une prédiction rendue sur des features mal alignées.
+        [CONTRACT_VERSION_HEADER]: FEATURE_CONTRACT_VERSION,
       },
       body:   JSON.stringify(input),
       signal: controller.signal,
@@ -39,6 +61,14 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
 
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}))
+      // 409 = versions de contrat divergentes. Le rejouer à l'identique donnerait
+      // le même refus : c'est un incident de déploiement, pas une panne passagère.
+      if (res.status === 409) {
+        log.error('ml.contract_version_mismatch', {
+          webAppVersion: FEATURE_CONTRACT_VERSION,
+          detail:        JSON.stringify(detail),
+        })
+      }
       return {
         ok:        false,
         timedOut:  false,
@@ -66,6 +96,18 @@ async function attempt(input: object, timeoutMs: number): Promise<MLResult> {
         retryable: false,
         attempts:  1,
       }
+    }
+
+    // Le modèle a répondu, mais sur un vecteur amputé : on le dit. C'était
+    // exactement ce que `handle_unknown="ignore"` rendait invisible.
+    const contractState = prediction?.contract
+    if (contractState?.alert_features?.length) {
+      log.error('ml.unknown_categories', {
+        features:   contractState.alert_features,
+        values:     contractState.unknown_categories,
+        coverage:   contractState.categorical_coverage,
+        version:    contractState.version,
+      })
     }
 
     return { ok: true, prediction }
@@ -132,21 +174,29 @@ export interface MLPayload {
 }
 
 export function buildMLPayload(input: BuildMLPayloadInput): MLPayload {
-  return {
+  // Frontière unique de traduction : au-delà de cette fonction, toute valeur
+  // catégorielle est exprimée dans le vocabulaire du modèle. `mlInput` persisté
+  // — donc aussi ce qui repart au worker de reprise et au dataset — porte la
+  // même forme que ce qui a été envoyé. C'est ce qui rend le train/serve
+  // vérifiable au lieu d'être supposé (C-02).
+  const payload: MLPayload = {
     Customer_ID:             input.customerId ?? '',
-    Customer_Gender:         input.customerGender,
+    Customer_Gender:         normalizeCustomerGender(input.customerGender),
     Customer_Age:            input.customerAge ?? 0,
-    Customer_Wilaya:         input.customerWilaya,
+    Customer_Wilaya:         normalizeCustomerWilaya(input.customerWilaya),
     Customer_Past_Returns:   0, // recalculé par ingestClaim
+    // Nom réel de la boutique : hors vocabulaire par construction (le modèle a
+    // appris Shop_001…Shop_080, des boutiques simulées). La valeur est envoyée
+    // telle quelle et le contrat déclare cette divergence comme attendue.
     Shop_Name:               input.shopName,
-    Product_Category:        input.productCategory ?? 'Unknown',
+    Product_Category:        normalizeProductCategory(input.productCategory),
     Product_Price_DA:        input.productPrice ?? input.orderTotal ?? 1,
     Order_Quantity:          input.productQuantity ?? 1,
     Total_Amount_DA:         input.orderTotal ?? input.productPrice ?? 1,
-    Payment_Method:          input.paymentMethod,
-    Shipping_Method:         input.shippingMethod,
+    Payment_Method:          normalizePaymentMethod(input.paymentMethod),
+    Shipping_Method:         normalizeShippingMethod(input.shippingMethod),
     Shipping_Cost_DA:        input.shippingCost,
-    Return_Reason:           input.reason,
+    Return_Reason:           normalizeReturnReason(input.reason),
     Days_to_Return:          input.daysToReturn,
     Shop_Return_Window_Days: input.returnWindowDays,
     // Calculé, plus codé en dur : depuis que la page hébergée accepte les
@@ -161,6 +211,21 @@ export function buildMLPayload(input: BuildMLPayloadInput): MLPayload {
     // ignorée à l'inférence et fausse dans le dataset.
     Is_Suspicious:           0, // recalculé par ingestClaim
   }
+
+  // Diagnostic local, avec les mêmes règles que celles appliquées côté ML :
+  // il repère une valeur non traduisible même quand le service ML est
+  // indisponible, donc avant qu'elle ne se retrouve figée dans `mlInput`.
+  const diagnosis = diagnoseCategories(payload as unknown as Record<string, unknown>)
+  if (diagnosis.alerts.length) {
+    log.warn('ml.payload_unknown_categories', {
+      shopName: input.shopName,
+      features: diagnosis.alerts,
+      values:   diagnosis.unknown,
+      coverage: diagnosis.coverage,
+    })
+  }
+
+  return payload
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -173,6 +238,30 @@ export function buildMLPayload(input: BuildMLPayloadInput): MLPayload {
 // contrat : aucun point d'entrée Flowmerce ne les collecte, ils ne valaient
 // donc que la valeur neutre ('' / 0) et polluaient le dataset.
 // ─────────────────────────────────────────────────────────────
+/**
+ * Origine du label `Resolution`, telle que l'API ML l'attend.
+ * Miroir de `LabelSourceEnum` (Flowmerce-ML/api/server.py).
+ */
+export type LabelSource = 'human' | 'policy_rule' | 'model'
+
+/** Origine côté base → origine côté dataset. */
+export const DECISION_SOURCE_TO_LABEL_SOURCE: Record<string, LabelSource> = {
+  HUMAN:       'human',
+  POLICY_RULE: 'policy_rule',
+  MODEL:       'model',
+}
+
+/**
+ * Origines admises comme vérité terrain supervisée. Une réclamation dont la
+ * résolution vient du modèle n'en fait pas partie : c'est ce qui casse la
+ * boucle de rétroaction (C-04).
+ */
+export const GROUND_TRUTH_SOURCES = ['HUMAN', 'POLICY_RULE'] as const
+
+export function isGroundTruth(resolutionSource: string | null | undefined): boolean {
+  return (GROUND_TRUTH_SOURCES as readonly string[]).includes(resolutionSource ?? '')
+}
+
 export interface ReclamationInput {
   Order_ID:                 string
   Customer_ID:               string
@@ -196,6 +285,9 @@ export interface ReclamationInput {
   Within_Return_Policy:        0 | 1
   Return_Reason:               string
   Resolution:                   'Exchange' | 'Reject' | 'Repair' | 'Refund'
+  // Origine de `Resolution`. Obligatoire côté API ML : sans elle, une
+  // recommandation du modèle serait indiscernable d'une décision humaine.
+  Label_Source:                 LabelSource
   Fraud_Score:                   number
   Is_Suspicious:                  0 | 1
   Customer_Satisfaction?:         number | null
@@ -230,6 +322,10 @@ export interface BuildReclamationInputFromClaimInput {
   createdAt?: Date | null
   type: 'EXCHANGE' | 'REFUND' | 'REPAIR' | null
   aiDecision: string | null
+  // Origine de `aiDecision` (colonne `Claim.resolutionSource`). Elle voyage
+  // jusqu'au dataset : c'est elle qui permet au pipeline d'entraînement de
+  // refuser les labels que le modèle a produits lui-même (C-04).
+  resolutionSource: string | null
   vendor: { companyName: string }
   mlInput: Record<string, unknown> | null
 }
@@ -315,6 +411,9 @@ export function buildReclamationInputFromClaim(
     Within_Return_Policy:      toFlag(mlv.Within_Return_Policy, 1),
     Return_Reason:             String(mlv.Return_Reason ?? ''),
     Resolution:                resolution,
+    // Une réclamation sans origine connue est traitée comme un label de modèle :
+    // le doute joue contre l'entraînement, jamais en sa faveur.
+    Label_Source:              DECISION_SOURCE_TO_LABEL_SOURCE[claim.resolutionSource ?? ''] ?? 'model',
     // Colonne DB `Claim.fraudScore` : calculée à l'ingestion par
     // computeFraudScore() et stockée sur la claim — c'est elle qui fait foi.
     // `mlInput.Fraud_Score` (figé à la création) n'est qu'un repli.

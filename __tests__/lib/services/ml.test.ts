@@ -123,7 +123,7 @@ describe('Customer_Satisfaction', () => {
     const row = buildReclamationInputFromClaim({
       orderId: 'CMD-1', customerId: null, fraudScore: 0,
       productName: 'X', orderDate: null, createdAt: null,
-      type: 'REFUND', aiDecision: 'Exchange',
+      type: 'REFUND', aiDecision: 'Exchange', resolutionSource: 'HUMAN',
       vendor: { companyName: 'Caba Store' },
       mlInput: { Customer_Satisfaction: 3 },
     })
@@ -140,6 +140,7 @@ describe('buildReclamationInputFromClaim', () => {
     createdAt:   new Date('2026-07-05'),
     type:        'REFUND' as const,
     aiDecision:  'Exchange',
+    resolutionSource: 'HUMAN',
     vendor:      { companyName: 'Caba Store' },
   }
 

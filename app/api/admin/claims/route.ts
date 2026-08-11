@@ -11,6 +11,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildReclamationInputFromClaim,
+  isGroundTruth,
   TYPE_TO_RESOLUTION,
 } from "@/lib/services/ml";
 
@@ -31,19 +32,22 @@ export async function GET() {
 
   const claims = await prisma.claim.findMany({
     select: {
-      id:           true,
-      orderId:      true,
-      customerId:   true,
-      fraudScore:   true,
-      productName:  true,
-      orderDate:    true,
-      createdAt:    true,
-      type:         true,
-      aiDecision:   true,
-      mlInput:      true,
-      exportedToML: true,
-      exportedAt:   true,
-      vendor:       { select: { companyName: true } },
+      id:               true,
+      orderId:          true,
+      customerId:       true,
+      fraudScore:       true,
+      productName:      true,
+      orderDate:        true,
+      createdAt:        true,
+      type:             true,
+      aiDecision:       true,
+      resolutionSource: true,
+      resolvedBy:       true,
+      resolvedAt:       true,
+      mlInput:          true,
+      exportedToML:     true,
+      exportedAt:       true,
+      vendor:           { select: { companyName: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -57,16 +61,17 @@ export async function GET() {
     // builder, qui se liraient à tort comme de vraies données.
     const row = hasMlInput
       ? buildReclamationInputFromClaim({
-          orderId:     c.orderId,
-          customerId:  c.customerId,
-          fraudScore:  c.fraudScore,
-          productName: c.productName,
-          orderDate:   c.orderDate,
-          createdAt:   c.createdAt,
-          type:        c.type,
-          aiDecision:  c.aiDecision,
-          vendor:      c.vendor,
-          mlInput:     c.mlInput as Record<string, unknown>,
+          orderId:          c.orderId,
+          customerId:       c.customerId,
+          fraudScore:       c.fraudScore,
+          productName:      c.productName,
+          orderDate:        c.orderDate,
+          createdAt:        c.createdAt,
+          type:             c.type,
+          aiDecision:       c.aiDecision,
+          resolutionSource: c.resolutionSource,
+          vendor:           c.vendor,
+          mlInput:          c.mlInput as Record<string, unknown>,
         })
       : {
           Order_ID:     c.orderId,
@@ -85,6 +90,13 @@ export async function GET() {
       exportedToML: c.exportedToML,
       exportedAt:   c.exportedAt,
       hasMlInput,
+      // Origine de la résolution : une réclamation dont le label vient du
+      // modèle n'est pas exportable vers le dataset d'entraînement (C-04).
+      // L'admin voit donc pourquoi une ligne n'apparaît pas dans l'export.
+      resolutionSource: c.resolutionSource,
+      resolvedBy:       c.resolvedBy,
+      resolvedAt:       c.resolvedAt,
+      groundTruth:      isGroundTruth(c.resolutionSource),
       row,
     };
   });

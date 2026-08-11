@@ -17,8 +17,8 @@ import {
   computeFraudScore,
   recomputeNetworkSignals,
 } from '@/lib/fraud-score'
-import { callMLPredict, type MLPredictionOutput } from '@/lib/services/ml'
-import { checkReturnPolicy } from '@/lib/services/return-policy'
+import { callMLPredict } from '@/lib/services/ml'
+import { applyMLDecision } from '@/lib/services/claim-decision'
 import { notifyCustomer } from '@/lib/services/notification'
 import { log } from '@/lib/logger'
 import type { AIDecision } from '@/lib/constants'
@@ -243,6 +243,9 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
           fraudScore,
           ipAddress:     input.ipAddress ?? null,
           aiDecision:    policyViolation ? 'Reject' : null,
+          // Un refus hors politique vient d'une règle métier déterministe, pas
+          // du modèle : c'est un label exploitable à l'entraînement (C-04).
+          resolutionSource: policyViolation ? 'POLICY_RULE' : null,
           prediction:    (policyViolation
             ? { ...predictionData, policyViolation }
             : predictionData) as unknown as Prisma.InputJsonValue,
@@ -320,51 +323,39 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
   }
 
   // 5. Appel ML (si payload fourni) — sur le payload enrichi persisté en 2 bis.
+  //
+  // 6. Décision : `applyMLDecision` porte la totalité de la règle métier
+  //    (statut, notification, traçabilité de l'origine). Le worker de reprise
+  //    /api/cron/retry-ml appelle exactement la même fonction : il n'existe
+  //    plus qu'une seule implémentation de la décision (C-05).
   let finalAiDecision: AIDecision | null = null
-  let refundEligible = false
+  let autoApproved = false
+  let autoRejected = false
+
   if (enrichedMlPayload) {
     const mlResult = await callMLPredict(enrichedMlPayload)
     if (mlResult.ok) {
-      const pred  = mlResult.prediction as MLPredictionOutput
-      const probs = pred.resolution?.probabilities ?? {}
-      const aiScore = Object.values(probs).length ? Math.max(...Object.values(probs)) : null
-      // Garanti ∈ {Exchange, Repair, Reject} par la validation dans ml.ts.
-      const resolution: AIDecision = pred.resolution.prediction
-
-      // Drapeau "remboursement éligible" — calculé UNIQUEMENT côté web app.
-      // Purement informatif pour le vendeur : ne modifie ni le statut du claim,
-      // ni aiDecision, ni claim.type, et ne déclenche aucune action financière.
-      const daysToReturn = input.orderDate
-        ? Math.max(0, Math.floor((Date.now() - input.orderDate.getTime()) / 86_400_000))
-        : 0
-      refundEligible =
-        input.type === 'REFUND' &&
-        resolution !== 'Reject' &&
-        checkReturnPolicy(returnPolicy, {
-          daysToReturn,
-          productCategory: predictionData.productCategory ?? undefined,
-          claimType:       input.type,
-        }).ok
-
-      // Merge : 14 champs canoniques + tout ce que le ML a renvoyé
-      // (resolution, risk_flag, shipping_paid_by…). Pas de aiDecision plat.
-      const updatedPrediction = {
-        ...predictionData,
-        ...(pred as unknown as Prisma.JsonObject),
-        refundEligible,
-      }
-
-      claim = await prisma.claim.update({
-        where: { id: claim.id },
-        data: {
-          aiDecision: resolution,
-          aiScore,
-          mlFailed:   false,
-          mlAttempts: { increment: 1 },
-          prediction: updatedPrediction as unknown as Prisma.InputJsonValue,
+      const outcome = await applyMLDecision(
+        {
+          id:            claim.id,
+          vendorId:      input.vendor.id,
+          status:        claim.status,
+          type:          claim.type,
+          orderDate:     input.orderDate ?? null,
+          prediction:    claim.prediction,
+          customerName:  claim.customerName,
+          customerEmail: claim.customerEmail,
+          customerPhone: claim.customerPhone,
+          orderId:       claim.orderId,
         },
-      })
-      finalAiDecision = resolution
+        mlResult.prediction,
+        { returnPolicy, origin: 'ingestion' },
+      )
+
+      finalAiDecision = outcome.decision
+      autoApproved    = outcome.autoApproved
+      autoRejected    = outcome.autoRejected
+      claim = { ...claim, status: outcome.status, aiDecision: outcome.decision }
     } else {
       await prisma.claim
         .update({
@@ -377,92 +368,6 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
         error:    mlResult.error,
         timedOut: mlResult.timedOut,
         attempts: mlResult.attempts,
-      })
-    }
-  }
-
-  // 6. Décision automatique basée sur le ML
-  //    - Reject  → claim auto-rejeté quel que soit validationMode (le ML est
-  //                la seule source qui peut refuser, après que la return policy
-  //                vendeur a déjà été validée en amont par la route).
-  //    - Exchange/Repair + AI_AUTO → claim auto-approuvé.
-  //    - Sinon (ML absent/fail ou validationMode=MANUAL) → reste PENDING,
-  //      le vendeur traite manuellement.
-  let autoApproved = false
-  let autoRejected = false
-
-  if (finalAiDecision === 'Reject') {
-    const rejectedPrediction = {
-      ...(claim.prediction as Prisma.JsonObject),
-      autoRejectedAt: new Date().toISOString(),
-      autoRejectedBy: 'ml_decision',
-    }
-
-    claim = await prisma.claim.update({
-      where: { id: claim.id },
-      data: {
-        status:      'REJECTED',
-        processedAt: new Date(),
-        prediction:  rejectedPrediction as unknown as Prisma.InputJsonValue,
-      },
-    })
-    autoRejected = true
-
-    notifyCustomer({
-      customerName:  claim.customerName,
-      customerEmail: claim.customerEmail,
-      customerPhone: claim.customerPhone,
-      orderId:       claim.orderId,
-      status:        'REJECTED',
-      aiDecision:    finalAiDecision,
-      claimType:     claim.type,
-      note:          null,
-    }).catch((err) => log.error('claim_ingestion.notification_error', { err: String(err) }))
-
-    log.info('claim_ingestion.auto_rejected', {
-      claimId:  claim.id,
-      vendorId: input.vendor.id,
-      decision: finalAiDecision,
-    })
-  } else if (finalAiDecision) {
-    // Le remboursement (type REFUND) n'est JAMAIS auto-approuvé : c'est un
-    // choix du client stocké dans claim.type, distinct de aiDecision — le
-    // vendeur doit valider chaque remboursement manuellement, même en
-    // validationMode AI_AUTO. Les échanges/réparations (EXCHANGE/REPAIR)
-    // conservent le comportement auto-approve existant.
-    if (returnPolicy?.validationMode === 'AI_AUTO' && input.type !== 'REFUND') {
-      const autoApprovedPrediction = {
-        ...(claim.prediction as Prisma.JsonObject),
-        autoApprovedAt: new Date().toISOString(),
-        autoApprovedBy: 'auto_on_create',
-      }
-
-      claim = await prisma.claim.update({
-        where: { id: claim.id },
-        data: {
-          status:      'APPROVED',
-          processedAt: new Date(),
-          aiDecision:  finalAiDecision,
-          prediction:  autoApprovedPrediction as unknown as Prisma.InputJsonValue,
-        },
-      })
-      autoApproved = true
-
-      notifyCustomer({
-        customerName:  claim.customerName,
-        customerEmail: claim.customerEmail,
-        customerPhone: claim.customerPhone,
-        orderId:       claim.orderId,
-        status:        'APPROVED',
-        aiDecision:    finalAiDecision,
-        claimType:     claim.type,
-        note:          null,
-      }).catch((err) => log.error('claim_ingestion.notification_error', { err: String(err) }))
-
-      log.info('claim_ingestion.auto_approved', {
-        claimId:  claim.id,
-        vendorId: input.vendor.id,
-        decision: finalAiDecision,
       })
     }
   }

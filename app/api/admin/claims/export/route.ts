@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import {
   buildReclamationInputFromClaim,
   callMLSaveClaim,
+  GROUND_TRUTH_SOURCES,
 } from "@/lib/services/ml";
 import { log } from "@/lib/logger";
 
@@ -40,22 +41,45 @@ export async function POST() {
       headers: { "Content-Type": "application/json" },
     });
 
+  // Seules les réclamations dont la résolution a une origine hors modèle sont
+  // exportées vers le dataset d'entraînement (C-04). Une auto-approbation
+  // AI_AUTO ou un auto-rejet sur `Reject` porte la prédiction du modèle : la
+  // réexporter comme vérité terrain rendait le réentraînement auto-confirmant.
+  //
+  // Ces réclamations ne sont pas perdues : elles restent `exportedToML: false`
+  // et deviendront exportables dès qu'un vendeur ou un admin aura tranché.
   const claims = await prisma.claim.findMany({
-    where: { exportedToML: false },
+    where: {
+      exportedToML:     false,
+      resolutionSource: { in: [...GROUND_TRUTH_SOURCES] },
+    },
     select: {
-      id:          true,
-      orderId:     true,
-      customerId:  true,
-      fraudScore:  true,
-      productName: true,
-      orderDate:   true,
-      createdAt:   true,
-      type:        true,
-      aiDecision:  true,
-      mlInput:     true,
-      vendor:      { select: { companyName: true } },
+      id:               true,
+      orderId:          true,
+      customerId:       true,
+      fraudScore:       true,
+      productName:      true,
+      orderDate:        true,
+      createdAt:        true,
+      type:             true,
+      aiDecision:       true,
+      resolutionSource: true,
+      mlInput:          true,
+      vendor:           { select: { companyName: true } },
     },
     orderBy: { createdAt: "asc" },
+  });
+
+  // Compteur d'information : combien de réclamations attendent une décision
+  // humaine avant de pouvoir servir de vérité terrain.
+  const awaitingGroundTruth = await prisma.claim.count({
+    where: {
+      exportedToML: false,
+      OR: [
+        { resolutionSource: null },
+        { resolutionSource: "MODEL" },
+      ],
+    },
   });
 
   const total = claims.length;
@@ -67,7 +91,10 @@ export async function POST() {
       let ignored = 0;
       let processed = 0;
 
-      enqueue(controller, { type: "progress", processed, total, exported, failed, ignored });
+      enqueue(controller, {
+        type: "progress", processed, total, exported, failed, ignored,
+        awaitingGroundTruth,
+      });
 
       for (const c of claims) {
         const hasMlInput =
@@ -83,16 +110,17 @@ export async function POST() {
 
         try {
           const payload = buildReclamationInputFromClaim({
-            orderId:     c.orderId,
-            customerId:  c.customerId,
-            fraudScore:  c.fraudScore,
-            productName: c.productName,
-            orderDate:   c.orderDate,
-            createdAt:   c.createdAt,
-            type:        c.type,
-            aiDecision:  c.aiDecision,
-            vendor:      c.vendor,
-            mlInput:     c.mlInput as Record<string, unknown>,
+            orderId:          c.orderId,
+            customerId:       c.customerId,
+            fraudScore:       c.fraudScore,
+            productName:      c.productName,
+            orderDate:        c.orderDate,
+            createdAt:        c.createdAt,
+            type:             c.type,
+            aiDecision:       c.aiDecision,
+            resolutionSource: c.resolutionSource,
+            vendor:           c.vendor,
+            mlInput:          c.mlInput as Record<string, unknown>,
           });
 
           const result = await callMLSaveClaim(payload);
@@ -123,7 +151,10 @@ export async function POST() {
         enqueue(controller, { type: "progress", processed, total, exported, failed, ignored });
       }
 
-      enqueue(controller, { type: "done", exported, failed, ignored, total });
+      enqueue(controller, {
+        type: "done", exported, failed, ignored, total,
+        awaitingGroundTruth,
+      });
       controller.close();
     },
   });

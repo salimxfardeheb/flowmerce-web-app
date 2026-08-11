@@ -19,8 +19,44 @@ import type { CustomerFraudRecord } from '@prisma/client'
 export type { CustomerFraudRecord }
 
 // ─────────────────────────────────────────────────────────────
+// findFraudRecord — lecture seule.
+//
+// Pour les appelants qui consultent un historique sans enregistrer d'évènement
+// (/api/predict). Créer une ligne à chaque consultation faisait croître sans
+// borne une table indexée sur email/téléphone, avec des lignes à email NULL
+// impossibles à rattacher à quiconque.
+//
+// Sans email ni téléphone, il n'y a rien à chercher : on retourne null plutôt
+// que de fabriquer un client vierge.
+// ─────────────────────────────────────────────────────────────
+export async function findFraudRecord(
+  email?: string,
+  phone?: string,
+): Promise<CustomerFraudRecord | null> {
+  const normalizedEmail = email?.trim().toLowerCase() || undefined
+  const normalizedPhone = phone?.trim() || undefined
+
+  if (normalizedEmail) {
+    const byEmail = await prisma.customerFraudRecord.findFirst({
+      where: { customerEmail: normalizedEmail },
+    })
+    if (byEmail) return byEmail
+  }
+
+  if (normalizedPhone) {
+    return prisma.customerFraudRecord.findFirst({
+      where: { customerPhone: normalizedPhone },
+    })
+  }
+
+  return null
+}
+
+// ─────────────────────────────────────────────────────────────
 // findOrCreateFraudRecord
 // Matching OR : email prioritaire, puis phone, puis création.
+// Réservé aux points d'entrée qui enregistrent un évènement réel (ingestion
+// d'une réclamation, signalement de refus).
 // ─────────────────────────────────────────────────────────────
 export async function findOrCreateFraudRecord(
   email?: string,

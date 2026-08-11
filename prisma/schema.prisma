@@ -185,6 +185,22 @@ model Claim {
   mlInput       Json?
   exportedToML  Boolean     @default(false)
   exportedAt    DateTime?
+
+  // ── Origine de `aiDecision` — prédiction ≠ vérité terrain (C-04) ──────────
+  // `aiDecision` porte la décision effective sur la réclamation. Sans
+  // qualification de son origine, une recommandation du modèle appliquée
+  // automatiquement redevenait un label d'entraînement au cycle suivant : le
+  // modèle se réentraînait sur ses propres sorties.
+  //
+  //   MODEL       recommandation du modèle (ingestion ou reprise cron)
+  //   POLICY_RULE refus déterministe par la politique de retour du vendeur
+  //   HUMAN       décision explicite d'un vendeur ou d'un admin
+  //
+  // Seuls POLICY_RULE et HUMAN sont exportables comme vérité terrain.
+  resolutionSource DecisionSource?
+  // Auteur et date de la décision humaine, quand il y en a une.
+  resolvedBy       String?
+  resolvedAt       DateTime?
   // Réclamation hors politique vendeur (délai dépassé, catégorie exclue…).
   // Refusée d'office sans passer par le ML et masquée au vendeur : il n'a
   // rien à trancher. Reste visible côté admin et exportable vers le dataset.
@@ -199,6 +215,7 @@ model Claim {
   @@index([status])
   @@index([orderId])
   @@index([mlFailed])
+  @@index([exportedToML, resolutionSource])
 }
 
 model PredictionLog {
@@ -305,4 +322,12 @@ enum ClaimStatus {
 enum ClaimSource {
   API
   HOSTED_PAGE
+}
+
+// Origine d'une décision portée par `Claim.aiDecision`.
+// Voir le commentaire de `Claim.resolutionSource`.
+enum DecisionSource {
+  MODEL
+  POLICY_RULE
+  HUMAN
 }

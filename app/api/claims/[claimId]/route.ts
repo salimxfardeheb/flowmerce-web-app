@@ -107,6 +107,16 @@ export async function PATCH(
     ...(body.note?.trim() ? { vendorNote: body.note.trim(), vendorNoteAt: new Date().toISOString() } : {}),
   }
 
+  // Origine de la décision — prédiction ≠ vérité terrain (C-04).
+  //
+  // Un humain n'établit une vérité terrain que lorsqu'il désigne explicitement
+  // une résolution (`body.aiDecision`) : c'est ce que fait le dashboard, dont
+  // le formulaire impose de confirmer une résolution avant d'approuver ou de
+  // refuser. Un PATCH qui ne change que le statut (passage en IN_PROGRESS, ou
+  // intégration qui n'envoie pas de résolution) laisse `aiDecision` à la valeur
+  // écrite par le modèle : dans ce cas l'origine reste MODEL, et la réclamation
+  // n'entrera pas dans le dataset d'entraînement.
+  const humanGroundTruth = !!decision
   const updated = await prisma.claim.update({
     where: { id: claimId },
     data:  {
@@ -116,6 +126,13 @@ export async function PATCH(
       // Colonne `aiDecision` = décision effective sur la réclamation (reco ML
       // à la création, puis choix du vendeur s'il tranche autrement).
       ...(decision ? { aiDecision: decision } : {}),
+      ...(humanGroundTruth
+        ? {
+            resolutionSource: 'HUMAN' as const,
+            resolvedBy:       user.email ?? user.id,
+            resolvedAt:       new Date(),
+          }
+        : {}),
     },
     select: { id: true, status: true, processedAt: true },
   })
@@ -136,10 +153,11 @@ export async function PATCH(
 
   log.info('claims.decision', {
     claimId,
-    status:     newStatus,
-    decision:   finalDecision,
-    mlDecision: claim.aiDecision,
-    overridden: isOverride,
+    status:      newStatus,
+    decision:    finalDecision,
+    mlDecision:  claim.aiDecision,
+    overridden:  isOverride,
+    groundTruth: humanGroundTruth,
   })
 
   return NextResponse.json({ claim: updated })

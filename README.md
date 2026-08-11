@@ -356,7 +356,7 @@ Le modèle ML reçoit un payload de 19 champs structurés décrivant la réclama
 
 **Contrat trois classes.** Le modèle ne renvoie que `Exchange`, `Repair` ou `Reject` — **jamais `Refund`**. Le remboursement relève du choix client (`claim.type`), pas d'une recommandation modèle. Toute autre valeur reçue est une violation de contrat : la réponse est traitée comme un échec (`mlFailed: true`) **sans retry**, puisque rejouer le même input renverrait la même classe.
 
-**Résilience :** Le client ML effectue jusqu'à **2 retries** avec backoff exponentiel (~250 ms puis ~500 ms, avec jitter) et un timeout de **4 secondes** par tentative. Seuls les échecs réseau et les HTTP 5xx / 429 sont rejoués. En cas d'échec, la réclamation reste en `PENDING` avec `mlFailed: true` — un **cron job** (`/api/cron/retry-ml`, quotidien à minuit UTC via `vercel.json`) tente de rejouer les appels ML échoués.
+**Résilience :** Le client ML effectue jusqu'à **2 retries** avec backoff exponentiel (~250 ms puis ~500 ms, avec jitter) et un timeout de **4 secondes** par tentative. Seuls les échecs réseau et les HTTP 5xx / 429 sont rejoués. En cas d'échec, la réclamation reste en `PENDING` avec `mlFailed: true` — un **cron job** (`/api/cron/retry-ml`) rejoue les appels échoués **et applique la décision métier** (statut + notification) via le même service que le chemin nominal, `applyMLDecision`. Une reprise réussie mène donc exactement au même état final qu'une soumission dont le ML aurait répondu du premier coup.
 
 **Sortie du modèle :**
 
@@ -364,22 +364,51 @@ Le modèle ML reçoit un payload de 19 champs structurés décrivant la réclama
 {
   "resolution": {
     "prediction": "Exchange",
+    "confidence": 0.82,
     "probabilities": { "Exchange": 0.82, "Repair": 0.14, "Reject": 0.04 }
   },
-  "shipping_paid_by": {
-    "prediction": "Customer",
-    "probabilities": { "Customer": 0.71, "Shop": 0.29 }
+  "risk_flag": {
+    "is_suspicious": false,
+    "fraud_score": 12.0,
+    "seuil_risque": 3.0,
+    "client_a_risque": false
+  },
+  "contract": {
+    "version": "d720ad897bf56f11",
+    "degraded": false,
+    "unknown_categories": {},
+    "alert_features": [],
+    "expected_unknown": [],
+    "categorical_coverage": 1.0
   }
 }
 ```
 
 Le résultat brut du modèle est mergé dans le JSON `prediction` de la réclamation, aux côtés des champs canoniques ; `aiScore` reçoit la probabilité maximale.
 
+**Contrat de features.** Le vocabulaire catégoriel du modèle est décrit par `lib/ml/feature-contract.json`, copie du fichier généré par le dépôt ML depuis ses artefacts entraînés. `buildMLPayload` traduit le vocabulaire produit (`Clothing`, `Cash on Delivery`…) vers celui du modèle (`Vêtements`, `Espèces livraison`…) ; chaque appel `/predict` porte l'en-tête `X-Feature-Contract-Version`, et l'API ML répond **409** si elle sert un autre contrat. Une valeur non traduisible est remontée dans `contract.unknown_categories` et journalisée (`ml.unknown_categories`) au lieu d'être convertie en vecteur nul silencieux.
+
+**Wilayas (`lib/wilayas.ts`).** Référentiel **produit** — les 58 wilayas du découpage administratif — à ne pas confondre avec les 24 que le modèle a apprises. `normalizeCustomerWilaya` accepte le nom (accentué ou non), le code officiel (`16`, `06`) et les circonscriptions administratives déléguées, rattachées à leur wilaya de tutelle (`Bou Saâda` → `M'Sila`).
+
+Une wilaya que le modèle ne connaît pas encore est transmise **sous sa forme canonique**, pas écrasée en `Unknown` : elle est signalée comme hors vocabulaire par l'API ML — donc visible — et elle entre correctement dans le dataset, où un réentraînement pourra l'apprendre. Écraser en `Unknown` détruisait l'information avant même qu'elle n'atteigne la collecte.
+
+**Features en retrait.** `Shop_Name` et `Shipping_Method` sortent des features du modèle au prochain réentraînement (cardinalité non bornée pour la première, vocabulaire vivant et apport marginal pour la seconde). Elles restent transmises et collectées ; `normalizeShippingMethod` renvoie désormais la saisie nettoyée plutôt que de la contraindre au vocabulaire appris.
+
 ---
 
 ### Export du dataset ML (`POST /api/admin/claims/export`)
 
-Réservé aux **admins**. Envoie vers l'endpoint ML `/save_claim` toutes les réclamations jamais exportées (`exportedToML: false`), une par une, pour alimenter le jeu de données d'entraînement. Chaque succès marque la réclamation comme exportée ; les échecs sont journalisés sans interrompre le lot. La progression est **streamée en NDJSON** (`{type:'progress'|'done', …}`).
+Réservé aux **admins**. Envoie vers l'endpoint ML `/save_claim` les réclamations jamais exportées (`exportedToML: false`) **dont la résolution constitue une vérité terrain**, une par une, pour alimenter le jeu de données d'entraînement.
+
+**Prédiction ≠ vérité terrain.** La colonne `Claim.resolutionSource` porte l'origine de `aiDecision` :
+
+| Valeur | Origine | Exportable |
+|---|---|---|
+| `MODEL` | recommandation du modèle (ingestion ou reprise cron), y compris quand elle a été appliquée automatiquement | ❌ |
+| `POLICY_RULE` | refus déterministe par la politique de retour du vendeur | ✅ |
+| `HUMAN` | résolution explicitement choisie par un vendeur ou un admin (`PATCH /api/claims/[claimId]` avec `aiDecision`) | ✅ |
+
+Sans cette distinction, une auto-approbation `AI_AUTO` ou un auto-rejet sur `Reject` revenait au dataset **comme vérité terrain** : le modèle se réentraînait sur ses propres sorties. Les réclamations en `MODEL` ne sont pas perdues — elles restent `exportedToML: false` et deviennent exportables dès qu'un humain tranche. Le flux NDJSON remonte leur nombre dans `awaitingGroundTruth`. L'origine voyage jusqu'au dataset sous la colonne `Label_Source`, que le pipeline d'entraînement filtre. Chaque succès marque la réclamation comme exportée ; les échecs sont journalisés sans interrompre le lot. La progression est **streamée en NDJSON** (`{type:'progress'|'done', …}`).
 
 Le payload suit le contrat `ReclamationInput` du modèle Pydantic côté FastAPI. Il est reconstruit à partir du `mlInput` persisté (source de vérité), complété par les données de la réclamation et des valeurs neutres — **sans aucun recalcul**. À la différence de `/predict`, le champ `Resolution` de cet export accepte bien les quatre valeurs, `Refund` inclus, puisqu'il décrit une issue réelle et non une prédiction.
 

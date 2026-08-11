@@ -74,6 +74,9 @@ const mockPrisma = {
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    // Transition de statut conditionnelle : `applyMLDecision` n'écrit le statut
+    // que si la réclamation est encore PENDING (idempotence de la reprise).
+    updateMany: vi.fn(),
   },
   customerFraudRecord: {
     findFirst: vi.fn(),
@@ -113,6 +116,9 @@ vi.mock('@/lib/logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.
 describe('ingestClaim', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Par défaut, la transition de statut aboutit : la réclamation était bien
+    // encore PENDING. Les tests d'idempotence renvoient explicitement count: 0.
+    mockPrisma.claim.updateMany.mockResolvedValue({ count: 1 })
   })
 
   it('crée un claim basique sans payload ML', async () => {
@@ -175,7 +181,13 @@ describe('ingestClaim', () => {
         const tx = {
           claim: {
             findFirst: vi.fn().mockResolvedValue(null),
-            create: vi.fn().mockResolvedValue(mockClaim),
+            // La claim créée reflète les données envoyées — notamment `type`,
+            // que la décision relit depuis la ligne persistée (et non depuis
+            // l'input) pour partager exactement le même code que la reprise.
+            create: vi.fn().mockImplementation(async ({ data }: any) => ({
+              ...mockClaim,
+              ...data,
+            })),
           },
           customerFraudRecord: { update: vi.fn() },
         }

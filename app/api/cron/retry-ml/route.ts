@@ -1,7 +1,14 @@
 // app/api/cron/retry-ml/route.ts
 //
 // Worker de reprise pour les prédictions ML qui ont échoué à la création
-// de la claim (mlFailed=true). Rejoue callMLPredict depuis mlInput persisté.
+// de la claim (mlFailed=true). Rejoue callMLPredict depuis mlInput persisté,
+// puis applique la décision métier — statut, notification — via le MÊME
+// service que le chemin nominal (`applyMLDecision`).
+//
+// Avant correction (C-05), cette route écrivait la prédiction sans jamais
+// écrire `status` ni notifier : un `Reject` obtenu par reprise laissait la
+// réclamation `PENDING` indéfiniment, et une approbation AI_AUTO n'était
+// jamais appliquée.
 //
 // Déclenché par Vercel Cron (vercel.json) toutes les 10 min.
 // Protection : header `Authorization: Bearer <CRON_SECRET>` (envoyé
@@ -10,8 +17,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { callMLPredict, type MLPredictionOutput } from "@/lib/services/ml";
-import { checkReturnPolicy } from "@/lib/services/return-policy";
+import { callMLPredict } from "@/lib/services/ml";
+import { applyMLDecision } from "@/lib/services/claim-decision";
 import { env } from "@/lib/env";
 import { log } from "@/lib/logger";
 
@@ -34,13 +41,18 @@ export async function GET(req: NextRequest) {
       mlInput:    { not: Prisma.JsonNull },
     },
     select: {
-      id:         true,
-      mlInput:    true,
-      mlAttempts: true,
-      vendorId:   true,
-      type:       true,
-      orderDate:  true,
-      prediction: true,
+      id:            true,
+      mlInput:       true,
+      mlAttempts:    true,
+      vendorId:      true,
+      status:        true,
+      type:          true,
+      orderDate:     true,
+      prediction:    true,
+      customerName:  true,
+      customerEmail: true,
+      customerPhone: true,
+      orderId:       true,
     },
     take: BATCH_SIZE,
     orderBy: { createdAt: "asc" },
@@ -48,6 +60,7 @@ export async function GET(req: NextRequest) {
 
   let recovered = 0;
   let stillFailing = 0;
+  let alreadyResolved = 0;
 
   for (const c of stuck) {
     if (!c.mlInput || typeof c.mlInput !== "object") {
@@ -63,42 +76,30 @@ export async function GET(req: NextRequest) {
     const result = await callMLPredict(c.mlInput as Record<string, unknown>);
 
     if (result.ok) {
-      const pred = result.prediction as MLPredictionOutput;
-      const probs = pred.resolution?.probabilities ?? {};
-      const aiScore = Object.values(probs).length ? Math.max(...Object.values(probs)) : null;
-      // Garanti ∈ {Exchange, Repair, Reject} par la validation dans ml.ts.
-      const resolution = pred.resolution.prediction;
-
-      // Même drapeau informatif que dans claim-ingestion : le remboursement
-      // reste une décision vendeur, jamais une sortie ML.
-      const policy = await prisma.returnPolicy.findUnique({ where: { vendorId: c.vendorId } });
-      const daysToReturn = c.orderDate
-        ? Math.max(0, Math.floor((Date.now() - c.orderDate.getTime()) / 86_400_000))
-        : 0;
-      const existingPrediction = (c.prediction as Prisma.JsonObject | null) ?? {};
-      const productCategory = typeof existingPrediction.productCategory === "string"
-        ? existingPrediction.productCategory
-        : undefined;
-      const refundEligible =
-        c.type === "REFUND" &&
-        resolution !== "Reject" &&
-        checkReturnPolicy(policy, { daysToReturn, productCategory, claimType: c.type ?? undefined }).ok;
-
-      await prisma.claim.update({
-        where: { id: c.id },
-        data: {
-          prediction: {
-            ...existingPrediction,
-            ...(pred as unknown as Prisma.JsonObject),
-            refundEligible,
-          } as Prisma.InputJsonValue,
-          aiDecision: resolution,
-          aiScore,
-          mlFailed:   false,
-          mlAttempts: { increment: 1 },
+      // Même service que l'ingestion : la reprise mène exactement au même état
+      // final qu'une soumission dont le ML aurait répondu du premier coup.
+      // `applied: false` = la réclamation avait déjà été tranchée entre-temps
+      // (vendeur, ou exécution concurrente du cron) : rien n'est réécrit et
+      // aucune notification n'est renvoyée.
+      const outcome = await applyMLDecision(
+        {
+          id:            c.id,
+          vendorId:      c.vendorId,
+          status:        c.status,
+          type:          c.type,
+          orderDate:     c.orderDate,
+          prediction:    c.prediction,
+          customerName:  c.customerName,
+          customerEmail: c.customerEmail,
+          customerPhone: c.customerPhone,
+          orderId:       c.orderId,
         },
-      });
-      recovered++;
+        result.prediction,
+        { origin: "retry" },
+      );
+
+      if (outcome.applied) recovered++;
+      else alreadyResolved++;
     } else {
       await prisma.claim.update({
         where: { id: c.id },
@@ -109,7 +110,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  log.info("ml.retry.batch", { processed: stuck.length, recovered, stillFailing });
+  log.info("ml.retry.batch", {
+    processed: stuck.length,
+    recovered,
+    stillFailing,
+    alreadyResolved,
+  });
 
-  return NextResponse.json({ processed: stuck.length, recovered, stillFailing });
+  return NextResponse.json({
+    processed: stuck.length,
+    recovered,
+    stillFailing,
+    alreadyResolved,
+  });
 }
