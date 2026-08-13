@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ClipboardList, Store, LayoutDashboard, FileWarning } from "lucide-react";
+import { SITE_LINKS } from "@/components/layout/siteLinks";
 
 const adminLinks = [
   {
@@ -80,6 +81,28 @@ export function AdminNav() {
         </div>
         Espace vendeur
       </Link>
+
+      {/* `mt-auto` pousse le bloc au bas de la nav ; la marge s'annule d'elle-même
+          si le menu déborde, donc les liens restent atteignables au défilement.
+          Pas d'état actif : ces pages ne rendent pas le sidebar. */}
+      <div className="mt-auto pt-3 border-t border-gray-100 flex flex-col gap-0.5">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-1.5">
+          Site
+        </p>
+
+        {SITE_LINKS.map(({ href, label, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors group"
+          >
+            <div className="w-6 h-6 rounded-md bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center shrink-0">
+              <Icon size={13} className="text-gray-400" />
+            </div>
+            <span className="min-w-0 truncate">{label}</span>
+          </Link>
+        ))}
+      </div>
     </nav>
   );
 }

@@ -2,16 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BookOpen,
-  FileText,
-  Home,
-  Inbox,
-  Key,
-  LayoutDashboard,
-  Mail,
-  ShieldCheck,
-} from "lucide-react";
+import { FileText, Inbox, Key, LayoutDashboard, ShieldCheck } from "lucide-react";
+import { SITE_LINKS } from "@/components/layout/siteLinks";
 
 const FOCUS =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -45,14 +37,6 @@ const NAV_LINKS = [
     Icon: Inbox,
     exact: false,
   },
-];
-
-// Destinations publiques du site. Elles quittent l'espace vendeur : jamais
-// d'état actif ici, le sidebar n'y est de toute façon pas rendu.
-const SITE_LINKS = [
-  { href: "/", label: "Accueil", Icon: Home },
-  { href: "/docs", label: "Documentation", Icon: BookOpen },
-  { href: "/contact", label: "Contact", Icon: Mail },
 ];
 
 export function DashboardNav({ isAdmin }: { isAdmin: boolean }) {
@@ -123,7 +107,8 @@ export function DashboardNav({ isAdmin }: { isAdmin: boolean }) {
 
       {/* `mt-auto` colle la section au bas de la nav quand le menu est plus court
           que la colonne ; la marge s'annule d'elle-même dès que ça déborde, donc
-          les liens restent atteignables au défilement. */}
+          les liens restent atteignables au défilement. Pas d'état actif : ces
+          pages ne rendent pas le sidebar, et `href="/"` matcherait tout. */}
       <div className="mt-auto flex flex-col gap-0.5 border-t border-line pt-3">
         <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">
           Site

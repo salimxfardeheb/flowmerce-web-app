@@ -7,13 +7,12 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   AlertTriangle,
   RefreshCw,
   CloudUpload,
 } from "lucide-react";
+import { Pagination } from "@/components/dashboard/ui";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -536,106 +535,94 @@ export default function AdminClaimsPage() {
             </div>
 
             {/* Data table */}
-            <div className="bg-white border border-gray-200 rounded-lg overflow-x-auto">
-              <table className="w-full" style={{ minWidth: "2800px" }}>
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    {COLUMNS.map((col) => {
-                      const isActive = sortKey === col.key;
-                      return (
-                        <th
-                          key={col.key}
-                          className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3 select-none cursor-pointer hover:bg-gray-100 transition-colors"
-                          style={{ minWidth: col.minW }}
-                          onClick={() => toggleSort(col.key)}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            {col.label}
-                            {isActive ? (
-                              sortDir === "asc" ? (
-                                <ChevronUp size={12} className="text-indigo-600" />
-                              ) : (
-                                <ChevronDown size={12} className="text-indigo-600" />
-                              )
-                            ) : (
-                              <ChevronsUpDown size={12} className="text-gray-300" />
-                            )}
-                          </span>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {paginated.length === 0 ? (
+            <div className="bg-white border border-gray-200 rounded-lg">
+              <div className="overflow-x-auto">
+                <table className="w-full" style={{ minWidth: "2800px" }}>
+                  <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      <td
-                        colSpan={COLUMNS.length}
-                        className="px-4 py-12 text-center text-sm text-gray-400"
-                      >
-                        {exportFilter === "all"
-                          ? `Aucun résultat pour "${search}"`
-                          : exportFilter === "exported"
-                            ? "Aucune réclamation exportée pour le moment."
-                            : "Toutes les réclamations ont été exportées."}
-                      </td>
+                      {COLUMNS.map((col) => {
+                        const isActive = sortKey === col.key;
+                        return (
+                          <th
+                            key={col.key}
+                            className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3 select-none cursor-pointer hover:bg-gray-100 transition-colors"
+                            style={{ minWidth: col.minW }}
+                            onClick={() => toggleSort(col.key)}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {col.label}
+                              {isActive ? (
+                                sortDir === "asc" ? (
+                                  <ChevronUp size={12} className="text-indigo-600" />
+                                ) : (
+                                  <ChevronDown size={12} className="text-indigo-600" />
+                                )
+                              ) : (
+                                <ChevronsUpDown size={12} className="text-gray-300" />
+                              )}
+                            </span>
+                          </th>
+                        );
+                      })}
                     </tr>
-                  ) : (
-                    paginated.map((row) => {
-                      const noMlData = byId.get(row.id)?.hasMlInput === false;
-                      return (
-                        <tr
-                          key={row.id}
-                          className={`hover:bg-gray-50 transition-colors ${
-                            noMlData ? "bg-gray-50/60" : ""
-                          }`}
-                          title={
-                            noMlData
-                              ? "Aucune donnée ML enregistrée — cette réclamation sera ignorée par l'export."
-                              : undefined
-                          }
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {paginated.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={COLUMNS.length}
+                          className="px-4 py-12 text-center text-sm text-gray-400"
                         >
-                          {COLUMNS.map((col) => (
-                            <td
-                              key={col.key}
-                              className={`px-4 py-3 text-sm whitespace-nowrap ${
-                                noMlData ? "text-gray-400 italic" : "text-gray-700"
-                              }`}
-                            >
-                              {row[col.key]}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  disabled={safePage === 0}
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft size={14} />
-                  Précédent
-                </button>
-                <button
-                  disabled={safePage >= totalPages - 1}
-                  onClick={() =>
-                    setPage((p) => Math.min(totalPages - 1, p + 1))
-                  }
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Suivant
-                  <ChevronRight size={14} />
-                </button>
+                          {exportFilter === "all"
+                            ? `Aucun résultat pour "${search}"`
+                            : exportFilter === "exported"
+                              ? "Aucune réclamation exportée pour le moment."
+                              : "Toutes les réclamations ont été exportées."}
+                        </td>
+                      </tr>
+                    ) : (
+                      paginated.map((row) => {
+                        const noMlData = byId.get(row.id)?.hasMlInput === false;
+                        return (
+                          <tr
+                            key={row.id}
+                            className={`hover:bg-gray-50 transition-colors ${
+                              noMlData ? "bg-gray-50/60" : ""
+                            }`}
+                            title={
+                              noMlData
+                                ? "Aucune donnée ML enregistrée — cette réclamation sera ignorée par l'export."
+                                : undefined
+                            }
+                          >
+                            {COLUMNS.map((col) => (
+                              <td
+                                key={col.key}
+                                className={`px-4 py-3 text-sm whitespace-nowrap ${
+                                  noMlData ? "text-gray-400 italic" : "text-gray-700"
+                                }`}
+                              >
+                                {row[col.key]}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
-            )}
+
+              {/* La liste est déjà chargée et filtrée en mémoire : la
+                  pagination change un état local, sans passer par l'URL. */}
+              <Pagination
+                page={safePage + 1}
+                pageSize={PAGE_SIZE}
+                total={sorted.length}
+                label="réclamations"
+                onPageChange={(p) => setPage(p - 1)}
+              />
+            </div>
           </>
         )}
       </div>

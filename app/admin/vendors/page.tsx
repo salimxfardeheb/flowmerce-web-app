@@ -57,8 +57,8 @@ export default async function AdminVendorsPage() {
   return (
     <>
       {/* ── En-tête ── */}
-      <div className="bg-white border-b border-gray-200 px-4 sm:px-8 py-3 sm:py-4 sticky top-0 z-10">
-        <div className="flex items-center justify-between gap-4">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sticky top-0 z-10">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-sm font-semibold text-gray-900">Inscriptions vendeurs</h1>
@@ -81,35 +81,35 @@ export default async function AdminVendorsPage() {
       </div>
 
       {/* ── Contenu ── */}
-      <div className="px-4 sm:px-8 py-4 sm:py-6 space-y-4 sm:space-y-5">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 space-y-3.5">
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
           {[
             { label: "En attente",    value: counts.PENDING,             color: "text-amber-600",  Icon: Clock          },
             { label: "Docs à fournir", value: counts.DOCUMENTS_REQUESTED, color: "text-amber-600",  Icon: FileText       },
             { label: "Approuvés",     value: counts.APPROVED,            color: "text-green-600",  Icon: CheckCircle2   },
             { label: "Rejetés",       value: counts.REJECTED,            color: "text-red-500",    Icon: XCircle        },
           ].map(({ label, value, color, Icon }) => (
-            <div key={label} className="bg-white border border-gray-200 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+            <div key={label} className="bg-white border border-gray-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs text-gray-500">{label}</p>
-                <p className={`text-xl font-semibold mt-0.5 tabular-nums ${color}`}>{value}</p>
+                <p className="text-xs text-gray-500 leading-none">{label}</p>
+                <p className={`text-lg font-semibold mt-1.5 leading-none tabular-nums ${color}`}>{value}</p>
               </div>
-              <Icon size={16} className={`${color} opacity-40 shrink-0`} />
+              <Icon size={15} className={`${color} opacity-40 shrink-0`} />
             </div>
           ))}
         </div>
 
         {/* Liste des vendeurs */}
         {vendors.length === 0 ? (
-          <div className="bg-white rounded-lg border border-dashed border-gray-200 py-16 text-center">
+          <div className="bg-white rounded-lg border border-dashed border-gray-200 py-12 text-center">
             <ClipboardList size={24} className="mx-auto text-gray-300 mb-2" />
             <p className="text-sm font-medium text-gray-500">Aucun vendeur inscrit</p>
             <p className="text-xs text-gray-400 mt-1">Les nouvelles inscriptions apparaîtront ici.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {vendors.map((vendor) => {
               const isSuspended =
                 vendor.status === "REJECTED" &&
@@ -144,7 +144,7 @@ export default async function AdminVendorsPage() {
                   }`}
                 >
                   {/* ── Ligne titre ── */}
-                  <div className="px-4 sm:px-5 py-3 sm:py-4 flex items-start justify-between gap-3 sm:gap-4">
+                  <div className="px-4 sm:px-5 py-3 flex items-start justify-between gap-3 sm:gap-4">
                     <div className="flex items-center gap-2.5 flex-wrap min-w-0">
                       <p className="text-sm font-semibold text-gray-900">
                         {vendor.companyName}
@@ -175,22 +175,26 @@ export default async function AdminVendorsPage() {
                     </div>
                   </div>
 
-                  {/* ── Informations ── */}
-                  <div className="px-5 pb-4 border-t border-gray-100 pt-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
+                  {/* ── Informations ──
+                      `flex-wrap` plutôt qu'une grille : cinq libellés courts
+                      dans une grille à trois colonnes forçaient une deuxième
+                      ligne à moitié vide. En flux, ils tiennent sur une seule
+                      ligne et ne s'enroulent que si la place manque. */}
+                  <div className="px-4 sm:px-5 pb-3 border-t border-gray-100 pt-3">
+                    <dl className="flex flex-wrap gap-x-7 gap-y-2.5">
                       {infoRows.map(({ label, value }) => (
-                        <div key={label}>
-                          <p className="text-xs text-gray-400">{label}</p>
-                          <p className="text-xs font-medium text-gray-800 mt-0.5 break-all">
+                        <div key={label} className="min-w-0">
+                          <dt className="text-[11px] leading-none text-gray-400">{label}</dt>
+                          <dd className="text-xs font-medium text-gray-800 mt-1 leading-tight break-all">
                             {value}
-                          </p>
+                          </dd>
                         </div>
                       ))}
-                    </div>
+                    </dl>
 
                     {/* Note rejet ou suspension */}
                     {vendor.rejectionReason && !isSuspended && (
-                      <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
+                      <div className="mt-2.5 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
                         <AlertTriangle
                           size={12}
                           className="text-red-500 shrink-0 mt-0.5"
@@ -204,7 +208,7 @@ export default async function AdminVendorsPage() {
                       </div>
                     )}
                     {isSuspended && (
-                      <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
+                      <div className="mt-2.5 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
                         <AlertTriangle
                           size={12}
                           className="text-red-500 shrink-0 mt-0.5"
@@ -218,9 +222,10 @@ export default async function AdminVendorsPage() {
                       </div>
                     )}
 
-                    {/* Badges documents demandés */}
-                    {requestedTypes.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-3">
+                    {/* Documents demandés et lien profil sur une même rangée :
+                        le lien s'offrait auparavant une ligne à lui tout seul. */}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <div className="flex flex-wrap gap-1.5">
                         {requestedTypes.map((docType) => {
                           const submitted = vendor.documents.find(
                             (d) => d.type === docType,
@@ -256,13 +261,10 @@ export default async function AdminVendorsPage() {
                           );
                         })}
                       </div>
-                    )}
 
-                    {/* Lien profil */}
-                    <div className="mt-3 flex justify-end">
                       <Link
                         href={`/admin/clients/${vendor.id}`}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                        className="ml-auto text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
                       >
                         Voir le profil complet
                       </Link>
@@ -271,7 +273,7 @@ export default async function AdminVendorsPage() {
 
                   {/* ── Section révision documents ── */}
                   {hasDocsToReview && (
-                    <div className="border-t border-amber-100 bg-amber-50/30 px-5 py-5">
+                    <div className="border-t border-amber-100 bg-amber-50/30 px-4 sm:px-5 py-4">
                       <DocumentReviewSection
                         vendorId={vendor.id}
                         vendorStatus={vendor.status}

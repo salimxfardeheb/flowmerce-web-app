@@ -4,18 +4,20 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   formatDate,
-  CLAIM_STATUS_LABELS,
   CLAIM_TYPE_LABELS,
-  formatClaimType,
   DOCUMENT_TYPE_LABELS,
 } from "@/lib/utils";
 import {
   CheckCircle2, XCircle, Clock, Circle,
-  ArrowLeft, Mail, Phone, MapPin, Globe,
+  ArrowLeft, ArrowRight, Mail, Phone, MapPin, Globe,
   Key, Shield, CalendarDays, AlertTriangle,
 } from "lucide-react";
 import { VendorDetailActions } from "@/components/admin/VendorDetailActions";
 import { DocumentReviewSection } from "@/components/admin/DocumentReviewSection";
+import { VendorClaimsTable } from "@/components/admin/VendorClaimsTable";
+
+/** Nombre de réclamations affichées sur la fiche ; le reste vit sur `/claims`. */
+const RECENT_CLAIMS = 5;
 
 export default async function AdminVendorDetailPage({
   params,
@@ -37,11 +39,29 @@ export default async function AdminVendorDetailPage({
       returnPolicy: true,
       apiKeys: true,
       documents: { orderBy: { createdAt: "desc" } },
-      claims: { orderBy: { createdAt: "desc" }, take: 20 },
+      claims: { orderBy: { createdAt: "desc" }, take: RECENT_CLAIMS },
     },
   });
 
   if (!vendor) redirect("/admin/clients");
+
+  // Les compteurs se calculaient sur les réclamations chargées : le « Total »
+  // plafonnait donc au `take` de la requête. On les demande à la base.
+  const statusCounts = await prisma.claim.groupBy({
+    by: ["status"],
+    where: { vendorId },
+    _count: { _all: true },
+  });
+
+  const countFor = (status: string) =>
+    statusCounts.find((s) => s.status === status)?._count._all ?? 0;
+
+  const claimStats = {
+    total:    statusCounts.reduce((sum, s) => sum + s._count._all, 0),
+    pending:  countFor("PENDING"),
+    approved: countFor("APPROVED"),
+    rejected: countFor("REJECTED"),
+  };
 
   const isSuspended =
     vendor.status === "REJECTED" &&
@@ -51,21 +71,7 @@ export default async function AdminVendorDetailPage({
     ? vendor.rejectionReason?.replace("[SUSPENDU] ", "")
     : null;
 
-  const claimStats = {
-    total:    vendor.claims.length,
-    pending:  vendor.claims.filter((c) => c.status === "PENDING").length,
-    approved: vendor.claims.filter((c) => c.status === "APPROVED").length,
-    rejected: vendor.claims.filter((c) => c.status === "REJECTED").length,
-  };
-
   const activeKeys = vendor.apiKeys.filter((k) => k.isActive);
-
-  const claimStatusBadge: Record<string, string> = {
-    PENDING:     "bg-yellow-50 text-yellow-700 border border-yellow-200",
-    APPROVED:    "bg-green-50 text-green-700 border border-green-200",
-    REJECTED:    "bg-red-50 text-red-700 border border-red-200",
-    IN_PROGRESS: "bg-blue-50 text-blue-700 border border-blue-200",
-  };
 
   const policy = vendor.returnPolicy;
 
@@ -419,128 +425,27 @@ export default async function AdminVendorDetailPage({
 
         {/* ── Réclamations récentes ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">
-              Réclamations récentes
-            </h2>
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-              20 dernières
-            </span>
+          <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-sm font-semibold text-gray-900">
+                Réclamations récentes
+              </h2>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                {RECENT_CLAIMS} dernières
+              </span>
+            </div>
+            {claimStats.total > 0 && (
+              <Link
+                href={`/admin/clients/${vendor.id}/claims`}
+                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors group"
+              >
+                Voir les {claimStats.total} réclamations
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+            )}
           </div>
 
-          {vendor.claims.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center mb-3">
-                <XCircle className="w-5 h-5 text-gray-300" />
-              </div>
-              <p className="text-sm font-medium text-gray-500">
-                Aucune réclamation
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Les réclamations de ce vendeur apparaîtront ici.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-150">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/60">
-                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 sm:px-6 py-3">
-                      Client
-                    </th>
-                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-6 py-3">
-                      Commande
-                    </th>
-                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">
-                      Type
-                    </th>
-                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">
-                      Statut
-                    </th>
-                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">
-                      Score IA
-                    </th>
-                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-6 py-3">
-                      Date
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {vendor.claims.map((claim) => (
-                    <tr
-                      key={claim.id}
-                      className="hover:bg-gray-50/60 transition-colors"
-                    >
-                      <td className="px-6 py-3.5">
-                        <p className="text-sm font-medium text-gray-800 leading-tight">
-                          {claim.customerName}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {claim.customerEmail}
-                        </p>
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <span className="text-xs font-mono bg-gray-100 text-gray-700 px-2 py-1 rounded-md">
-                          {claim.orderId}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className="text-xs text-gray-600">
-                          {formatClaimType(claim.type)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                            claimStatusBadge[claim.status] ??
-                            "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {CLAIM_STATUS_LABELS[claim.status]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {claim.aiScore !== null ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-14 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  claim.aiScore >= 0.7
-                                    ? "bg-green-500"
-                                    : claim.aiScore >= 0.4
-                                    ? "bg-yellow-400"
-                                    : "bg-red-500"
-                                }`}
-                                style={{ width: `${claim.aiScore * 100}%` }}
-                              />
-                            </div>
-                            <span
-                              className={`text-xs font-medium tabular-nums ${
-                                claim.aiScore >= 0.7
-                                  ? "text-green-700"
-                                  : claim.aiScore >= 0.4
-                                  ? "text-yellow-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {Math.round(claim.aiScore * 100)}%
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <p className="text-xs text-gray-400 whitespace-nowrap">
-                          {formatDate(claim.createdAt)}
-                        </p>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <VendorClaimsTable claims={vendor.claims} />
         </div>
 
         {/* ── Clés API ── */}

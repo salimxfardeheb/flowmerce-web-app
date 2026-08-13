@@ -252,22 +252,85 @@ function pageWindow(page: number, totalPages: number): (number | "gap")[] {
 }
 
 /**
- * Pagination serveur. `hrefFor` reçoit un numéro de page et rend l'URL, ce qui
- * laisse à l'appelant la responsabilité de conserver ses filtres.
+ * Un pas de pagination : lien quand la page est paginée côté serveur, bouton
+ * quand elle l'est en mémoire. Le reste (styles, libellés, ARIA) est commun.
+ */
+function PageControl({
+  to,
+  disabled,
+  rel,
+  className,
+  ariaLabel,
+  ariaCurrent,
+  hrefFor,
+  onPageChange,
+  children,
+}: {
+  to: number;
+  disabled?: boolean;
+  rel?: "prev" | "next";
+  className: string;
+  ariaLabel?: string;
+  ariaCurrent?: "page";
+  hrefFor?: (page: number) => string;
+  onPageChange?: (page: number) => void;
+  children: React.ReactNode;
+}) {
+  if (hrefFor) {
+    return (
+      <Link
+        href={hrefFor(to)}
+        rel={rel}
+        aria-disabled={disabled || undefined}
+        aria-label={ariaLabel}
+        aria-current={ariaCurrent}
+        tabIndex={disabled ? -1 : undefined}
+        className={className}
+      >
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onPageChange?.(to)}
+      aria-label={ariaLabel}
+      aria-current={ariaCurrent}
+      className={className}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Pagination.
+ *
+ * Deux modes, exclusifs l'un de l'autre :
+ *   · `hrefFor`      — pagination serveur. Reçoit un numéro de page et rend
+ *                      l'URL, ce qui laisse à l'appelant la responsabilité de
+ *                      conserver ses filtres.
+ *   · `onPageChange` — pagination locale, pour une liste déjà chargée et
+ *                      filtrée en mémoire. Réservé aux composants client.
  */
 export function Pagination({
   page,
   pageSize,
   total,
   hrefFor,
+  onPageChange,
   label = "éléments",
 }: {
   page: number;
   pageSize: number;
   total: number;
-  hrefFor: (page: number) => string;
   label?: string;
-}) {
+} & (
+  | { hrefFor: (page: number) => string; onPageChange?: never }
+  | { onPageChange: (page: number) => void; hrefFor?: never }
+)) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (total === 0) return null;
 
@@ -292,16 +355,17 @@ export function Pagination({
       </p>
 
       <div className="flex items-center gap-1">
-        <Link
-          href={hrefFor(page - 1)}
-          aria-disabled={page <= 1}
-          tabIndex={page <= 1 ? -1 : undefined}
+        <PageControl
+          to={Math.max(1, page - 1)}
+          disabled={page <= 1}
           rel="prev"
           className={page <= 1 ? arrowOff : arrowOn}
+          hrefFor={hrefFor}
+          onPageChange={onPageChange}
         >
           <ChevronLeft size={14} aria-hidden />
           <span className="hidden sm:inline">Précédent</span>
-        </Link>
+        </PageControl>
 
         <ul className="hidden items-center gap-1 sm:flex list-none m-0 p-0">
           {pageWindow(page, totalPages).map((p, i) =>
@@ -311,10 +375,12 @@ export function Pagination({
               </li>
             ) : (
               <li key={p}>
-                <Link
-                  href={hrefFor(p)}
-                  aria-current={p === page ? "page" : undefined}
-                  aria-label={`Page ${p}`}
+                <PageControl
+                  to={p}
+                  ariaCurrent={p === page ? "page" : undefined}
+                  ariaLabel={`Page ${p}`}
+                  hrefFor={hrefFor}
+                  onPageChange={onPageChange}
                   className={`inline-flex min-w-8 justify-center rounded-control px-2 py-1.5 text-[12px] font-semibold tabular-nums transition-colors ${FOCUS} ${
                     p === page
                       ? "bg-brand text-on-brand"
@@ -322,7 +388,7 @@ export function Pagination({
                   }`}
                 >
                   {p}
-                </Link>
+                </PageControl>
               </li>
             ),
           )}
@@ -332,16 +398,17 @@ export function Pagination({
           {page} / {totalPages}
         </span>
 
-        <Link
-          href={hrefFor(page + 1)}
-          aria-disabled={page >= totalPages}
-          tabIndex={page >= totalPages ? -1 : undefined}
+        <PageControl
+          to={Math.min(totalPages, page + 1)}
+          disabled={page >= totalPages}
           rel="next"
           className={page >= totalPages ? arrowOff : arrowOn}
+          hrefFor={hrefFor}
+          onPageChange={onPageChange}
         >
           <span className="hidden sm:inline">Suivant</span>
           <ChevronRight size={14} aria-hidden />
-        </Link>
+        </PageControl>
       </div>
     </nav>
   );

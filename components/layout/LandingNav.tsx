@@ -130,7 +130,7 @@ function AccountMenu({ user }: { user: NavUser }) {
                 className={`flex items-center gap-2 rounded-control px-2.5 py-2 text-[13px] font-medium text-body transition-colors hover:bg-brand-soft hover:text-ink ${FOCUS}`}
               >
                 {i === 0 && <LayoutDashboard size={15} strokeWidth={1.75} aria-hidden />}
-                <span className={i === 0 ? "" : "pl-[23px]"}>{l.label}</span>
+                <span className={i === 0 ? "" : "pl-5.75"}>{l.label}</span>
               </Link>
             ))}
           </div>
