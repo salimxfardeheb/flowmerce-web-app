@@ -1,19 +1,135 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────
+   Tokens de la landing. Thème clair verrouillé.
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Surfaces */
+  --color-page:    #f7f8fc;
+  --color-haze:    #ebeefb;
+  --color-surface: #ffffff;
+  --color-warm:    #faf6f0;
+  --color-deep:    #16265c;
+
+  /* Texte (tous ≥ 4.5:1 sur leur surface) */
+  --color-ink:   #0f1a3d;
+  --color-body:  #545f7a;
+  --color-faint: #6b7593;
+
+  /* Traits */
+  --color-line: #e5e8f3;
+
+  /* Accent unique */
+  --color-brand:      #4f46e5;
+  --color-brand-dark: #4338ca;
+  --color-brand-ink:  #4338ca;
+  --color-brand-soft: #eef0fe;
+  --color-on-brand:   #ffffff;
+
+  /* Échelle de risque */
+  --color-risk-low:  #15803d;
+  --color-risk-mid:  #b45309;
+  --color-risk-high: #be123c;
+
+  /* Rayons : contrôles 10px, cartes 16px, blocs de section 24px */
+  --radius-control: 0.625rem;
+  --radius-card:    1rem;
+  --radius-block:   1.5rem;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Motion : entrée au chargement + révélation au scroll.
+   Zéro JS, zéro listener — animation-timeline: view().
+   Sans support ou en reduced-motion, tout reste visible.
+   ───────────────────────────────────────────────────────────── */
+@keyframes fm-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes fm-in-left {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes fm-in-right {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes fm-pop {
+  from { opacity: 0; transform: scale(0.4); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes fm-draw {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+/* Ancrages : la nav fixe fait 4rem, on réserve un peu plus. */
+html {
+  scroll-padding-top: 5rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  .fm-enter {
+    animation: fm-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @supports (animation-timeline: view()) {
+    .fm-reveal {
+      animation: fm-rise linear both;
+      animation-timeline: view();
+      /* Se termine pendant l’entrée : un bloc entièrement visible est
+         forcément à 100 %, même en bas de page où le scroll s’arrête. */
+      animation-range: entry 5% entry 85%;
+    }
+
+    /* Workflow : le trait se dessine, les jalons éclosent, les cartes
+       arrivent par leur côté. Chaque étape a sa propre progression. */
+    .fm-line {
+      transform-origin: top;
+      animation: fm-draw linear both;
+      animation-timeline: view();
+      animation-range: cover 8% cover 62%;
+    }
+
+    .fm-node {
+      animation: fm-pop linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 26%;
+    }
+
+    .fm-step {
+      animation: fm-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 15% cover 32%;
+    }
+
+    @media (min-width: 768px) {
+      .fm-step-l { animation-name: fm-in-left; }
+      .fm-step-r { animation-name: fm-in-right; }
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Reste de l'app : police système inchangée.
+   La landing applique `font-sans` sur son conteneur racine.
+   ───────────────────────────────────────────────────────────── */
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {

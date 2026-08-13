@@ -1,469 +1,823 @@
 import Link from "next/link";
-import Image from "next/image";
-import { LandingNav } from "@/components/layout/LandingNav";
+import { SiteHeader } from "@/components/layout/SiteHeader";
+import { SiteFooter } from "@/components/layout/SiteFooter";
+import { whatsappUrl } from "@/lib/contact";
+import {
+  BellRing,
+  Check,
+  GitBranch,
+  Gauge,
+  History,
+  Inbox,
+  Link2,
+  Mail,
+  MessageCircle,
+  PanelsTopLeft,
+  Plus,
+  ScanEye,
+  ScrollText,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 
-function IconShield() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
-}
+// Icônes : lucide-react, déjà utilisé par le reste de l'app. strokeWidth 1.75 partout.
+const STROKE = 1.75;
 
-function IconZap() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  );
-}
+const FOCUS =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
-function IconLink() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-    </svg>
-  );
-}
+const BTN_PRIMARY = `inline-flex items-center justify-center bg-brand text-on-brand px-5 py-3 rounded-control text-sm font-semibold hover:bg-brand-dark active:translate-y-px transition-[background-color,transform] ${FOCUS}`;
 
-function IconBell() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  );
-}
+const BTN_SECONDARY = `inline-flex items-center justify-center bg-surface text-ink px-5 py-3 rounded-control text-sm font-semibold border border-line hover:border-brand/40 active:translate-y-px transition-[border-color,transform] ${FOCUS}`;
 
-function IconLayers() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 2 7 12 12 22 7 12 2" />
-      <polyline points="2 17 12 22 22 17" />
-      <polyline points="2 12 12 17 22 12" />
-    </svg>
-  );
-}
+// ── Données ───────────────────────────────────────────────────────────────────
 
-function IconCheck() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 11l3 3L22 4" />
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-    </svg>
-  );
-}
-
-function IconClock() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-  );
-}
-
-function IconTrendDown() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
-      <polyline points="17 18 23 18 23 12" />
-    </svg>
-  );
-}
-
-
-const FEATURES = [
-  {
-    icon: <IconShield />,
-    title: "Politique flexible",
-    desc: "Definissez vos conditions de retour par produit, delai ou motif. Chaque decision respecte vos regles — sans exception.",
-    badge: "Vos regles",
-  },
-  {
-    icon: <IconZap />,
-    title: "Decisions automatiques",
-    desc: "Flowmerce analyse chaque reclamation et choisit : echange, remboursement ou reparation. Zero intervention manuelle.",
-    badge: "Sans intervention",
-  },
-  {
-    icon: <IconLink />,
-    title: "Connexion par cle API",
-    desc: "Generez une cle API, integrez-la a votre boutique, et Flowmerce traite vos reclamations en temps reel. Aucun code a ecrire.",
-    badge: "API REST",
-  },
-  {
-    icon: <IconLayers />,
-    title: "Portail client dedie",
-    desc: "Vos clients soumettent leur reclamation via un portail a votre marque. Vous ne gerez plus rien manuellement.",
-    badge: "White-label",
-  },
-  {
-    icon: <IconBell />,
-    title: "Notifications automatiques",
-    desc: "A chaque etape, votre client est informe par email. Vous reduisez les contacts SAV sans effort.",
-    badge: "Multi-canal",
-  },
-  {
-    icon: <IconCheck />,
-    title: "Decisions tracables",
-    desc: "Chaque decision est horodatee et justifiee. En cas de litige, vous avez une trace complete et exportable.",
-    badge: "Audit complet",
-  },
-  {
-    icon: <IconClock />,
-    title: "Gain de temps immediat",
-    desc: "Une reclamation traitee manuellement prend 12 minutes en moyenne. Avec Flowmerce, elle est resolue en quelques secondes.",
-    badge: "-90% de temps",
-  },
-  {
-    icon: <IconTrendDown />,
-    title: "Moins de retours abusifs",
-    desc: "La detection de fraude integree bloque les demandes a risque avant qu'elles ne coutent quoi que ce soit.",
-    badge: "Anti-fraude",
-  },
-];
-
-const STEPS = [
+const SETUP_STEPS = [
   {
     step: "01",
     title: "Connectez votre boutique",
-    desc: "Reliez Flowmerce a votre plateforme e-commerce en quelques clics. Shopify, WooCommerce, PrestaShop — tout est supporte.",
+    desc: "Reliez Flowmerce à votre plateforme e-commerce en quelques clics.",
   },
   {
     step: "02",
-    title: "Definissez vos regles",
-    desc: "Configurez vos conditions : delais, motifs acceptes, decisions associees. Flowmerce applique vos regles sans que vous interveniez.",
+    title: "Définissez vos règles",
+    desc: "Délais, motifs acceptés, résolutions autorisées. Vos conditions, écrites une fois.",
   },
   {
     step: "03",
-    title: "Generez votre cle API",
-    desc: "Copiez votre cle API depuis votre tableau de bord. C'est elle qui fait le lien entre vos commandes et les decisions de Flowmerce.",
+    title: "Générez votre clé API",
+    desc: "Une clé depuis le tableau de bord, et vos commandes parlent à Flowmerce.",
   },
   {
     step: "04",
     title: "Flowmerce prend le relais",
-    desc: "Les reclamations arrivent, sont analysees et traitees automatiquement. Vous suivez les resultats en temps reel, sans rien faire.",
+    desc: "Les réclamations arrivent, sont analysées et vous attendent, déjà instruites.",
   },
 ];
 
-const STATS = [
-  { value: "90%", label: "De temps economise par reclamation" },
-  { value: "3x", label: "Moins de litiges non resolus" },
-  { value: "15 min", label: "Pour etre operationnel" },
-  { value: "0", label: "Ligne de code a ecrire" },
+// `tone` : couleur de l’icône du jalon. Les libellés restent en encre neutre,
+// la couleur porte le repère visuel sans multiplier les micro-labels.
+const FLOW = [
+  {
+    icon: Inbox,
+    tone: "text-indigo-600",
+    title: "Le client dépose sa demande",
+    desc: "Depuis le portail Flowmerce à votre marque, ou via l’API de votre boutique.",
+  },
+  {
+    icon: ShieldCheck,
+    tone: "text-blue-600",
+    title: "Données et politique vérifiées",
+    desc: "La demande est confrontée à votre politique : délai, motif, type de retour autorisé.",
+  },
+  {
+    icon: Gauge,
+    tone: "text-pink-600",
+    title: "Niveau de risque calculé",
+    desc: "Historique du client et signaux de fraude, à l’échelle du réseau Flowmerce.",
+  },
+  {
+    icon: Sparkles,
+    tone: "text-teal-600",
+    title: "Résolution proposée par l’IA",
+    desc: "Le modèle croise la réclamation, votre politique et le contexte client.",
+  },
+  {
+    icon: GitBranch,
+    tone: "text-violet-600",
+    title: "Validation manuelle ou automatique",
+    desc: "Vous arbitrez chaque dossier, ou vous laissez passer ceux qui respectent vos règles.",
+  },
+  {
+    icon: BellRing,
+    tone: "text-rose-500",
+    title: "Décision appliquée, client notifié",
+    desc: "Le résultat part par email, la décision et son historique restent horodatés.",
+  },
 ];
 
-type MockRow = {
-  id: string;
-  product: string;
-  issue: string;
-  decision: string;
-  decisionClass: string;
-  fraud: string;
-  fraudClass: string;
+type Feature = {
+  icon: typeof ScrollText;
+  tone: string;
+  title: string;
+  desc: string;
+  span?: boolean;
+  surface?: "soft" | "deep";
 };
 
-const MOCK_ROWS: MockRow[] = [
+const FEATURES: Feature[] = [
+  {
+    icon: ScrollText,
+    tone: "text-indigo-600",
+    title: "Votre politique fait loi",
+    desc: "Conditions par produit, délai ou motif. Aucune décision ne sort du cadre que vous avez écrit, y compris en automatique.",
+    span: true,
+    surface: "soft",
+  },
+  {
+    icon: Zap,
+    tone: "text-teal-600",
+    title: "Décisions automatiques",
+    desc: "Flowmerce analyse, tranche et notifie sans traitement manuel.",
+  },
+  {
+    icon: Link2,
+    tone: "text-blue-600",
+    title: "Connexion par clé API",
+    desc: "Une clé, votre boutique reliée, vos réclamations traitées en temps réel.",
+  },
+  {
+    icon: PanelsTopLeft,
+    tone: "text-violet-600",
+    title: "Portail client dédié",
+    desc: "Vos clients déposent leur demande sur un portail à votre marque.",
+  },
+  {
+    icon: History,
+    tone: "text-green-600",
+    title: "Décisions traçables",
+    desc: "Chaque décision horodatée et justifiée. En cas de litige, la trace existe.",
+  },
+  {
+    icon: ScanEye,
+    tone: "text-teal-300",
+    title: "Détection des comportements à risque",
+    desc: "Un client refusé chez trois marchands du réseau ne repart pas de zéro chez vous.",
+    span: true,
+    surface: "deep",
+  },
+];
+
+const MOCK_ROWS = [
   {
     id: "#REC-4821",
-    product: "Veste en cuir — Taille M",
-    issue: "Taille incorrecte",
-    decision: "Echange",
-    decisionClass: "bg-blue-50 text-blue-700",
-    fraud: "Risque faible",
-    fraudClass: "bg-green-50 text-green-700",
+    product: "Veste en cuir, taille M",
+    decision: "Échange",
+    cls: "bg-blue-50 text-blue-700",
   },
   {
     id: "#REC-4820",
-    product: "Sneakers 42 — Blanc",
-    issue: "Defaut de fabrication",
+    product: "Sneakers 42, blanc",
     decision: "Remboursement",
-    decisionClass: "bg-indigo-50 text-indigo-700",
-    fraud: "Risque moyen",
-    fraudClass: "bg-yellow-50 text-yellow-700",
+    cls: "bg-indigo-50 text-indigo-700",
   },
   {
     id: "#REC-4819",
-    product: "Sac a dos voyage — Noir",
-    issue: "Livraison endommagee",
-    decision: "Reparation",
-    decisionClass: "bg-purple-50 text-purple-700",
-    fraud: "Risque faible",
-    fraudClass: "bg-green-50 text-green-700",
-  },
-  {
-    id: "#REC-4818",
-    product: "Montre connectee — Pro",
-    issue: "Autre",
-    decision: "Remboursement",
-    decisionClass: "bg-indigo-50 text-indigo-700",
-    fraud: "Fraude detectee",
-    fraudClass: "bg-red-50 text-red-700",
+    product: "Sac à dos voyage, noir",
+    decision: "Réparation",
+    cls: "bg-amber-50 text-amber-700",
   },
 ];
 
+// Décomposition réelle du score : cf. computeFraudScore() dans lib/fraud-score.ts
+// claims × 5 (max 30) + refus × 10 (max 40) + (marchands − 1) × 15 (max 30)
+const FRAUD_SIGNALS = [
+  { label: "3 réclamations enregistrées", value: "+15" },
+  { label: "3 colis refusés signalés", value: "+30" },
+  { label: "3 boutiques concernées", value: "+30" },
+];
+
+// Coordonnées : cf. lib/contact.ts
+
+// Objections réelles d’un marchand qui hésite à brancher Flowmerce sur son
+// flux de commandes. Chaque réponse est vérifiable dans le code, la référence
+// est indiquée en commentaire.
+const FAQ = [
+  {
+    q: "C’est vraiment gratuit ?",
+    // Aucun modèle plan/subscription/billing dans prisma/schema.prisma.
+    a: "Oui. Aucun moyen de paiement n’est demandé à l’inscription, et aucune fonctionnalité n’est réservée à une offre payante : le réseau anti-fraude, l’API et le portail client sont ouverts à toutes les boutiques.",
+  },
+  {
+    q: "Les autres boutiques voient-elles mes clients ?",
+    // /api/predict ne renvoie que fraud_score_applied: { value, source }.
+    a: "Non. Une boutique ne reçoit qu’un score sur 100 et le nombre de boutiques ayant croisé ce client. Ni les noms des autres marchands, ni leurs commandes, ni le détail de leurs signalements ne sortent de chez eux.",
+  },
+  {
+    q: "Un concurrent peut-il signaler mes clients à tort ?",
+    // report-refusal : orderId vérifié + contrainte unique vendorId+orderId.
+    a: "Un marchand ne peut signaler qu’un client qu’il a réellement servi : Flowmerce exige une commande tracée de son côté avant d’accepter le signalement, et un même dossier ne compte qu’une fois. Un vendeur seul ne peut pas dépasser 70 sur 100.",
+  },
+  {
+    q: "L’IA peut-elle trancher sans mon accord ?",
+    // ValidationMode @default(MANUAL) dans prisma/schema.prisma.
+    a: "Pas par défaut. À la création de votre compte, chaque réclamation attend votre validation. L’approbation automatique existe, mais c’est un réglage que vous activez vous-même, quand vous avez vu le modèle travailler.",
+  },
+  {
+    q: "Que devient une réclamation si votre modèle est indisponible ?",
+    // mlFailed + worker de reprise /api/cron/retry-ml toutes les 10 min.
+    a: "Elle est enregistrée quand même, marquée comme non traitée, puis rejouée automatiquement toutes les dix minutes jusqu’à ce que la décision aboutisse. Aucune demande client n’est perdue à cause d’une panne de notre côté.",
+  },
+];
+
+const PRICING_INCLUDES = [
+  "Réclamations sans limite de volume",
+  "Portail client à votre marque",
+  "Clés API et endpoint de décision",
+  "Réseau anti-fraude inter-boutiques",
+  "Politique de retour configurable",
+  "Historique horodaté et notifications par email",
+];
+
+// Bornes calées sur les seuils configurables réels (FRAUD_LEVELS dans
+// app/dashboard/return-policy) : 40 flexible, 70 équilibré, 85 strict.
+const FRAUD_BANDS = [
+  { label: "Faible", range: "0 à 39", tone: "text-risk-low" },
+  { label: "À surveiller", range: "40 à 70", tone: "text-risk-mid" },
+  { label: "Alerte", range: "au-delà de 70", tone: "text-risk-high" },
+];
+
+// ── Sous-composants ───────────────────────────────────────────────────────────
+
+function SectionHeading({
+  eyebrow,
+  title,
+  lead,
+  align = "center",
+}: {
+  eyebrow?: string;
+  title: React.ReactNode;
+  lead?: string;
+  align?: "center" | "left";
+}) {
+  const centered = align === "center";
+  return (
+    <div className={centered ? "text-center max-w-2xl mx-auto" : "max-w-md"}>
+      {eyebrow && (
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand-ink mb-3">
+          {eyebrow}
+        </p>
+      )}
+      <h2 className="text-3xl sm:text-4xl font-extrabold tracking-[-0.02em] leading-[1.1] text-ink">
+        {title}
+      </h2>
+      {lead && <p className="mt-4 text-[15px] text-body leading-relaxed">{lead}</p>}
+    </div>
+  );
+}
+
+// Aperçu du tableau de bord. Données d’illustration.
+function DashboardPreview() {
+  return (
+    <figure className="bg-surface rounded-card border border-line shadow-[0_24px_60px_-32px_rgb(15_26_61/0.35)] overflow-hidden m-0">
+      <div className="bg-page border-b border-line px-3 py-2.5 flex items-center gap-3">
+        <div className="flex gap-1.5 shrink-0" aria-hidden>
+          <span className="size-2 rounded-full bg-red-400" />
+          <span className="size-2 rounded-full bg-amber-400" />
+          <span className="size-2 rounded-full bg-green-400" />
+        </div>
+        <span className="flex-1 text-center text-[11px] text-faint truncate">
+          flowmerce.app/dashboard
+        </span>
+        <span className="text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full shrink-0">
+          Temps réel
+        </span>
+      </div>
+
+      <div className="p-3 sm:p-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
+          <div className="rounded-control bg-indigo-50/70 p-2.5">
+            <p className="text-[11px] text-body mb-0.5">Réclamations</p>
+            <p className="text-lg font-extrabold text-brand-ink">248</p>
+          </div>
+          <div className="rounded-control bg-green-50/70 p-2.5">
+            <p className="text-[11px] text-body mb-0.5">Décision moyenne</p>
+            <p className="text-lg font-extrabold text-green-700">4 sec</p>
+          </div>
+          <div className="rounded-control bg-red-50/70 p-2.5">
+            <p className="text-[11px] text-body mb-0.5">Fraudes</p>
+            <p className="text-lg font-extrabold text-red-600">14</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-bold text-ink">Réclamations récentes</span>
+          <span className="text-[11px] font-semibold text-brand-ink">Voir tout</span>
+        </div>
+
+        <ul className="divide-y divide-line list-none p-0 m-0">
+          {MOCK_ROWS.map((row) => (
+            <li key={row.id} className="flex items-center justify-between gap-3 py-2.5">
+              <span className="min-w-0">
+                <span className="block text-[11px] font-mono text-faint">{row.id}</span>
+                <span className="block text-xs font-medium text-ink truncate">{row.product}</span>
+              </span>
+              <span
+                className={`text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0 ${row.cls}`}
+              >
+                {row.decision}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <figcaption className="sr-only">
+        Aperçu du tableau de bord Flowmerce avec des données d’illustration :
+        réclamations du mois, temps de décision moyen, fraudes bloquées et
+        dernières réclamations traitées.
+      </figcaption>
+    </figure>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-
-      {/* ── NAVBAR ── */}
-      <LandingNav />
+    <div className="min-h-dvh bg-page text-ink font-sans">
+      <SiteHeader />
 
       {/* ── HERO ── */}
-      <section className="pt-28 sm:pt-32 pb-16 sm:pb-24 px-4 sm:px-6 bg-linear-to-b from-indigo-50/60 to-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="max-w-3xl mx-auto text-center mb-12 sm:mb-16">
-            <div className="inline-flex items-center gap-2 bg-white border border-indigo-100 text-indigo-700 text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-full mb-6 sm:mb-8 shadow-sm">
-              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full inline-block shrink-0" />
-              <span>Plateforme gratuite de gestion des retours e-commerce</span>
-            </div>
+      {/* Hauteur d’écran : `min-h-dvh` plutôt que `h-screen`, pour que le hero
+          puisse dépasser sur mobile et ne saute pas quand la barre d’adresse
+          d’iOS Safari se rétracte. Le `pt-16` compense la nav fixe. */}
+      <section className="relative isolate overflow-hidden min-h-dvh flex items-center bg-page pt-16 pb-12 px-4 sm:px-6">
+        {/* Fonds : deux halos en dégradé radial plutôt que des cercles floutés
+            (pas de filtre à repeindre), plus un grain très léger qui casse
+            l’aplat CSS. Purement décoratif, hors de l’arbre d’accessibilité. */}
+        <div aria-hidden className="absolute inset-0 -z-10">
+          <div className="absolute inset-0 bg-linear-to-b from-haze via-haze to-page" />
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: [
+                "radial-gradient(58% 46% at 78% 14%, color-mix(in oklab, var(--color-brand) 15%, transparent), transparent 70%)",
+                "radial-gradient(44% 40% at 4% 96%, var(--color-warm), transparent 72%)",
+              ].join(","),
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.04]"
+            style={{
+              backgroundImage:
+                "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+            }}
+          />
+        </div>
 
-            <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] mb-5 sm:mb-6">
-              Chaque reclamation traitee
-              <br className="hidden sm:block" />
-              {" "}
-              <span className="text-indigo-600">sans y toucher</span>
+        {/* Décalages verticaux inverses : la lecture descend en diagonale du
+            titre vers la carte, au lieu de deux colonnes posées à plat. */}
+        <div className="w-full max-w-6xl mx-auto grid lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+          <div className="lg:col-span-7 lg:-translate-y-6">
+            <h1 className="fm-enter text-5xl sm:text-6xl font-extrabold tracking-[-0.03em] leading-[1.02] text-ink">
+              L’IA recommande,
+              <br />
+              <span className="text-brand-ink">
+                Vous maîtrisez vos retours.
+              </span>
             </h1>
 
-            <p className="text-base sm:text-lg text-gray-500 leading-relaxed mb-8 sm:mb-10 max-w-2xl mx-auto">
-              Flowmerce analyse chaque demande, applique vos regles et rend une decision —
-              echange, remboursement ou reparation. Vous recuperez du temps et reduisez vos pertes.
+            <p
+              className="fm-enter mt-7 text-base sm:text-lg text-body leading-relaxed max-w-lg"
+              style={{ animationDelay: "90ms" }}
+            >
+              Flowmerce analyse automatiquement chaque demande de retour avec
+              l’IA, en croisant votre politique, l’historique client et le
+              niveau de risque pour proposer la meilleure décision — vous restez
+              libre de choisir la décision finale à appliquer.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-              <Link
-                href="/auth/register"
-                className="bg-indigo-600 text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-base font-semibold shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-indigo-300 transition-all"
-              >
+            <div
+              className="fm-enter mt-10 flex flex-col sm:flex-row gap-3"
+              style={{ animationDelay: "180ms" }}
+            >
+              <Link href="/auth/register" className={BTN_PRIMARY}>
                 Commencer gratuitement
               </Link>
-              <a
-                href="#how-it-works"
-                className="bg-white text-gray-700 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-base font-semibold border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all"
-              >
-                Voir comment ca marche
+              <a href="#etapes" className={BTN_SECONDARY}>
+                Comment ça marche
               </a>
             </div>
-
-            <p className="text-sm text-gray-400 mt-4 sm:mt-5">
-              Gratuit · Aucune configuration complexe · Operationnel en 15 minutes
-            </p>
           </div>
 
-          {/* Dashboard mockup */}
-          <div className="max-w-5xl mx-auto relative">
-            <div className="absolute -inset-6 bg-indigo-500/5 rounded-3xl blur-3xl -z-10" />
-            <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
-              {/* Browser bar */}
-              <div className="bg-gray-50 border-b border-gray-100 px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
-                <div className="flex gap-1.5 shrink-0">
-                  <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-red-400" />
-                  <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-yellow-400" />
-                  <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-400" />
-                </div>
-                <div className="flex-1 bg-white rounded-md h-5 sm:h-6 border border-gray-200 max-w-xs sm:max-w-sm mx-auto flex items-center px-2 sm:px-3 min-w-0">
-                  <span className="text-xs text-gray-400 truncate">app.flowmerce.io/dashboard</span>
-                </div>
-              </div>
-
-              {/* Dashboard content */}
-              <div className="p-3 sm:p-6 bg-gray-50/30">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-5">
-                  <div className="bg-white rounded-xl p-3 sm:p-4 border border-gray-100 shadow-sm">
-                    <p className="text-xs text-gray-400 mb-1">Reclamations ce mois</p>
-                    <p className="text-xl sm:text-2xl font-bold text-indigo-600">248</p>
-                    <p className="text-xs text-green-600 mt-1">100% traitees automatiquement</p>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 sm:p-4 border border-gray-100 shadow-sm">
-                    <p className="text-xs text-gray-400 mb-1">Temps moyen de decision</p>
-                    <p className="text-xl sm:text-2xl font-bold text-green-600">4 sec</p>
-                    <p className="text-xs text-green-600 mt-1">vs 12 min manuellement</p>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 sm:p-4 border border-gray-100 shadow-sm">
-                    <p className="text-xs text-gray-400 mb-1">Fraudes bloquees</p>
-                    <p className="text-xl sm:text-2xl font-bold text-red-500">14</p>
-                    <p className="text-xs text-red-500 mt-1">ce mois — avant paiement</p>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="px-3 sm:px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-800">Reclamations recentes</span>
-                    <span className="text-xs text-indigo-600 font-medium cursor-pointer hover:underline shrink-0">Voir tout</span>
-                  </div>
-
-                  {/* Table header — desktop only */}
-                  <div className="hidden md:grid grid-cols-[80px_1fr_110px_100px_110px] gap-3 px-4 py-2 bg-gray-50/80 border-b border-gray-100">
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">ID</span>
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Produit</span>
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Motif</span>
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Decision</span>
-                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Risque fraude</span>
-                  </div>
-
-                  <div className="divide-y divide-gray-50 overflow-x-auto">
-                    {MOCK_ROWS.map((row) => (
-                      <div key={row.id} className="md:grid md:grid-cols-[80px_1fr_110px_100px_110px] flex flex-wrap gap-x-3 gap-y-1.5 px-3 sm:px-4 py-3 items-center">
-                        <span className="text-xs font-mono text-gray-400">{row.id}</span>
-                        <span className="text-sm text-gray-800 font-medium truncate max-w-full">{row.product}</span>
-                        <span className="text-xs text-gray-500">{row.issue}</span>
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full w-fit ${row.decisionClass}`}>
-                          {row.decision}
-                        </span>
-                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full w-fit ${row.fraudClass}`}>
-                          {row.fraud}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+          {/* TODO visuel : remplacer par une capture réelle du tableau de bord
+              (1200x900) quand elle sera disponible. */}
+          <div
+            className="fm-enter relative lg:col-span-5 lg:translate-y-6"
+            style={{ animationDelay: "260ms" }}
+          >
+            {/* Cadre décalé : ancre la carte au lieu de la laisser flotter. */}
+            <div
+              aria-hidden
+              className="absolute inset-0 translate-x-3 translate-y-3 sm:translate-x-5 sm:translate-y-5 rounded-card border border-brand/30"
+            />
+            <div className="relative">
+              <DashboardPreview />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── INTEGRATIONS TRUST BAR ── */}
-      <section className="py-10 sm:py-14 border-y border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
-          <p className="text-xs uppercase tracking-widest text-gray-400 font-semibold mb-6 sm:mb-8">
-            Compatible avec vos plateformes e-commerce
-          </p>
-          <div className="flex flex-wrap justify-center items-center gap-6 sm:gap-10 md:gap-16">
-            {["Shopify", "WooCommerce", "PrestaShop", "Magento", "Wix"].map((name) => (
-              <span
-                key={name}
-                className="text-gray-300 font-bold text-sm sm:text-base tracking-tight hover:text-gray-400 transition-colors cursor-default select-none"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* ── MISE EN PLACE ── */}
+      <section id="etapes" className="bg-warm py-16 sm:py-20 px-4 sm:px-6">
+        <div className="max-w-5xl mx-auto">
+          <SectionHeading
+            title="Opérationnel en 4 étapes"
+            lead="De l’inscription à la première décision automatique."
+          />
 
-      {/* ── FEATURES ── */}
-      <section id="features" className="py-16 sm:py-24 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-10 sm:mb-16">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
-              Ce que Flowmerce fait a votre place
-            </h2>
-            <p className="text-gray-500 text-base sm:text-lg max-w-xl mx-auto">
-              Chaque fonctionnalite est concue pour reduire vos pertes, gagner du temps et proteger votre marge.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-            {FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="group bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 hover:border-indigo-100 hover:shadow-lg hover:shadow-indigo-50/80 transition-all duration-300"
-              >
-                <div className="flex items-start justify-between mb-4 sm:mb-5">
-                  <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors duration-300">
-                    {f.icon}
-                  </div>
-                  <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
-                    {f.badge}
+          <ol className="fm-reveal relative mt-12 sm:mt-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-6 list-none p-0">
+            <div
+              aria-hidden
+              className="hidden lg:block absolute top-7 left-[12.5%] right-[12.5%] h-px bg-line"
+            />
+            {SETUP_STEPS.map((s) => (
+              <li key={s.step} className="relative text-center">
+                <div className="size-14 rounded-card bg-surface border border-line flex items-center justify-center mx-auto mb-5">
+                  <span className="text-base font-extrabold text-brand-ink">
+                    {s.step}
                   </span>
                 </div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">{f.title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
-              </div>
+                <h3 className="text-sm font-bold text-ink mb-2">{s.title}</h3>
+                <p className="text-[13px] text-body leading-relaxed max-w-60 mx-auto">
+                  {s.desc}
+                </p>
+              </li>
             ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* ── LE FLUX ── */}
+      {/* `overflow-x-clip` contient les cartes qui arrivent latéralement sans
+          créer de conteneur de défilement (contrairement à overflow-hidden). */}
+      <section
+        id="flux"
+        className="py-16 sm:py-24 px-4 sm:px-6 overflow-x-clip"
+      >
+        <div className="max-w-4xl mx-auto">
+          <SectionHeading
+            title={<>De la demande à la décision</>}
+            lead="Ce que Flowmerce fait entre la réclamation du client et votre validation."
+          />
+
+          <ol className="relative mt-12 sm:mt-16 list-none p-0">
+            <div
+              aria-hidden
+              // pas de -translate-x-1/2 : `transform` est réservé à l’animation de tracé
+              className="fm-line absolute top-0 bottom-0 left-5 md:left-[calc(50%-0.5px)] w-px bg-line"
+            />
+
+            <div className="space-y-4 md:space-y-5">
+              {FLOW.map((item, i) => {
+                const Icon = item.icon;
+                const left = i % 2 === 0;
+                return (
+                  <li
+                    key={item.title}
+                    className="relative pl-16 md:pl-0 md:grid md:grid-cols-[1fr_2.5rem_1fr] md:items-center md:gap-6"
+                  >
+                    <span
+                      className={`fm-node absolute left-0 top-1 md:static md:col-start-2 md:row-start-1 size-10 rounded-full bg-surface border border-line flex items-center justify-center shrink-0 ${item.tone}`}
+                    >
+                      <Icon size={17} strokeWidth={STROKE} />
+                    </span>
+
+                    <div
+                      className={`fm-step bg-surface border border-line rounded-card p-4 sm:p-5 ${
+                        left
+                          ? "fm-step-l md:col-start-1 md:row-start-1"
+                          : "fm-step-r md:col-start-3 md:row-start-1"
+                      }`}
+                    >
+                      <h3 className="text-sm font-bold text-ink mb-1.5">
+                        {item.title}
+                      </h3>
+                      <p className="text-[13px] text-body leading-relaxed">
+                        {item.desc}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </div>
+          </ol>
+        </div>
+      </section>
+
+      {/* ── LA PLATEFORME ── */}
+      <section id="plateforme" className="px-4 sm:px-6 pb-16 sm:pb-24">
+        <div className="max-w-6xl mx-auto bg-surface rounded-block px-4 sm:px-8 py-16 sm:py-20">
+          <SectionHeading
+            title="Ce que vous gardez sous contrôle"
+            lead="Vos règles, vos décisions, vos données. Flowmerce instruit, vous arbitrez."
+          />
+
+          <div className="fm-reveal mt-10 sm:mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {FEATURES.map((f) => {
+              const Icon = f.icon;
+              const deep = f.surface === "deep";
+              const soft = f.surface === "soft";
+              return (
+                <article
+                  key={f.title}
+                  className={[
+                    "rounded-card p-5 sm:p-6 transition-transform hover:-translate-y-0.5",
+                    f.span ? "sm:col-span-2" : "",
+                    deep
+                      ? "bg-deep"
+                      : soft
+                      ? "bg-brand-soft"
+                      : "bg-page border border-line",
+                  ].join(" ")}
+                >
+                  <Icon
+                    size={20}
+                    strokeWidth={STROKE}
+                    className={`${f.tone} mb-4`}
+                  />
+                  <h3
+                    className={`text-sm font-bold mb-2 ${
+                      deep ? "text-white" : "text-ink"
+                    }`}
+                  >
+                    {f.title}
+                  </h3>
+                  <p
+                    className={`text-[13px] leading-relaxed ${
+                      deep ? "text-white/75" : "text-body"
+                    } ${f.span ? "max-w-md" : ""}`}
+                  >
+                    {f.desc}
+                  </p>
+                </article>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ── HOW IT WORKS ── */}
-      <section id="how-it-works" className="py-16 sm:py-24 px-4 sm:px-6 bg-gray-50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-10 sm:mb-16">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
-              Operationnel en 4 etapes
-            </h2>
-            <p className="text-gray-500 text-base sm:text-lg">
-              De l'inscription a la premiere decision automatique — en moins de 15 minutes.
+      {/* ── FRAUDE ── */}
+      <section className="px-4 sm:px-6 pb-16 sm:pb-24">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+          <div className="fm-reveal">
+            <SectionHeading
+              align="left"
+              eyebrow="Réseau anti-fraude"
+              title="Le colis refusé chez un marchand protège tous les autres"
+            />
+            <p className="mt-4 text-[15px] text-body leading-relaxed max-w-md">
+              Chaque boutique algérienne du réseau signale ses colis refusés via
+              l’API. Le score qui en résulte suit le client d’une boutique à
+              l’autre, au lieu de rester enfermé dans la vôtre.
+            </p>
+            <p className="mt-4 text-[15px] text-body leading-relaxed max-w-md">
+              Personne ne peut salir un client qu’il n’a pas servi : Flowmerce
+              exige une commande tracée chez le marchand signalant. Et un
+              vendeur seul ne peut pas pousser un score au-delà de 70. Passé ce
+              seuil, c’est le réseau qui parle.
+            </p>
+            <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-[13px]">
+              {FRAUD_BANDS.map((b) => (
+                <div key={b.label}>
+                  <dt className={`font-bold ${b.tone}`}>{b.label}</dt>
+                  <dd className="m-0 text-body tabular-nums">{b.range}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          <div className="fm-reveal bg-surface rounded-card border border-line p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs text-body">
+                  Client vu par 3 boutiques du réseau
+                </p>
+                <p className="text-[11px] font-mono text-faint mt-0.5">
+                  amine.k@…
+                </p>
+              </div>
+              <p className="text-4xl font-extrabold text-risk-high leading-none">
+                75<span className="text-base text-faint font-bold"> / 100</span>
+              </p>
+            </div>
+
+            {/* Jauge du score : 75 sur 100, seuil d’alerte à 70. */}
+            <div
+              className="mt-4 h-1.5 rounded-full bg-page overflow-hidden"
+              role="img"
+              aria-label="Score de risque : 75 sur 100"
+            >
+              <div className="h-full w-[75%] rounded-full bg-linear-to-r from-risk-low via-risk-mid to-risk-high" />
+            </div>
+
+            <dl className="mt-5 pt-5 border-t border-line space-y-3">
+              {FRAUD_SIGNALS.map((s) => (
+                <div
+                  key={s.label}
+                  className="flex items-center justify-between gap-4"
+                >
+                  <dt className="text-[13px] text-body">{s.label}</dt>
+                  <dd className="text-[13px] font-bold text-ink m-0 shrink-0">
+                    {s.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            <p className="mt-5 pt-4 border-t border-line text-xs text-faint">
+              Seuil d’alerte au choix : 40 en mode flexible, 70 en équilibré
+              (par défaut), 85 en strict.
             </p>
           </div>
+        </div>
+      </section>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 relative">
-            <div className="hidden lg:block absolute top-8 left-[10%] right-[10%] h-px bg-linear-to-r from-transparent via-indigo-200 to-transparent" />
-            {STEPS.map((s) => (
-              <div key={s.step} className="text-center relative">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 bg-white border-2 border-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-sm">
-                  <span className="text-lg sm:text-xl font-black text-indigo-600">{s.step}</span>
-                </div>
-                <h3 className="text-base font-semibold text-gray-900 mb-3">{s.title}</h3>
-                <p className="text-gray-500 text-sm leading-relaxed max-w-xs mx-auto">{s.desc}</p>
-              </div>
-            ))}
+      {/* ── DÉVELOPPEURS ── */}
+      <section className="px-4 sm:px-6 pb-16 sm:pb-24">
+        <div className="max-w-6xl mx-auto bg-surface rounded-block px-6 sm:px-10 py-14 sm:py-16">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+            <div className="fm-reveal">
+              <SectionHeading
+                align="left"
+                eyebrow="Développeurs"
+                title={
+                  <>
+                    Un seul endpoint.
+                    <br className="hidden sm:block" /> Toute la logique métier.
+                  </>
+                }
+              />
+              <p className="mt-4 text-[15px] text-body leading-relaxed max-w-md">
+                Le formulaire de retour est généré à partir de votre politique
+                et embarqué dans votre boutique. Vous n’écrivez aucune règle :
+                vous relayez le JSON et vous obtenez la réponse.
+              </p>
+              <Link
+                href="/docs"
+                className={`mt-6 inline-flex text-sm font-semibold text-brand-ink hover:underline rounded-control ${FOCUS}`}
+              >
+                Lire la documentation
+              </Link>
+            </div>
+
+            <div className="fm-reveal bg-deep rounded-card p-5 sm:p-6 overflow-x-auto">
+              <pre className="text-[11px] sm:text-xs font-mono leading-relaxed text-slate-300 m-0">
+                <code>
+                  <span className="text-indigo-300 font-semibold">POST</span>{" "}
+                  <span className="text-white">/api/v1/returns</span>
+                  {"\n\n"}
+                  {"{ "}
+                  <span className="text-sky-300">orderId</span>
+                  {": "}
+                  <span className="text-emerald-300">&apos;CMD-1234&apos;</span>
+                  {",\n  "}
+                  <span className="text-sky-300">productId</span>
+                  {": "}
+                  <span className="text-emerald-300">
+                    &apos;PROD-5678&apos;
+                  </span>
+                  {",\n  "}
+                  <span className="text-sky-300">answers</span>
+                  {": { "}
+                  <span className="text-sky-300">reason</span>
+                  {": "}
+                  <span className="text-emerald-300">
+                    &apos;Produit défectueux&apos;
+                  </span>
+                  {" }\n}"}
+                  {"\n\n"}
+                  <span className="text-emerald-400">
+                    201 {"{ claim_id, status: 'PENDING' }"}
+                  </span>
+                </code>
+              </pre>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── STATS ── */}
-      <section className="py-14 sm:py-20 px-4 sm:px-6 bg-indigo-600">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 text-center">
-          {STATS.map((s) => (
-            <div key={s.label}>
-              <p className="text-2xl sm:text-4xl font-black text-white mb-1 sm:mb-2">{s.value}</p>
-              <p className="text-indigo-200 text-xs sm:text-sm leading-snug">{s.label}</p>
-            </div>
-          ))}
+      {/* ── TARIFS ── */}
+      {/* Aucun modèle de facturation dans le schéma, aucun quota par marchand :
+          « gratuit » et « sans limite de volume » sont exacts au moment d’écrire. */}
+      <section id="tarifs" className="bg-warm py-16 sm:py-20 px-4 sm:px-6">
+        <div className="fm-reveal max-w-5xl mx-auto grid lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+          <div className="lg:col-span-5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand-ink mb-3">
+              Tarifs
+            </p>
+            <p className="text-6xl sm:text-7xl font-extrabold tracking-[-0.03em] leading-none text-ink">
+              Gratuit
+            </p>
+            <p className="mt-4 text-[15px] text-body leading-relaxed">
+              0 DA par mois, sans carte bancaire et sans engagement.
+            </p>
+            <Link href="/auth/register" className={`${BTN_PRIMARY} mt-7`}>
+              Commencer gratuitement
+            </Link>
+          </div>
+
+          <ul className="lg:col-span-7 grid sm:grid-cols-2 gap-x-8 gap-y-4 list-none p-0 m-0">
+            {PRICING_INCLUDES.map((item) => (
+              <li
+                key={item}
+                className="flex items-start gap-2.5 text-[14px] text-ink"
+              >
+                <Check
+                  size={16}
+                  strokeWidth={2.25}
+                  className="text-brand-ink shrink-0 mt-0.5"
+                  aria-hidden
+                />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
-      {/* ── FINAL CTA ── */}
-      <section className="py-20 sm:py-28 px-4 sm:px-6">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
-            Arretez de traiter les retours manuellement.
+      {/* ── FAQ ── */}
+      {/* Accordéon natif `<details>` : aucun JS, ouvrable au clavier,
+          et le contenu reste indexable même replié. */}
+      <section id="faq" className="px-4 sm:px-6 pb-16 sm:pb-24">
+        <div className="max-w-3xl mx-auto">
+          <SectionHeading
+            title="Questions fréquentes"
+            lead="Ce que les marchands demandent avant de brancher Flowmerce sur leurs commandes."
+          />
+
+          <div className="fm-reveal mt-10 sm:mt-14 border-t border-line">
+            {FAQ.map((item) => (
+              <details key={item.q} className="group border-b border-line">
+                <summary
+                  className={`flex items-start justify-between gap-6 cursor-pointer list-none py-5 text-[15px] font-bold text-ink [&::-webkit-details-marker]:hidden rounded-control ${FOCUS}`}
+                >
+                  {item.q}
+                  <Plus
+                    size={18}
+                    strokeWidth={2}
+                    aria-hidden
+                    className="shrink-0 mt-0.5 text-brand-ink transition-transform duration-200 group-open:rotate-45"
+                  />
+                </summary>
+                <p className="pb-5 -mt-1 text-[14px] text-body leading-relaxed max-w-2xl">
+                  {item.a}
+                </p>
+              </details>
+            ))}
+          </div>
+
+          {/* Second canal : le formulaire d’inscription ne convient pas à
+              quelqu’un qui a encore une question. */}
+          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 text-center">
+            <p className="text-[14px] text-body">
+              Une question qui n’est pas ici ?
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Link
+                href="/contact"
+                className={`inline-flex items-center gap-2 bg-surface border border-line text-ink px-4 py-2.5 rounded-control text-sm font-semibold hover:border-brand/40 active:translate-y-px transition-[border-color,transform] ${FOCUS}`}
+              >
+                <Mail size={16} strokeWidth={STROKE} aria-hidden />
+                Nous écrire
+              </Link>
+              {whatsappUrl && (
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-2 bg-surface border border-line text-ink px-4 py-2.5 rounded-control text-sm font-semibold hover:border-brand/40 active:translate-y-px transition-[border-color,transform] ${FOCUS}`}
+                >
+                  <MessageCircle size={16} strokeWidth={STROKE} aria-hidden />
+                  WhatsApp
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section className="px-4 sm:px-6 pb-16 sm:pb-20">
+        <div className="fm-reveal max-w-6xl mx-auto bg-deep rounded-block px-6 py-16 sm:py-20 text-center">
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-[-0.02em] text-white mb-4">
+            Reprenez la main sur vos retours.
           </h2>
-          <p className="text-gray-500 text-base sm:text-lg mb-8 sm:mb-10">
-            Flowmerce prend la decision a votre place — en appliquant vos regles,
-            en detectant les fraudes et en informant vos clients. C'est gratuit.
+          <p className="text-[15px] text-white/70 leading-relaxed max-w-lg mx-auto mb-8">
+            Flowmerce instruit chaque dossier. Vous gardez la décision, vos
+            règles et vos clients. Gratuit.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/auth/register"
-              className="bg-indigo-600 text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-base font-semibold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all"
+              className={`inline-flex items-center justify-center bg-white text-deep px-5 py-3 rounded-control text-sm font-semibold hover:bg-white/90 active:translate-y-px transition-[background-color,transform] ${FOCUS}`}
             >
               Commencer gratuitement
             </Link>
             <Link
               href="/auth/login"
-              className="bg-white text-gray-700 px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-base font-semibold border border-gray-200 hover:bg-gray-50 transition-all"
+              className={`inline-flex items-center justify-center border border-white/30 text-white px-5 py-3 rounded-control text-sm font-semibold hover:bg-white/10 active:translate-y-px transition-[background-color,transform] ${FOCUS}`}
             >
               Se connecter
             </Link>
           </div>
-          <p className="text-sm text-gray-400 mt-4 sm:mt-5">
-            Plateforme gratuite · Sans engagement · Operationnel en 15 min
-          </p>
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
-      <footer className="border-t border-gray-100 py-8 sm:py-10 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto flex flex-col items-center gap-4 sm:gap-6 md:flex-row md:justify-between">
-          <div className="flex items-center">
-            <Image src="/logos/logo-lockup.svg" alt="Flowmerce" width={120} height={24} />
-          </div>
-          <p className="text-xs sm:text-sm text-gray-400 text-center">
-            &copy; 2026 Flowmerce. Tous droits reserves.
-          </p>
-          <div className="flex gap-4 sm:gap-6 text-xs sm:text-sm text-gray-400">
-            <a href="#" className="hover:text-gray-600 transition-colors">Confidentialite</a>
-            <a href="#" className="hover:text-gray-600 transition-colors">Conditions</a>
-            <Link href="/auth/login" className="hover:text-gray-600 transition-colors">Connexion</Link>
-          </div>
-        </div>
-      </footer>
-
+      {/* ── PIED DE PAGE ── */}
+      <SiteFooter />
     </div>
   );
 }

@@ -93,7 +93,14 @@
       "Bash(sed -n '105,135p' /Users/salim/github/Caba-Store/components/retours/ClientRetourView.tsx)",
       "Bash(perl -i -pe ' *)",
       "Bash(sed -n '120,175p' /Users/salim/github/Caba-Store/components/retours/flowmerce/FlowmerceReturnForm.tsx)",
-      "Bash(perl -pi -e 's/policy422\\\\\\(\\\\\\)/policy422\\(policyFailure\\)/g' lib/services/return-submission.ts)"
+      "Bash(perl -pi -e 's/policy422\\\\\\(\\\\\\)/policy422\\(policyFailure\\)/g' lib/services/return-submission.ts)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" --max-time 8 \"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..800&display=swap\")",
+      "Bash(\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --hide-scrollbars --window-size=1440,900 --screenshot=full.png --virtual-time-budget=8000 --force-device-scale-factor=1 \"http://localhost:3000/\")",
+      "Bash(\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --disable-gpu --hide-scrollbars --window-size=1440,6400 --screenshot=page.png --virtual-time-budget=9000 \"http://localhost:3000/\")",
+      "Bash(sips -Z 1600 page.png --out page-small.png)",
+      "Bash(sips --cropOffset 1300 0 -c 1500 1440 page.png --out c-flow.png)",
+      "Bash(sips -g pixelHeight -g pixelWidth c-flow.png)",
+      "Bash(sips --cropOffset 3450 0 -c 1200 1440 page.png --out c-dev.png)"
     ],
     "additionalDirectories": [
       "/Users/salim/github/flowmerce/flowmerce-web-app/prisma",
