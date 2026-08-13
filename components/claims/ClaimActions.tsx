@@ -112,9 +112,13 @@ export function ClaimActions({ claimId, aiDecision, aiScore, currentStatus, clai
         Approuver
       </button>
 
+      {/* `overflow-y-auto` + `items-start` : centrée sans défilement propre, la
+          modale devenait inatteignable dès que son contenu dépassait la hauteur
+          de l'écran, et la page paraissait figée. `my-auto` la recentre quand
+          elle tient, sans bloquer le défilement sinon. */}
       {open && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl shadow-lg w-full max-w-md border border-gray-200">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-black/40 p-4">
+          <div className="my-auto w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-lg">
 
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">

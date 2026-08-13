@@ -7,6 +7,9 @@ import { DashboardNav } from "@/components/layout/DashboardNav";
 import { SidebarShell } from "@/components/layout/SidebarShell";
 import { SessionProvider } from "next-auth/react";
 
+const FOCUS =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -16,40 +19,41 @@ export default async function DashboardLayout({
   if (!session) redirect("/auth/login");
 
   const user = session.user;
+  const initial = user?.name?.[0]?.toUpperCase() ?? "V";
 
   const sidebar = (
     <>
-      {/* Logo */}
-      <div className="px-5 pt-5 pb-4 border-b border-gray-100">
-        <Link href="/" className="block">
+      <div className="border-b border-line px-5 pb-4 pt-5">
+        <Link href="/" className={`inline-flex rounded-control ${FOCUS}`}>
           <Image
             src="/logos/logo-lockup.svg"
             alt="Flowmerce"
-            width={140}
-            height={28}
+            width={132}
+            height={26}
             priority
           />
         </Link>
-        <p className="text-xs text-gray-400 mt-1.5">Espace vendeur</p>
+        <p className="mt-2 text-[10.5px] text-faint">Espace vendeur</p>
       </div>
 
-      {/* Nav */}
       <DashboardNav isAdmin={user?.role === "ADMIN"} />
 
-      {/* User */}
-      <div className="px-4 py-3 border-t border-gray-100 mt-auto">
-        <div className="flex items-center gap-2.5 mb-3">
-          <div className="w-7 h-7 bg-indigo-100 rounded-full flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0">
-            {user?.name?.[0]?.toUpperCase() ?? "V"}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-gray-800 truncate leading-none">
+      <div className="mt-auto border-t border-line px-4 py-3">
+        <div className="mb-3 flex items-center gap-2.5">
+          <span
+            aria-hidden
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-on-brand"
+          >
+            {initial}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold leading-none text-ink">
               {user?.name}
-            </p>
-            <p className="text-xs text-gray-400 truncate mt-0.5 leading-none">
+            </span>
+            <span className="mt-1 block truncate text-[11px] leading-none text-body">
               {user?.email}
-            </p>
-          </div>
+            </span>
+          </span>
         </div>
         <SignOutButton />
       </div>
@@ -58,9 +62,7 @@ export default async function DashboardLayout({
 
   return (
     <SessionProvider session={session}>
-      <SidebarShell sidebar={sidebar}>
-        {children}
-      </SidebarShell>
+      <SidebarShell sidebar={sidebar}>{children}</SidebarShell>
     </SessionProvider>
   );
 }

@@ -8,11 +8,24 @@ import { getSessionServer }                       from '@/lib/getSession'
 import { prisma }                                 from '@/lib/prisma'
 import { redirect }                               from 'next/navigation'
 import { CLAIM_STATUS_LABELS, formatClaimType, formatDate } from '@/lib/utils'
-import { formatCustomerGender }                   from '@/lib/constants'
 import { ClaimActions }                           from '@/components/claims/ClaimActions'
 import { AutoApproveToggle }                      from '@/components/claims/AutoApproveToggle' 
 import { checkVendorAccess }                      from '@/lib/vendorGuard'
+import { BTN_GHOST, BTN_PRIMARY, FOCUS, Pagination, riskBand, StatusBadge } from '@/components/dashboard/ui'
 import { AlertTriangle, ChevronRight, Cpu, Inbox, Edit2, KeyRound, Clock, TrendingUp, ShieldAlert } from 'lucide-react'
+
+function Th({ children, align = 'left' }: { children: React.ReactNode; align?: 'left' | 'right' }) {
+  return (
+    <th
+      scope="col"
+      className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint ${
+        align === 'right' ? 'text-right' : 'text-left'
+      }`}
+    >
+      {children}
+    </th>
+  )
+}
 
 export default async function ClaimsPage({
   searchParams,
@@ -24,6 +37,7 @@ export default async function ClaimsPage({
     risk?:     string
     ml?:       string
     apiKeyId?: string   // filtre par clé API (admin + vendeur)
+    page?:     string
   }>
 }) {
   await checkVendorAccess()
@@ -86,8 +100,24 @@ export default async function ClaimsPage({
   // les compteurs du vendeur.
   const scopeWhere = vendorId ? { vendorId, policyRejected: false } : {}
 
+  // ── Pagination ────────────────────────────────────────────────────────────────
+  // La page chargeait l'intégralité des réclamations correspondant au filtre :
+  // sans borne, le rendu grossit indéfiniment avec le volume du marchand.
+  const PAGE_SIZE = 10
+  const requestedPage = Math.max(1, Number.parseInt(params.page ?? '1', 10) || 1)
+
+  const filteredCount = await prisma.claim.count({ where })
+  const totalPages    = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE))
+  // Une page hors bornes (filtre resserré, lien périmé) retombe sur la dernière.
+  const page          = Math.min(requestedPage, totalPages)
+
   const [claims, allScopedClaims] = await Promise.all([
-    prisma.claim.findMany({ where, orderBy: { createdAt: 'desc' } }),
+    prisma.claim.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
     prisma.claim.findMany({ where: scopeWhere, select: { id: true, status: true, type: true, aiDecision: true, fraudScore: true, apiKeyId: true } }),
   ])
 
@@ -128,10 +158,15 @@ export default async function ClaimsPage({
   function buildUrl(overrides: Record<string, string | undefined>): string {
     const base: Record<string, string> = {}
     if (params.status)   base.status   = params.status
+    if (params.type)     base.type     = params.type
+    if (params.source)   base.source   = params.source
     if (params.risk)     base.risk     = params.risk
     if (params.ml)       base.ml       = params.ml
     if (params.apiKeyId) base.apiKeyId = params.apiKeyId
+    // Changer de filtre renvoie au début : rester page 7 sur un résultat qui
+    // n'en compte plus que 2 donnerait une liste vide.
     const merged = { ...base, ...overrides }
+    if (!('page' in overrides)) delete merged.page
     const qs = Object.entries(merged)
       .filter(([, v]) => v !== undefined && v !== '')
       .map(([k, v]) => `${k}=${encodeURIComponent(v!)}`)
@@ -156,10 +191,10 @@ export default async function ClaimsPage({
       {/* ── Header ── */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6 sm:mb-8">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Réclamations</h1>
-          <p className="text-sm text-gray-500 mt-1.5">
+          <h1 className="text-xl font-bold tracking-[-0.015em] text-ink">Réclamations</h1>
+          <p className="mt-1.5 text-[13px] text-body">
             {scopeLabel
-              ? <span>Filtré sur : <span className="font-semibold text-gray-700">{scopeLabel}</span></span>
+              ? <span>Filtré sur : <span className="font-semibold text-ink">{scopeLabel}</span></span>
               : 'Suivez et traitez les demandes clients, avec décisions automatiques et détection de fraude.'}
           </p>
         </div>
@@ -167,7 +202,7 @@ export default async function ClaimsPage({
           {pending > 0 && (
             <a
               href={buildUrl({ status: 'PENDING' })}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+              className={BTN_PRIMARY}
             >
               {pending} en attente
               <ChevronRight className="w-4 h-4" />
@@ -176,7 +211,7 @@ export default async function ClaimsPage({
           {pendingRefunds > 0 && (
             <a
               href={buildUrl({ status: 'PENDING', type: 'REFUND' })}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+              className={BTN_GHOST}
             >
               {pendingRefunds} remboursement{pendingRefunds > 1 ? 's' : ''} en attente
               <ChevronRight className="w-4 h-4" />
@@ -187,9 +222,9 @@ export default async function ClaimsPage({
 
       {/* ── Filtre par clé API (admin + vendeur multi-clés) ── */}
       {adminApiKeys.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-3.5 mb-5 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 text-sm font-medium text-gray-700 shrink-0">
-            <KeyRound className="w-4 h-4 text-indigo-500" />
+        <div className="bg-surface rounded-card border border-line px-4 py-3.5 mb-5 flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-sm font-medium text-ink shrink-0">
+            <KeyRound className="w-4 h-4 text-brand-ink" />
             {isAdmin ? 'Filtrer par clé API' : 'Source'}
           </div>
 
@@ -199,9 +234,9 @@ export default async function ClaimsPage({
               href={buildUrl({ apiKeyId: undefined })}
               className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors border ${
                 !params.apiKeyId
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}
+                  ? 'bg-brand text-on-brand border-brand'
+                  : 'border-line text-body hover:bg-page'
+              } focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
             >
               {isAdmin ? 'Toutes boutiques' : 'Toutes sources'}
               <span className="ml-1.5 opacity-60">({allScopedClaims.length})</span>
@@ -219,9 +254,9 @@ export default async function ClaimsPage({
                   href={buildUrl({ apiKeyId: key.id })}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors border ${
                     params.apiKeyId === key.id
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                  }`}
+                      ? 'bg-brand text-on-brand border-brand'
+                      : 'border-line text-body hover:bg-page'
+                  } focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
                   title={isAdmin ? `${key.vendor.companyName} — ${key.name}` : key.name}
                 >
                   {isAdmin && (
@@ -238,35 +273,35 @@ export default async function ClaimsPage({
 
       {/* ── KPIs ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 sm:mb-8">
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+        <div className="rounded-card border border-line bg-surface p-5">
           <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="w-4 h-4 text-indigo-400" />
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total</p>
+            <TrendingUp className="w-4 h-4 text-brand-ink" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">Total</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{total}</p>
+          <p className="text-[22px] font-bold leading-none tabular-nums text-ink">{total}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+        <div className="rounded-card border border-line bg-surface p-5">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="w-4 h-4 text-amber-400" />
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">En attente</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">En attente</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{pending}</p>
+          <p className="text-[22px] font-bold leading-none tabular-nums text-ink">{pending}</p>
           {pending > 0 && <p className="text-xs text-amber-500 mt-1 font-medium">Action requise</p>}
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+        <div className="rounded-card border border-line bg-surface p-5">
           <div className="flex items-center gap-2 mb-2">
             <Cpu className="w-4 h-4 text-purple-400" />
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Décisions auto.</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">Décisions auto.</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{withML}</p>
-          {total > 0 && <p className="text-xs text-gray-400 mt-1">{Math.round((withML / total) * 100)}% du total</p>}
+          <p className="text-[22px] font-bold leading-none tabular-nums text-ink">{withML}</p>
+          {total > 0 && <p className="text-xs text-faint mt-1">{Math.round((withML / total) * 100)}% du total</p>}
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 px-4 py-4">
+        <div className="rounded-card border border-line bg-surface p-5">
           <div className="flex items-center gap-2 mb-2">
             <ShieldAlert className="w-4 h-4 text-red-400" />
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Risque élevé</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">Risque élevé</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{highRisk}</p>
+          <p className="text-[22px] font-bold leading-none tabular-nums text-ink">{highRisk}</p>
           {highRisk > 0 && <p className="text-xs text-red-500 mt-1 font-medium">Vérification requise</p>}
         </div>
       </div>
@@ -276,9 +311,9 @@ export default async function ClaimsPage({
         <div className="flex items-center gap-1.5 flex-wrap">
           <a
             href={buildUrl({ status: undefined, risk: undefined, ml: undefined })}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              !activeFilter ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
-            }`}
+            className={`px-3 py-1.5 rounded-control text-sm font-medium transition-colors ${
+              !activeFilter ? 'bg-brand text-on-brand' : 'text-body hover:bg-page'
+            } focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
           >
             Toutes
           </a>
@@ -287,23 +322,23 @@ export default async function ClaimsPage({
             <a
               key={s}
               href={buildUrl({ status: s, risk: undefined, ml: undefined })}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                params.status === s ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              className={`px-3 py-1.5 rounded-control text-sm font-medium transition-colors ${
+                params.status === s ? 'bg-brand text-on-brand' : 'text-body hover:bg-page'
+              } focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
             >
               {CLAIM_STATUS_LABELS[s]}
             </a>
           ))}
 
-          <div className="w-px h-5 bg-gray-200 mx-0.5" />
+          <div className="w-px h-5 bg-line mx-0.5" />
 
           <a
             href={buildUrl({ risk: params.risk === 'high' ? undefined : 'high', status: undefined, ml: undefined })}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-sm font-medium transition-colors ${
               params.risk === 'high'
                 ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
+                : 'text-body hover:bg-page'
+            } focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
             Risque élevé
@@ -311,11 +346,11 @@ export default async function ClaimsPage({
 
           <a
             href={buildUrl({ ml: params.ml === 'true' ? undefined : 'true', status: undefined, risk: undefined })}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-sm font-medium transition-colors ${
               params.ml === 'true'
                 ? 'bg-purple-50 text-purple-700 ring-1 ring-purple-200'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
+                : 'text-body hover:bg-page'
+            } focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand`}
           >
             <Cpu className="w-3.5 h-3.5" />
             Décisions auto.
@@ -333,45 +368,35 @@ export default async function ClaimsPage({
 
       {/* ── Table ── */}
       {claims.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 py-20 flex flex-col items-center gap-2">
-          <Inbox className="w-10 h-10 text-gray-300" />
-          <p className="text-sm font-semibold text-gray-700 mt-1">Aucune réclamation</p>
-          <p className="text-xs text-gray-400">
+        <div className="bg-surface rounded-card border border-line py-20 flex flex-col items-center gap-2">
+          <Inbox className="w-10 h-10 text-faint" />
+          <p className="text-sm font-semibold text-ink mt-1">Aucune réclamation</p>
+          <p className="text-xs text-faint">
             Les demandes clients apparaîtront ici une fois reçues.
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-hidden rounded-card border border-line bg-surface">
+          {/* Seul le tableau défile horizontalement : la pagination doit rester
+              lisible sans avoir à revenir en arrière. */}
+          <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <caption className="sr-only">
+              Réclamations reçues, {filteredCount} au total, page {page}
+            </caption>
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                {isAdmin && (
-                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">
-                    Vendeur
-                  </th>
-                )}
-                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">
-                  Client / Commande
-                </th>
-                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">
-                  Produit
-                </th>
-                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">
-                  Décision recommandée
-                </th>
-                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">
-                  Risque fraude
-                </th>
-                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">
-                  Statut
-                </th>
-                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 py-3">
-                  Date
-                </th>
-                <th className="px-4 py-3 min-w-47.5" />
+              <tr className="border-b border-line bg-page">
+                {isAdmin && <Th>Vendeur</Th>}
+                <Th>Client et commande</Th>
+                <Th>Produit</Th>
+                <Th>Recommandation</Th>
+                <Th>Risque</Th>
+                <Th>Statut</Th>
+                <Th align="right">Date</Th>
+                <Th align="right">Action</Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-line">
               {claims.map(claim => {
                 const fraudScore  = claim.fraudScore
                 const source      = claim.source
@@ -384,172 +409,131 @@ export default async function ClaimsPage({
                   : claim.aiDecision
                 const isOverridden = !!overrideData
 
-                // Profil client transmis par la boutique (absent si non fourni).
-                const customerGender = formatCustomerGender(prediction?.customerGender)
-                const customerAge    = typeof prediction?.customerAge === 'number' && prediction.customerAge > 0
-                  ? prediction.customerAge
-                  : null
-                const customerProfile = [customerGender, customerAge !== null ? `${customerAge} ans` : null]
-                  .filter(Boolean)
-                  .join(' · ')
-
                 const productPrice = typeof prediction?.productPrice    === 'number' ? prediction.productPrice    : null
                 const productQty   = typeof prediction?.productQuantity === 'number' ? prediction.productQuantity : null
                 const orderTotal   = typeof prediction?.orderTotal      === 'number' ? prediction.orderTotal      : null
-
-                // Drapeau informatif calculé côté web app (jamais par le ML)
                 const refundEligible = prediction?.refundEligible === true
 
-                const riskLevel =
-                  fraudScore === null ? null
-                  : fraudScore >= 60  ? { label: 'Élevé',  cls: 'text-red-700 bg-red-50 ring-1 ring-red-200',       dot: 'bg-red-500'    }
-                  : fraudScore >= 35  ? { label: 'Modéré', cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200',  dot: 'bg-amber-400'  }
-                  :                    { label: 'Faible',  cls: 'text-gray-600 bg-gray-50 ring-1 ring-gray-200',     dot: 'bg-green-500'  }
-
+                const band         = riskBand(fraudScore)
                 const decisionInfo = displayDecision ? resolutionConfig[displayDecision] : null
                 const confidence   = claim.aiScore != null ? Math.round(claim.aiScore * 100) : null
-                const status       = statusConfig[claim.status] ?? {
-                  label: claim.status,
-                  cls:   'bg-gray-50 text-gray-600 ring-1 ring-gray-200',
-                }
 
-                // Nom du vendeur (admin uniquement, via la clé API)
                 const claimApiKeyId = (claim as Record<string, unknown>).apiKeyId as string | null | undefined
                 const vendorKey = isAdmin
                   ? adminApiKeys.find(k => claimApiKeyId ? k.id === claimApiKeyId : k.vendor.id === claim.vendorId)
                   : null
 
                 return (
-                  <tr key={claim.id} className="hover:bg-gray-50 transition-colors relative group">
+                  <tr key={claim.id} className="group relative cursor-pointer align-top transition-colors hover:bg-page">
 
-                    {/* Colonne vendeur — admin seulement */}
                     {isAdmin && (
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-4">
                         {vendorKey ? (
-                          <div>
-                            <p className="text-xs font-semibold text-gray-700">
-                              {vendorKey.vendor.companyName}
-                            </p>
-                            <p className="text-xs text-gray-400 font-mono">{vendorKey.name}</p>
-                          </div>
+                          <>
+                            <p className="text-[13px] font-semibold text-ink">{vendorKey.vendor.companyName}</p>
+                            <p className="mt-0.5 font-mono text-[11px] text-faint">{vendorKey.name}</p>
+                          </>
                         ) : (
-                          <span className="text-xs text-gray-300">—</span>
+                          <span className="text-[12px] text-faint">—</span>
                         )}
                       </td>
                     )}
 
-                    {/* Client / Commande */}
-                    <td className="px-4 py-3">
-                      <a href={`/dashboard/claims/${claim.id}`} className="block hover:underline">
-                        <p className="font-medium text-gray-900">{claim.customerName}</p>
+                    {/* Client et commande — la ligne entière mène au détail. */}
+                    {/* Lien étiré : le pseudo-élément couvre toute la ligne, qui
+                        est en `relative`. Le clic mène au détail où qu'il tombe,
+                        tout en restant un vrai lien — clavier, clic milieu et
+                        « ouvrir dans un nouvel onglet » fonctionnent. */}
+                    <td className="px-4 py-4">
+                      <a
+                        href={`/dashboard/claims/${claim.id}`}
+                        className={`rounded-control text-[13px] font-semibold text-ink group-hover:text-brand-ink group-hover:underline ${FOCUS} before:absolute before:inset-0 before:content-['']`}
+                      >
+                        {claim.customerName}
                       </a>
-                      <p className="text-xs text-gray-500">{claim.customerEmail}</p>
-                      {customerProfile && (
-                        <p className="text-xs text-gray-400 mt-0.5">{customerProfile}</p>
-                      )}
-                      <p className="text-xs text-gray-400 font-mono mt-0.5">{claim.orderId}</p>
+                      <p className="mt-0.5 truncate text-[12px] text-body">{claim.customerEmail}</p>
+                      <p className="mt-1 font-mono text-[11px] text-faint">{claim.orderId}</p>
                       {source === 'HOSTED_PAGE' && (
-                        <span className="text-xs text-indigo-500 mt-0.5 block">Page de retour</span>
+                        <span className="mt-1 inline-flex rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-brand-ink">
+                          Portail
+                        </span>
                       )}
                     </td>
 
                     {/* Produit */}
-                    <td className="px-4 py-3">
-                      <p className="text-gray-800 max-w-35 truncate" title={productName ?? undefined}>
+                    <td className="px-4 py-4">
+                      <p className="max-w-44 truncate text-[13px] text-ink" title={productName ?? undefined}>
                         {productName ?? '—'}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{formatClaimType(claim.type)}</p>
+                      <p className="mt-0.5 text-[12px] text-body">{formatClaimType(claim.type)}</p>
                       {productPrice != null ? (
-                        <p className="text-xs text-gray-400">
-                          {productPrice.toFixed(2)} DA
-                          {productQty && productQty > 1 ? ` × ${productQty}` : ''}
+                        <p className="mt-0.5 text-[11px] tabular-nums text-faint">
+                          {productPrice.toFixed(2)} DA{productQty && productQty > 1 ? ` × ${productQty}` : ''}
                         </p>
                       ) : orderTotal != null ? (
-                        <p className="text-xs text-gray-400">
-                          {orderTotal.toFixed(2)} DA
-                        </p>
+                        <p className="mt-0.5 text-[11px] tabular-nums text-faint">{orderTotal.toFixed(2)} DA</p>
                       ) : null}
                     </td>
 
-                    {/* Décision recommandée */}
-                    <td className="px-4 py-3 min-w-47.5">
+                    {/* Recommandation */}
+                    <td className="px-4 py-4">
                       {decisionInfo ? (
-                        <div className="space-y-1.5">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${decisionInfo.cls}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${decisionInfo.dot}`} />
+                        <>
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${decisionInfo.cls}`}>
                             {decisionInfo.label}
                           </span>
-                          <div className="flex items-center gap-1 text-xs text-gray-400">
+                          <p className="mt-1.5 flex items-center gap-1 text-[11px] text-faint">
                             {isOverridden
-                              ? <><Edit2 className="w-3 h-3" /> Modifiée manuellement</>
-                              : <><Cpu className="w-3 h-3" /> Automatique</>}
-                          </div>
-                          {confidence !== null && (
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-16 bg-gray-200 rounded-full h-1">
-                                <div className="h-1 rounded-full bg-indigo-500" style={{ width: `${confidence}%` }} />
-                              </div>
-                              <span className="text-xs text-gray-400">Conf. {confidence}%</span>
-                            </div>
-                          )}
-                          {isOverridden && typeof overrideData?.note === 'string' && (
-                            <p className="text-xs text-gray-400 italic truncate max-w-40" title={overrideData.note}>
-                              {overrideData.note}
+                              ? <><Edit2 className="size-3 shrink-0" aria-hidden /> Modifiée</>
+                              : <><Cpu className="size-3 shrink-0" aria-hidden /> Automatique</>}
+                            {confidence !== null && (
+                              <span className="tabular-nums"> · {confidence} %</span>
+                            )}
+                          </p>
+                          {refundEligible && (
+                            <p className="mt-1 text-[11px] font-medium text-emerald-700">
+                              Remboursement possible
                             </p>
                           )}
-                          {refundEligible && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              Remboursement recommandé — décision vendeur
-                            </span>
-                          )}
-                        </div>
+                        </>
                       ) : (
-                        <span className="text-xs text-gray-400">Non analysée</span>
+                        <span className="text-[12px] text-faint">Non analysée</span>
                       )}
                     </td>
 
                     {/* Risque */}
-                    <td className="px-4 py-3">
-                      {riskLevel ? (
-                        <div className="space-y-1">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${riskLevel.cls}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${riskLevel.dot}`} />
-                            {riskLevel.label}
-                            {fraudScore !== null && (
-                              <span className="opacity-50 font-normal">{Math.round(fraudScore)}</span>
-                            )}
+                    <td className="px-4 py-4">
+                      {band ? (
+                        <>
+                          <span className={`text-[12px] font-semibold tabular-nums ${band.text}`}>
+                            {Math.round(fraudScore!)} · {band.label}
                           </span>
-                          {fraudScore !== null && fraudScore >= 60 && (
-                            <p className="text-xs text-red-500">Validation requise</p>
+                          {fraudScore !== null && fraudScore > 70 && (
+                            <p className="mt-0.5 text-[11px] text-risk-high">Contrôle conseillé</p>
                           )}
-                        </div>
+                        </>
                       ) : (
-                        <span className="text-xs text-gray-400">—</span>
+                        <span className="text-[12px] text-faint">—</span>
                       )}
                     </td>
 
                     {/* Statut */}
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${status.cls}`}>
-                        {status.label}
-                      </span>
+                    <td className="px-4 py-4">
+                      <StatusBadge
+                        status={claim.status}
+                        label={statusConfig[claim.status]?.label ?? claim.status}
+                      />
                     </td>
 
                     {/* Date */}
-                    <td className="px-4 py-3">
-                      <p className="text-xs text-gray-500">{formatDate(claim.createdAt)}</p>
+                    <td className="px-4 py-4 text-right text-[12px] tabular-nums text-body whitespace-nowrap">
+                      {formatDate(claim.createdAt)}
                     </td>
 
-                    {/* Actions */}
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1.5">
-                        <a
-                          href={`/dashboard/claims/${claim.id}`}
-                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-medium bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors w-fit"
-                        >
-                          Voir le détail
-                        </a>
+                    {/* `relative z-10` : sans ça, le lien de ligne passerait
+                        par-dessus et avalerait les clics sur ces boutons. */}
+                    <td className="relative z-10 px-4 py-4">
+                      <div className="flex flex-col items-end gap-2">
                         <ClaimActions
                           claimId={claim.id}
                           currentStatus={claim.status}
@@ -565,6 +549,15 @@ export default async function ClaimsPage({
               })}
             </tbody>
           </table>
+          </div>
+
+          <Pagination
+            page={page}
+            pageSize={PAGE_SIZE}
+            total={filteredCount}
+            label="réclamations"
+            hrefFor={(p) => buildUrl({ page: p > 1 ? String(p) : undefined })}
+          />
         </div>
       )}
     </div>

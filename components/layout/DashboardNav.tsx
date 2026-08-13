@@ -3,42 +3,56 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
+  BookOpen,
   FileText,
-  Key,
+  Home,
   Inbox,
+  Key,
+  LayoutDashboard,
+  Mail,
   ShieldCheck,
 } from "lucide-react";
 
-const navLinks = [
+const FOCUS =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
+
+const NAV_LINKS = [
   {
-    href:     "/dashboard",
-    label:    "Tableau de bord",
-    sublabel: "Vue d'ensemble",
-    Icon:     LayoutDashboard,
-    exact:    true,
+    href: "/dashboard",
+    label: "Tableau de bord",
+    sublabel: "Vue d’ensemble",
+    Icon: LayoutDashboard,
+    exact: true,
   },
   {
-    href:     "/dashboard/return-policy",
-    label:    "Politique de retours",
-    sublabel: "Règles de remboursement",
-    Icon:     FileText,
-    exact:    false,
+    href: "/dashboard/return-policy",
+    label: "Politique de retour",
+    sublabel: "Vos règles",
+    Icon: FileText,
+    exact: false,
   },
   {
-    href:     "/dashboard/api-keys",
-    label:    "Clés API",
-    sublabel: "Intégration & accès",
-    Icon:     Key,
-    exact:    false,
+    href: "/dashboard/api-keys",
+    label: "Clés API",
+    sublabel: "Intégration et accès",
+    Icon: Key,
+    exact: false,
   },
   {
-    href:     "/dashboard/claims",
-    label:    "Réclamations",
+    href: "/dashboard/claims",
+    label: "Réclamations",
     sublabel: "Demandes clients",
-    Icon:     Inbox,
-    exact:    false,
+    Icon: Inbox,
+    exact: false,
   },
+];
+
+// Destinations publiques du site. Elles quittent l'espace vendeur : jamais
+// d'état actif ici, le sidebar n'y est de toute façon pas rendu.
+const SITE_LINKS = [
+  { href: "/", label: "Accueil", Icon: Home },
+  { href: "/docs", label: "Documentation", Icon: BookOpen },
+  { href: "/contact", label: "Contact", Icon: Mail },
 ];
 
 export function DashboardNav({ isAdmin }: { isAdmin: boolean }) {
@@ -48,60 +62,89 @@ export function DashboardNav({ isAdmin }: { isAdmin: boolean }) {
     exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5 overflow-y-auto">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-1.5">
+    <nav aria-label="Navigation principale" className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
+      <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">
         Menu
       </p>
 
-      {navLinks.map(({ href, label, sublabel, Icon, exact }) => {
+      {NAV_LINKS.map(({ href, label, sublabel, Icon, exact }) => {
         const active = isActive(href, exact);
         return (
           <Link
             key={href}
             href={href}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
-              active
-                ? "bg-indigo-50 text-indigo-700"
-                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            aria-current={active ? "page" : undefined}
+            className={`group flex items-center gap-2.5 rounded-control px-3 py-2 transition-colors ${FOCUS} ${
+              active ? "bg-brand-soft text-brand-ink" : "text-body hover:bg-page hover:text-ink"
             }`}
           >
-            <div
-              className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
-                active ? "bg-indigo-100" : "bg-gray-100 group-hover:bg-gray-200"
+            <span
+              aria-hidden
+              className={`flex size-6 shrink-0 items-center justify-center rounded-control transition-colors ${
+                active ? "bg-brand text-on-brand" : "bg-page text-body group-hover:bg-line"
               }`}
             >
-              <Icon size={13} className={active ? "text-indigo-600" : "text-gray-500"} />
-            </div>
-            <div className="min-w-0">
-              <p className={`text-sm leading-none ${active ? "font-semibold" : "font-medium"}`}>
+              <Icon size={13} strokeWidth={1.75} />
+            </span>
+            <span className="min-w-0">
+              <span
+                className={`block text-[13px] leading-none ${active ? "font-semibold" : "font-medium"}`}
+              >
                 {label}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5 leading-none">{sublabel}</p>
-            </div>
-            {active && (
-              <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
-            )}
+              </span>
+              <span className="mt-1 block text-[10.5px] leading-none text-faint">{sublabel}</span>
+            </span>
           </Link>
         );
       })}
 
       {isAdmin && (
         <>
-          <div className="my-2 border-t border-gray-100" />
+          <div className="my-2 border-t border-line" />
           <Link
             href="/admin/vendors"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-600 hover:bg-orange-50 hover:text-orange-700 transition-colors group"
+            className={`group flex items-center gap-2.5 rounded-control px-3 py-2 text-body transition-colors hover:bg-amber-50 hover:text-amber-800 ${FOCUS}`}
           >
-            <div className="w-6 h-6 rounded-md bg-gray-100 group-hover:bg-orange-100 flex items-center justify-center shrink-0">
-              <ShieldCheck size={13} className="text-gray-500 group-hover:text-orange-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium leading-none">Panel Admin</p>
-              <p className="text-xs text-gray-400 mt-0.5 leading-none">Gestion des vendeurs</p>
-            </div>
+            <span
+              aria-hidden
+              className="flex size-6 shrink-0 items-center justify-center rounded-control bg-page text-body transition-colors group-hover:bg-amber-100 group-hover:text-amber-700"
+            >
+              <ShieldCheck size={13} strokeWidth={1.75} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium leading-none">Panel admin</span>
+              <span className="mt-1 block text-[10.5px] leading-none text-faint">
+                Gestion des vendeurs
+              </span>
+            </span>
           </Link>
         </>
       )}
+
+      {/* `mt-auto` colle la section au bas de la nav quand le menu est plus court
+          que la colonne ; la marge s'annule d'elle-même dès que ça déborde, donc
+          les liens restent atteignables au défilement. */}
+      <div className="mt-auto flex flex-col gap-0.5 border-t border-line pt-3">
+        <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">
+          Site
+        </p>
+
+        {SITE_LINKS.map(({ href, label, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className={`group flex items-center gap-2.5 rounded-control px-3 py-2 text-body transition-colors hover:bg-page hover:text-ink ${FOCUS}`}
+          >
+            <span
+              aria-hidden
+              className="flex size-6 shrink-0 items-center justify-center rounded-control bg-page text-body transition-colors group-hover:bg-line"
+            >
+              <Icon size={13} strokeWidth={1.75} />
+            </span>
+            <span className="min-w-0 truncate text-[13px] font-medium leading-none">{label}</span>
+          </Link>
+        ))}
+      </div>
     </nav>
   );
 }

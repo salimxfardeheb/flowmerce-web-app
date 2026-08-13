@@ -10,19 +10,30 @@ import {
 } from "@/lib/utils";
 import { DocumentUploadSection } from "@/components/vendor/DocumentUploadSection";
 import {
-  Shield,
-  Settings,
-  XCircle,
-  Clock,
-  FileText,
-  Key,
-  Inbox,
+  BTN_PRIMARY,
+  Card,
+  CardTitle,
+  EmptyState,
+  FOCUS,
+  NavCard,
+  Notice,
+  PageHeader,
+  RiskBadge,
+  StatTile,
+  StatusBadge,
+} from "@/components/dashboard/ui";
+import {
   AlertCircle,
-  ChevronRight,
-  ShieldAlert,
-  Cpu,
-  TrendingUp,
   CheckCircle2,
+  ChevronRight,
+  Clock,
+  Cpu,
+  FileText,
+  Inbox,
+  Key,
+  Shield,
+  ShieldAlert,
+  XCircle,
 } from "lucide-react";
 
 export default async function DashboardPage() {
@@ -41,53 +52,43 @@ export default async function DashboardPage() {
     },
   });
 
-  // ── Admin sans profil vendeur ──
+  // ── Administrateur sans profil vendeur ──
   if (!vendor && user?.role === "ADMIN") {
     return (
-      <div className="p-4 sm:p-8 max-w-3xl w-full">
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-xl font-semibold text-gray-900">{user.name}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Compte administrateur</p>
-        </div>
-        <div className="rounded-lg p-4 sm:p-5 mb-4 sm:mb-5 border bg-indigo-50 border-indigo-200">
-          <div className="flex items-start gap-3">
-            <Shield size={16} className="text-indigo-600 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-800">
-                Vous n&apos;avez pas encore de profil vendeur
-              </p>
-              <p className="text-sm text-indigo-700 mt-1">
-                En tant qu&apos;administrateur, vous pouvez créer un profil
-                vendeur pour accéder à toutes les fonctionnalités du dashboard.
-              </p>
-              <Link
-                href="/dashboard/setup-vendor"
-                className="inline-block mt-3 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-              >
+      <div className="w-full max-w-5xl p-5 sm:p-10">
+        <PageHeader title={user.name} subtitle="Compte administrateur" />
+
+        <div className="space-y-4">
+          <Notice
+            icon={Shield}
+            title="Vous n’avez pas encore de profil vendeur"
+            action={
+              <Link href="/dashboard/setup-vendor" className={BTN_PRIMARY}>
                 Créer mon profil vendeur
               </Link>
+            }
+          >
+            En tant qu’administrateur, un profil vendeur vous donne accès à
+            l’ensemble des fonctionnalités du tableau de bord.
+          </Notice>
+
+          <Card>
+            <CardTitle>Administration</CardTitle>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <NavCard
+                href="/admin/vendors"
+                icon={Shield}
+                title="Vendeurs"
+                hint="Validation et suivi des comptes"
+              />
+              <NavCard
+                href="/admin/clients"
+                icon={Inbox}
+                title="Clients"
+                hint="Historique et signalements"
+              />
             </div>
-          </div>
-        </div>
-        <div className="rounded-lg p-4 sm:p-5 border bg-white border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Settings size={12} className="text-gray-400" />
-            Administration
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/admin/vendors"
-              className="bg-orange-50 border border-orange-200 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-100 transition-colors"
-            >
-              Gérer les vendeurs
-            </Link>
-            <Link
-              href="/admin/clients"
-              className="bg-orange-50 border border-orange-200 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-100 transition-colors"
-            >
-              Gérer les clients
-            </Link>
-          </div>
+          </Card>
         </div>
       </div>
     );
@@ -95,131 +96,83 @@ export default async function DashboardPage() {
 
   if (!vendor) redirect("/auth/register");
 
-  // ── Métriques calculées ──
-  const allClaims       = vendor.claims;
-  const totalClaims     = allClaims.length;
-  const pendingClaims   = allClaims.filter((c) => c.status === "PENDING").length;
-  const approvedClaims  = allClaims.filter((c) => c.status === "APPROVED").length;
-  const rejectedClaims  = allClaims.filter((c) => c.status === "REJECTED").length;
+  // ── Métriques ──
+  const allClaims = vendor.claims;
+  const totalClaims = allClaims.length;
+  const pendingClaims = allClaims.filter((c) => c.status === "PENDING").length;
+  const approvedClaims = allClaims.filter((c) => c.status === "APPROVED").length;
+  const rejectedClaims = allClaims.filter((c) => c.status === "REJECTED").length;
   const inProgressClaims = allClaims.filter((c) => c.status === "IN_PROGRESS").length;
-  const highRiskClaims  = allClaims.filter((c) => (c.fraudScore ?? 0) >= 60).length;
-  const aiDecisions     = allClaims.filter((c) => c.aiDecision !== null).length;
-  const approvalRate    = totalClaims > 0 ? Math.round((approvedClaims / totalClaims) * 100) : null;
-  const recentClaims    = allClaims.slice(0, 5);
+  const aiDecisions = allClaims.filter((c) => c.aiDecision !== null).length;
+  const approvalRate =
+    totalClaims > 0 ? Math.round((approvedClaims / totalClaims) * 100) : null;
+  const recentClaims = allClaims.slice(0, 5);
+
+  // Le seuil affiché est celui que le marchand a réellement configuré, et non
+  // une constante codée en dur : le tableau de bord comptait « risque élevé »
+  // au-dessus de 60, une valeur qui ne correspondait à aucun réglage produit.
+  const alertThreshold = vendor.returnPolicy?.fraudScoreThreshold ?? 70;
+  const overThreshold = allClaims.filter((c) => (c.fraudScore ?? 0) > alertThreshold).length;
 
   // ── Statut du compte ──
   const isSuspended =
     vendor.status === "REJECTED" &&
     (vendor.rejectionReason?.startsWith("[SUSPENDU]") ?? false);
-
   const suspendReason = isSuspended
     ? vendor.rejectionReason?.replace("[SUSPENDU] ", "")
     : null;
-
   const isBlocked =
-    isSuspended ||
-    vendor.status === "PENDING" ||
-    vendor.status === "DOCUMENTS_REQUESTED";
+    isSuspended || vendor.status === "PENDING" || vendor.status === "DOCUMENTS_REQUESTED";
 
-  const statusColors: Record<string, string> = {
-    PENDING:     "bg-amber-100 text-amber-800",
-    APPROVED:    "bg-green-100 text-green-800",
-    REJECTED:    "bg-red-100 text-red-800",
-    DOCUMENTS_REQUESTED: "bg-amber-100 text-amber-800",
-  };
-
-  const claimStatusStyle: Record<string, string> = {
-    PENDING:     "bg-amber-50 text-amber-700 border-amber-200",
-    APPROVED:    "bg-green-50 text-green-700 border-green-200",
-    REJECTED:    "bg-red-50 text-red-700 border-red-200",
-    IN_PROGRESS: "bg-blue-50 text-blue-700 border-blue-200",
-  };
-
-  const BlockedIcon = isSuspended
-    ? XCircle
-    : vendor.status === "PENDING"
-    ? Clock
-    : FileText;
-
-  const blockedIconColor = isSuspended
-    ? "text-red-500"
-    : vendor.status === "PENDING"
-    ? "text-amber-500"
-    : "text-amber-500";
-
-  // ── Segments distribution ──
   const segments = [
-    { label: "En attente", count: pendingClaims,    pct: totalClaims > 0 ? (pendingClaims / totalClaims) * 100 : 0,    color: "bg-amber-400"  },
-    { label: "Approuvées", count: approvedClaims,   pct: totalClaims > 0 ? (approvedClaims / totalClaims) * 100 : 0,   color: "bg-green-500"  },
-    { label: "Refusées",   count: rejectedClaims,   pct: totalClaims > 0 ? (rejectedClaims / totalClaims) * 100 : 0,   color: "bg-red-500"    },
-    { label: "En cours",   count: inProgressClaims, pct: totalClaims > 0 ? (inProgressClaims / totalClaims) * 100 : 0, color: "bg-blue-500"   },
-  ];
+    { label: "En attente", count: pendingClaims, color: "bg-amber-400" },
+    { label: "Approuvées", count: approvedClaims, color: "bg-green-500" },
+    { label: "Refusées", count: rejectedClaims, color: "bg-red-500" },
+    { label: "En cours", count: inProgressClaims, color: "bg-blue-500" },
+  ].map((s) => ({ ...s, pct: totalClaims > 0 ? (s.count / totalClaims) * 100 : 0 }));
 
   return (
-    <div className="p-4 sm:p-8 max-w-5xl w-full">
-      {/* ── En-tête ── */}
-      <div className="mb-6 sm:mb-8">
-        <h1 className="text-xl font-semibold text-gray-900">{user.name}</h1>
-        <p className="text-sm text-gray-500 mt-0.5">{vendor.companyName}</p>
-      </div>
+    <div className="w-full max-w-5xl p-5 sm:p-10">
+      <PageHeader
+        title={vendor.companyName}
+        subtitle={`${user.name} · ${VENDOR_STATUS_LABELS[vendor.status] ?? vendor.status}`}
+      />
 
-      {/* ── Bannière de blocage ── */}
+      {/* ── Bandeaux d’état du compte ── */}
       {isBlocked && (
-        <div
-          className={`rounded-lg p-5 mb-8 border ${
-            isSuspended
-              ? "bg-red-50 border-red-200"
-              : vendor.status === "PENDING"
-              ? "bg-amber-50 border-amber-200"
-              : "bg-amber-50 border-amber-200"
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            <BlockedIcon
-              size={16}
-              className={`${blockedIconColor} shrink-0 mt-0.5`}
-            />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-800">
-                {isSuspended
-                  ? "Votre compte a été suspendu"
-                  : vendor.status === "PENDING"
-                  ? "Compte en cours de vérification"
-                  : "Documents supplémentaires requis"}
-              </p>
-              {isSuspended && suspendReason && (
-                <p className="text-sm text-red-700 mt-1.5">
+        <div className="mb-6">
+          {isSuspended && (
+            <Notice tone="danger" icon={XCircle} title="Votre compte a été suspendu">
+              {suspendReason && (
+                <p>
                   <strong>Motif :</strong> {suspendReason}
                 </p>
               )}
-              {vendor.status === "PENDING" && (
-                <p className="text-sm text-gray-600 mt-1.5">
-                  Votre inscription est en cours de vérification. L&apos;accès
-                  aux fonctionnalités sera activé dès l&apos;approbation de
-                  votre compte.
+              <p className="mt-1">Contactez le support pour rétablir votre accès.</p>
+            </Notice>
+          )}
+
+          {vendor.status === "PENDING" && (
+            <Notice tone="warning" icon={Clock} title="Compte en cours de vérification">
+              Vous pouvez déjà configurer votre politique de retour et vos clés API.
+              Les réclamations réelles arriveront dès l’approbation de votre compte.
+            </Notice>
+          )}
+
+          {vendor.status === "DOCUMENTS_REQUESTED" && (
+            <Notice tone="warning" icon={FileText} title="Documents supplémentaires requis">
+              {vendor.rejectionReason ? (
+                <p>
+                  <strong>Message de l’équipe :</strong> {vendor.rejectionReason}
                 </p>
+              ) : (
+                <p>Déposez les pièces demandées ci-dessous pour poursuivre la vérification.</p>
               )}
-              {vendor.status === "DOCUMENTS_REQUESTED" && (
-                <p className="text-sm text-amber-700 mt-1.5">
-                  Notre équipe a besoin de documents supplémentaires.
-                  {vendor.rejectionReason && (
-                    <span className="block mt-1">
-                      <strong>Message :</strong> {vendor.rejectionReason}
-                    </span>
-                  )}
-                </p>
-              )}
-              {(isSuspended || vendor.status === "PENDING") && (
-                <p className="text-sm text-gray-500 mt-2">
-                  Pour toute question, contactez notre support.
-                </p>
-              )}
-            </div>
-          </div>
+            </Notice>
+          )}
         </div>
       )}
 
-      {/* ── Upload documents ── */}
       {vendor.status === "DOCUMENTS_REQUESTED" && (
         <DocumentUploadSection
           requestedDocuments={vendor.requestedDocuments as string[]}
@@ -231,414 +184,217 @@ export default async function DashboardPage() {
         />
       )}
 
-      {/* ── Refus simple ── */}
       {vendor.status === "REJECTED" && !isSuspended && (
-        <div className="rounded-lg p-5 mb-8 border bg-red-50 border-red-200">
-          <div className="flex items-start gap-3">
-            <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-gray-800">
-                Statut :{" "}
-                <span
-                  className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                    statusColors[vendor.status]
-                  }`}
-                >
-                  {VENDOR_STATUS_LABELS[vendor.status]}
-                </span>
+        <div className="mb-6">
+          <Notice tone="danger" icon={AlertCircle} title="Inscription refusée">
+            {vendor.rejectionReason ? (
+              <p>
+                <strong>Motif :</strong> {vendor.rejectionReason}
               </p>
-              <p className="text-sm text-red-700 mt-1">
-                Votre inscription a été refusée.{" "}
-                {vendor.rejectionReason && (
-                  <strong>Motif : {vendor.rejectionReason}</strong>
-                )}
-              </p>
-            </div>
-          </div>
+            ) : (
+              <p>Contactez le support pour connaître les suites possibles.</p>
+            )}
+          </Notice>
         </div>
       )}
 
-      {/* ── Dashboard actif ── */}
+      {/* ── Tableau de bord actif ── */}
       {vendor.status === "APPROVED" && (
-        <div className="space-y-6">
-          {/* ─── A : Métriques enrichies ─── */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-            {/* Total */}
-            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Total réclamations
-              </p>
-              <p className="text-xl sm:text-2xl font-semibold text-gray-900 mt-1.5 tabular-nums">
-                {totalClaims}
-              </p>
-            </div>
-
-            {/* En attente */}
-            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                En attente
-              </p>
-              <div className="flex items-end justify-between mt-1.5">
-                <p
-                  className={`text-xl sm:text-2xl font-semibold tabular-nums ${
-                    pendingClaims > 0 ? "text-amber-500" : "text-gray-900"
-                  }`}
-                >
-                  {pendingClaims}
-                </p>
-                {pendingClaims > 0 && (
-                  <span className="text-xs text-amber-500 font-medium pb-0.5 hidden sm:block">
-                    Action requise
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Taux d'approbation */}
-            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Taux d&apos;approbation
-              </p>
-              <div className="flex items-end gap-2 mt-1.5">
-                <p className="text-xl sm:text-2xl font-semibold text-green-600 tabular-nums">
-                  {approvalRate !== null ? `${approvalRate}%` : "—"}
-                </p>
-                {approvalRate !== null && (
-                  <TrendingUp size={14} className="text-green-500 mb-1" />
-                )}
-              </div>
-              {approvalRate !== null && (
-                <div className="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-green-500 rounded-full transition-all"
-                    style={{ width: `${approvalRate}%` }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Approuvées */}
-            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <CheckCircle2 size={12} className="text-green-500" />
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Approuvées
-                </p>
-              </div>
-              <p className="text-xl sm:text-2xl font-semibold text-gray-900 tabular-nums">
-                {approvedClaims}
-              </p>
-            </div>
-
-            {/* Risque élevé */}
-            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <ShieldAlert
-                  size={12}
-                  className={
-                    highRiskClaims > 0 ? "text-red-500" : "text-gray-400"
-                  }
-                />
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Risque élevé
-                </p>
-              </div>
-              <p
-                className={`text-xl sm:text-2xl font-semibold tabular-nums ${
-                  highRiskClaims > 0 ? "text-red-600" : "text-gray-900"
-                }`}
-              >
-                {highRiskClaims}
-              </p>
-            </div>
-
-            {/* Décisions automatiques */}
-            <div className="bg-white rounded-lg p-3 sm:p-5 border border-gray-200">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Cpu size={12} className="text-indigo-500" />
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Décisions auto
-                </p>
-              </div>
-              <p className="text-xl sm:text-2xl font-semibold text-indigo-600 tabular-nums">
-                {aiDecisions}
-              </p>
-            </div>
+        <div className="space-y-8">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatTile label="Réclamations" value={totalClaims} />
+            <StatTile
+              label="En attente"
+              value={pendingClaims}
+              tone={pendingClaims > 0 ? "warning" : "neutral"}
+              hint={pendingClaims > 0 ? "À arbitrer" : "Rien à traiter"}
+            />
+            <StatTile
+              label="Taux d’approbation"
+              value={approvalRate !== null ? `${approvalRate} %` : "—"}
+              tone={approvalRate !== null ? "positive" : "neutral"}
+              icon={CheckCircle2}
+            />
+            <StatTile
+              label="Décisions IA"
+              value={aiDecisions}
+              tone="brand"
+              icon={Cpu}
+              hint={`sur ${totalClaims} dossier${totalClaims > 1 ? "s" : ""}`}
+            />
           </div>
 
-          {/* ─── B : Distribution des statuts ─── */}
           {totalClaims > 0 && (
-            <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-5">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card className="lg:col-span-2">
+                <CardTitle
+                  aside={
+                    <span className="text-[12px] tabular-nums text-faint">
+                      {totalClaims} au total
+                    </span>
+                  }
+                >
                   Répartition des statuts
-                </p>
-                <span className="text-xs text-gray-400 tabular-nums">
-                  {totalClaims} réclamation{totalClaims > 1 ? "s" : ""}
-                </span>
-              </div>
+                </CardTitle>
 
-              {/* Barre empilée */}
-              <div className="flex h-2 rounded-full overflow-hidden gap-px mb-4">
-                {segments
-                  .filter((s) => s.count > 0)
-                  .map((s) => (
-                    <div
-                      key={s.label}
-                      className={`${s.color} transition-all`}
-                      style={{ width: `${s.pct}%` }}
-                      title={`${s.label} : ${s.count}`}
-                    />
-                  ))}
-                {totalClaims === 0 && <div className="bg-gray-100 w-full" />}
-              </div>
+                <div
+                  role="img"
+                  aria-label={segments
+                    .filter((s) => s.count > 0)
+                    .map((s) => `${s.label} : ${s.count}`)
+                    .join(", ")}
+                  className="mb-4 flex h-2 gap-px overflow-hidden rounded-full bg-page"
+                >
+                  {segments
+                    .filter((s) => s.count > 0)
+                    .map((s) => (
+                      <div key={s.label} className={s.color} style={{ width: `${s.pct}%` }} />
+                    ))}
+                </div>
 
-              {/* Légende */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {segments.map((s) => (
-                  <div key={s.label} className="flex items-center gap-2">
-                    <span
-                      className={`w-2.5 h-2.5 rounded-sm shrink-0 ${s.color}`}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-500 truncate">
-                        {s.label}
-                      </p>
-                      <p className="text-sm font-semibold text-gray-900 tabular-nums">
-                        {s.count}
-                        <span className="text-xs font-normal text-gray-400 ml-1">
-                          {totalClaims > 0 ? `${Math.round(s.pct)}%` : ""}
-                        </span>
-                      </p>
+                <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {segments.map((s) => (
+                    <div key={s.label} className="flex items-start gap-2">
+                      <span aria-hidden className={`mt-1 size-2.5 shrink-0 rounded-sm ${s.color}`} />
+                      <div className="min-w-0">
+                        <dt className="truncate text-[12px] text-body">{s.label}</dt>
+                        <dd className="m-0 text-[14px] font-bold tabular-nums text-ink">
+                          {s.count}
+                          <span className="ml-1 text-[11px] font-medium text-faint">
+                            {Math.round(s.pct)} %
+                          </span>
+                        </dd>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </dl>
+              </Card>
+
+              <Card>
+                <CardTitle>Au-dessus de votre seuil</CardTitle>
+                <p
+                  className={`text-3xl font-extrabold tabular-nums ${
+                    overThreshold > 0 ? "text-risk-high" : "text-ink"
+                  }`}
+                >
+                  {overThreshold}
+                </p>
+                <p className="mt-2 flex items-start gap-1.5 text-[12px] leading-relaxed text-body">
+                  <ShieldAlert size={13} strokeWidth={1.75} className="mt-px shrink-0" aria-hidden />
+                  Dossiers dont le score de fraude dépasse {alertThreshold}, le seuil
+                  d’alerte que vous avez configuré.
+                </p>
+                <Link
+                  href="/dashboard/return-policy"
+                  className={`mt-3 inline-flex rounded-control text-[12px] font-semibold text-brand-ink hover:underline ${FOCUS}`}
+                >
+                  Ajuster le seuil
+                </Link>
+              </Card>
             </div>
           )}
 
-          {/* ─── C : Réclamations récentes ─── */}
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-900">
-                Réclamations récentes
-              </p>
+          <Card padded={false}>
+            <div className="flex items-center justify-between gap-4 border-b border-line px-6 py-4">
+              <h2 className="text-[13px] font-semibold text-ink">Réclamations récentes</h2>
               <Link
                 href="/dashboard/claims"
-                className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                className={`inline-flex items-center gap-1 rounded-control text-[12px] font-semibold text-brand-ink hover:underline ${FOCUS}`}
               >
                 Voir tout
-                <ChevronRight size={13} />
+                <ChevronRight size={13} aria-hidden />
               </Link>
             </div>
 
             {recentClaims.length === 0 ? (
-              <div className="px-5 py-10 text-center">
-                <Inbox size={24} className="mx-auto text-gray-300 mb-2" />
-                <p className="text-sm text-gray-500">
-                  Aucune réclamation pour le moment
-                </p>
-              </div>
+              <EmptyState
+                icon={Inbox}
+                title="Aucune réclamation pour le moment"
+                hint="Dès que votre boutique enverra sa première demande de retour, elle apparaîtra ici, déjà instruite."
+              />
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full text-left">
+                  <caption className="sr-only">Cinq dernières réclamations reçues</caption>
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
-                        Client
-                      </th>
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
-                        Type
-                      </th>
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
-                        Statut
-                      </th>
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
-                        Risque
-                      </th>
-                      <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide px-5 py-3">
-                        Date
-                      </th>
+                    <tr className="border-b border-line">
+                      {["Client", "Type", "Statut", "Risque", "Date"].map((h) => (
+                        <th
+                          key={h}
+                          scope="col"
+                          className="px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint"
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {recentClaims.map((claim) => {
-                      const fraudScore = claim.fraudScore;
-                      const riskLevel =
-                        fraudScore === null
-                          ? null
-                          : fraudScore >= 60
-                          ? {
-                              label: "Élevé",
-                              cls: "text-red-600",
-                              dot: "bg-red-500",
-                            }
-                          : fraudScore >= 35
-                          ? {
-                              label: "Modéré",
-                              cls: "text-amber-600",
-                              dot: "bg-amber-500",
-                            }
-                          : {
-                              label: "Faible",
-                              cls: "text-green-600",
-                              dot: "bg-green-500",
-                            };
-
-                      return (
-                        <tr
-                          key={claim.id}
-                          className="hover:bg-gray-50 transition-colors"
-                        >
-                          <td className="px-5 py-3.5">
-                            <p className="text-sm font-medium text-gray-800">
-                              {claim.customerName}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {claim.customerEmail}
-                            </p>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span className="text-sm text-gray-600">
-                              {formatClaimType(claim.type)}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-                                claimStatusStyle[claim.status] ??
-                                "bg-gray-50 text-gray-600 border-gray-200"
-                              }`}
-                            >
-                              {CLAIM_STATUS_LABELS[claim.status] ??
-                                claim.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            {riskLevel ? (
-                              <span
-                                className={`flex items-center gap-1.5 text-xs font-medium ${riskLevel.cls}`}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${riskLevel.dot}`}
-                                />
-                                {riskLevel.label}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <span className="text-xs text-gray-400">
-                              {formatDate(claim.createdAt)}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                  <tbody className="divide-y divide-line">
+                    {recentClaims.map((claim) => (
+                      <tr key={claim.id} className="transition-colors hover:bg-page">
+                        <td className="px-6 py-4">
+                          <p className="text-[13px] font-semibold text-ink">
+                            {claim.customerName}
+                          </p>
+                          <p className="text-[12px] text-body">{claim.customerEmail}</p>
+                        </td>
+                        <td className="px-6 py-4 text-[13px] text-body">
+                          {formatClaimType(claim.type)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <StatusBadge
+                            status={claim.status}
+                            label={CLAIM_STATUS_LABELS[claim.status] ?? claim.status}
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <RiskBadge score={claim.fraudScore} />
+                        </td>
+                        <td className="px-6 py-4 text-[12px] tabular-nums text-body">
+                          {formatDate(claim.createdAt)}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </div>
+          </Card>
 
-          {/* ─── Navigation ─── */}
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-              Navigation
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-              <Link
-                href="/dashboard/return-policy"
-                className="group flex items-center gap-4 bg-white border border-gray-200 hover:border-indigo-300 rounded-lg p-4 transition-all hover:shadow-sm"
-              >
-                <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 transition-colors">
-                  <FileText size={16} className="text-indigo-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-700 transition-colors">
-                    Politique de retours
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5 truncate">
-                    {vendor.returnPolicy
-                      ? `Délai ${vendor.returnPolicy.maxClaimDays}j · ${
-                          vendor.returnPolicy.validationMode === "AI_AUTO"
-                            ? "Automatique"
-                            : "Manuel"
-                        }`
-                      : "Non configurée"}
-                  </p>
-                </div>
-                <ChevronRight
-                  size={15}
-                  className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors"
-                />
-              </Link>
-
-              <Link
-                href="/dashboard/api-keys"
-                className="group flex items-center gap-4 bg-white border border-gray-200 hover:border-indigo-300 rounded-lg p-4 transition-all hover:shadow-sm"
-              >
-                <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 group-hover:bg-indigo-100 transition-colors">
-                  <Key size={16} className="text-indigo-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-700 transition-colors">
-                    Clés API
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {vendor.apiKeys.length} clé
-                    {vendor.apiKeys.length !== 1 ? "s" : ""} active
-                    {vendor.apiKeys.length !== 1 ? "s" : ""}
-                  </p>
-                </div>
-                <ChevronRight
-                  size={15}
-                  className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors"
-                />
-              </Link>
-
-              <Link
-                href="/dashboard/claims"
-                className="group flex items-center gap-4 bg-white border border-gray-200 hover:border-indigo-300 rounded-lg p-4 transition-all hover:shadow-sm"
-              >
-                <div
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                    pendingClaims > 0
-                      ? "bg-amber-50 group-hover:bg-amber-100"
-                      : "bg-indigo-50 group-hover:bg-indigo-100"
-                  }`}
-                >
-                  <Inbox
-                    size={16}
-                    className={
-                      pendingClaims > 0 ? "text-amber-500" : "text-indigo-600"
-                    }
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-700 transition-colors">
-                      Réclamations
-                    </p>
-                    {pendingClaims > 0 && (
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500 text-white text-xs font-bold tabular-nums">
-                        {pendingClaims}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {pendingClaims > 0
-                      ? `${pendingClaims} en attente de traitement`
-                      : `${totalClaims} au total`}
-                  </p>
-                </div>
-                <ChevronRight
-                  size={15}
-                  className="text-gray-300 group-hover:text-indigo-400 shrink-0 transition-colors"
-                />
-              </Link>
-            </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <NavCard
+              href="/dashboard/return-policy"
+              icon={FileText}
+              title="Politique de retour"
+              hint={
+                vendor.returnPolicy
+                  ? `${vendor.returnPolicy.maxClaimDays} jours · ${
+                      vendor.returnPolicy.validationMode === "AI_AUTO"
+                        ? "Automatique"
+                        : "Validation manuelle"
+                    }`
+                  : "Non configurée"
+              }
+            />
+            <NavCard
+              href="/dashboard/api-keys"
+              icon={Key}
+              title="Clés API"
+              hint={`${vendor.apiKeys.length} clé${vendor.apiKeys.length !== 1 ? "s" : ""} active${
+                vendor.apiKeys.length !== 1 ? "s" : ""
+              } sur 5`}
+            />
+            <NavCard
+              href="/dashboard/claims"
+              icon={Inbox}
+              title="Réclamations"
+              hint={
+                pendingClaims > 0
+                  ? `${pendingClaims} en attente d’arbitrage`
+                  : `${totalClaims} au total`
+              }
+              badge={pendingClaims}
+            />
           </div>
         </div>
       )}
