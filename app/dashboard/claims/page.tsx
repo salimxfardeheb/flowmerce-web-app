@@ -424,7 +424,7 @@ export default async function ClaimsPage({
                   : null
 
                 return (
-                  <tr key={claim.id} className="group relative cursor-pointer align-top transition-colors hover:bg-page">
+                  <tr key={claim.id} className="align-top transition-colors hover:bg-page">
 
                     {isAdmin && (
                       <td className="px-4 py-4">
@@ -439,15 +439,21 @@ export default async function ClaimsPage({
                       </td>
                     )}
 
-                    {/* Client et commande — la ligne entière mène au détail. */}
-                    {/* Lien étiré : le pseudo-élément couvre toute la ligne, qui
-                        est en `relative`. Le clic mène au détail où qu'il tombe,
-                        tout en restant un vrai lien — clavier, clic milieu et
-                        « ouvrir dans un nouvel onglet » fonctionnent. */}
+                    {/* Client et commande.
+                        Le nom portait un lien étiré (`before:absolute inset-0`)
+                        censé rendre toute la ligne cliquable, ancré sur un
+                        `<tr class="relative">`. Le positionnement relatif d'une
+                        ligne de tableau n'est pas fiable : là où le navigateur
+                        l'ignore, le pseudo-élément remonte jusqu'au bloc
+                        conteneur initial et recouvre la page entière — curseur
+                        main partout, et n'importe quel clic renvoyant au détail
+                        de la dernière réclamation. Le lien est donc redevenu un
+                        lien normal, doublé d'une entrée « Détail » explicite en
+                        fin de ligne. */}
                     <td className="px-4 py-4">
                       <a
                         href={`/dashboard/claims/${claim.id}`}
-                        className={`rounded-control text-[13px] font-semibold text-ink group-hover:text-brand-ink group-hover:underline ${FOCUS} before:absolute before:inset-0 before:content-['']`}
+                        className={`rounded-control text-[13px] font-semibold text-ink hover:text-brand-ink hover:underline ${FOCUS}`}
                       >
                         {claim.customerName}
                       </a>
@@ -530,9 +536,7 @@ export default async function ClaimsPage({
                       {formatDate(claim.createdAt)}
                     </td>
 
-                    {/* `relative z-10` : sans ça, le lien de ligne passerait
-                        par-dessus et avalerait les clics sur ces boutons. */}
-                    <td className="relative z-10 px-4 py-4">
+                    <td className="px-4 py-4">
                       <div className="flex flex-col items-end gap-2">
                         <ClaimActions
                           claimId={claim.id}
@@ -541,6 +545,14 @@ export default async function ClaimsPage({
                           aiScore={claim.aiScore}
                           claimType={claim.type}
                         />
+                        <a
+                          href={`/dashboard/claims/${claim.id}`}
+                          aria-label={`Détail de la réclamation de ${claim.customerName}`}
+                          className={`inline-flex items-center gap-0.5 rounded-control text-[12px] font-semibold text-brand-ink hover:underline ${FOCUS}`}
+                        >
+                          Détail
+                          <ChevronRight className="size-3.5 shrink-0" aria-hidden />
+                        </a>
                       </div>
                     </td>
 
