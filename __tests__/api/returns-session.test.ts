@@ -104,12 +104,16 @@ beforeEach(() => {
   })
 })
 
-async function callPost(body: unknown, headers: Record<string, string> = {}) {
+// Le portail exige un consentement explicite au traitement des données : toute
+// soumission de ce canal en porte un. Il est injecté par défaut pour ne pas
+// répéter la même clé dans chaque cas ; les tests qui portent sur son absence
+// le redéfinissent dans leur body.
+async function callPost(body: Record<string, unknown>, headers: Record<string, string> = {}) {
   const { POST } = await import('@/app/api/v1/returns/route')
   const req = new NextRequest('http://localhost:3000/api/v1/returns', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
-    body:    JSON.stringify(body),
+    body:    JSON.stringify({ data_consent: true, ...body }),
   })
   return POST(req)
 }
@@ -263,6 +267,39 @@ describe('POST /api/v1/returns — jeton de session', () => {
     expect(res.status).toBe(400)
     expect((await res.json()).error).toContain('desired_resolution')
     expect(mockIngestClaim).not.toHaveBeenCalled()
+  })
+
+  // ── Consentement au traitement des données ─────────────────────────────────
+  // La case du portail est une commodité d'interface : c'est ce refus serveur
+  // qui garantit qu'aucune réclamation du canal client n'entre en base sans
+  // accord explicite.
+  it('refuse une soumission sans consentement', async () => {
+    const res = await callPost(
+      { answers: CLIENT_ANSWERS, data_consent: undefined },
+      withToken(),
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).code).toBe('CONSENT_REQUIRED')
+    expect(mockIngestClaim).not.toHaveBeenCalled()
+  })
+
+  it('refuse un consentement qui n\'est pas un booléen vrai', async () => {
+    const res = await callPost(
+      { answers: CLIENT_ANSWERS, data_consent: 'true' },
+      withToken(),
+    )
+
+    expect(res.status).toBe(400)
+    expect(mockIngestClaim).not.toHaveBeenCalled()
+  })
+
+  it('horodate le consentement sur la réclamation', async () => {
+    await callPost({ answers: CLIENT_ANSWERS }, withToken())
+
+    expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+      dataConsentAt: expect.any(Date),
+    }))
   })
 
   it('retombe sur la clé API quand aucun jeton de session n\'est fourni', async () => {

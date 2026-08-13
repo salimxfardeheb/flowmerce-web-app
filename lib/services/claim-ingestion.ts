@@ -103,6 +103,13 @@ export interface IngestClaimInput {
   ipAddress?:    string | null
   orderDate?:    Date | null
 
+  // Instant où le client final a explicitement accepté le traitement de ses
+  // données. Exigé sur les deux canaux : le portail hébergé le recueille avec
+  // son propre bloc, le formulaire embarqué avec la section `consent` de la
+  // définition du formulaire. Null uniquement pour un appelant interne qui
+  // court-circuiterait la soumission.
+  dataConsentAt?: Date | null
+
   // Champs alimentant `prediction` (14 champs canoniques de base)
   prediction: {
     orderTotal?:      number | null
@@ -235,6 +242,7 @@ export async function ingestClaim(input: IngestClaimInput): Promise<IngestClaimR
           type:          input.type,
           description:   input.description,
           source:        input.source,
+          dataConsentAt: input.dataConsentAt ?? null,
           // Hors politique : refus immédiat et définitif, le claim naît
           // tranché. Sinon PENDING, en attente du ML ou du vendeur.
           status:        policyViolation ? 'REJECTED' : 'PENDING',

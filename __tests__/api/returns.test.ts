@@ -72,6 +72,9 @@ const VALID_ANSWERS: Record<string, unknown> = {
   reason:            'Produit défectueux',
   desired_resolution: 'REFUND',
   description:       'Le produit est tombé en panne dès le premier usage.',
+  // Section `consent` du formulaire : la boutique la rend comme les autres et
+  // renvoie la case cochée par son client. Sans elle, la soumission est refusée.
+  data_consent:      true,
 }
 
 function validBody(overrides: Record<string, unknown> = {}) {
@@ -342,5 +345,58 @@ describe('POST /api/v1/returns', () => {
         paymentMethod:  'Cash on Delivery',
       }),
     }))
+  })
+
+  // ── Consentement au traitement des données ─────────────────────────────────
+  // Même règle que sur le portail hébergé : la boutique rend la section
+  // `consent` du formulaire et transmet la réponse de son client.
+  describe('consentement', () => {
+    it('horodate le consentement transmis dans answers', async () => {
+      authOk()
+
+      const res = await callPost(validBody())
+
+      expect(res.status).toBe(201)
+      expect(mockIngestClaim).toHaveBeenCalledWith(expect.objectContaining({
+        dataConsentAt: expect.any(Date),
+      }))
+    })
+
+    it('refuse une soumission sans consentement', async () => {
+      authOk()
+      const withoutConsent = { ...VALID_ANSWERS }
+      delete withoutConsent.data_consent
+
+      const res = await callPost(validBody({ answers: withoutConsent }))
+
+      expect(res.status).toBe(400)
+      expect((await res.json()).code).toBe('CONSENT_REQUIRED')
+      expect(mockIngestClaim).not.toHaveBeenCalled()
+    })
+
+    it('refuse une case décochée', async () => {
+      authOk()
+
+      const res = await callPost(
+        validBody({ answers: { ...VALID_ANSWERS, data_consent: false } }),
+      )
+
+      expect(res.status).toBe(400)
+      expect(mockIngestClaim).not.toHaveBeenCalled()
+    })
+
+    // Une intégration qui ne boucle pas sur `sections` peut aussi le donner à
+    // la racine, comme le fait le portail avec son propre bloc explicatif.
+    it('accepte aussi le consentement à la racine du body', async () => {
+      authOk()
+      const withoutConsent = { ...VALID_ANSWERS }
+      delete withoutConsent.data_consent
+
+      const res = await callPost(
+        validBody({ answers: withoutConsent, data_consent: true }),
+      )
+
+      expect(res.status).toBe(201)
+    })
   })
 })

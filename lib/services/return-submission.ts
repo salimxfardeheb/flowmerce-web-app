@@ -26,7 +26,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { checkRateLimit }            from '@/lib/rate-limit'
-import { buildReturnForm, merchantFieldIds } from '@/lib/services/return-form-builder'
+import { buildReturnForm, merchantFieldIds, CONSENT_FIELD_ID } from '@/lib/services/return-form-builder'
 import {
   isPresent,
   validateReturnFormAnswers,
@@ -145,6 +145,38 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
       ? body.answers as Record<string, unknown>
       : body
 
+  // ── 1 bis. Consentement au traitement des données ────────────────────────
+  // Le client final accepte explicitement que les données de sa demande servent
+  // à trancher la réclamation, à entraîner le modèle et à être rapprochées de
+  // ses retours précédents. La case cochée dans un navigateur ne prouve rien :
+  // la garde est ici, et l'horodatage part en base avec la réclamation.
+  //
+  // Deux provenances, parce qu'il y a deux façons légitimes de le recueillir :
+  //   · `answers.data_consent` — le champ de la section `consent` du formulaire,
+  //     rendu tel quel par le formulaire embarqué chez la boutique ;
+  //   · `body.data_consent`    — accord donné hors formulaire, ce que fait le
+  //     portail hébergé avec son propre bloc explicatif.
+  //
+  // La validation du formulaire ne suffit pas à l'exiger : `isPresent(false)`
+  // est vrai, donc une case décochée passerait le contrôle « champ requis ».
+  // Seule la comparaison stricte ci-dessous ferme la porte.
+  const consentGiven =
+    body.data_consent === true || rawAnswers[CONSENT_FIELD_ID] === true
+  const dataConsentAt = consentGiven ? new Date() : null
+
+  if (!consentGiven) {
+    return NextResponse.json(
+      {
+        error: isMerchant
+          ? `Consentement du client requis : transmettez ${CONSENT_FIELD_ID} = true dans answers, `
+            + 'après acceptation explicite de la section « consent » du formulaire.'
+          : 'Vous devez accepter le traitement de vos données pour envoyer votre demande.',
+        code:  'CONSENT_REQUIRED',
+      },
+      { status: 400 },
+    )
+  }
+
   // ── 2. Définition du formulaire du vendeur ───────────────────────────────
   // Construite avant la fusion : c'est elle qui désigne les champs `merchant`,
   // donc ceux que le client final n'a pas le droit de renseigner.
@@ -168,6 +200,12 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
   // Fusion prefill ↔ réponses : la valeur serveur prime toujours ; un champ
   // verrouillé ignore purement et simplement ce que le client a envoyé.
   const answers: Record<string, unknown> = { ...rawAnswers }
+
+  // Le consentement est désormais un champ requis de la définition, mais le
+  // portail le donne à la racine du body : sans cette normalisation, la
+  // validation le réclamerait dans `answers` alors qu'il a déjà été contrôlé.
+  // À ce stade il est acquis — l'étape 1 bis a renvoyé 400 sinon.
+  answers[CONSENT_FIELD_ID] = true
 
   for (const [fieldId, prefillKey] of PREFILL_ENTRIES) {
     const value = ctx.prefill[prefillKey]
@@ -374,6 +412,7 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
     source:        ctx.source,
     ipAddress:     ip,
     orderDate,
+    dataConsentAt,
     prediction: {
       orderTotal,
       customerAge,
@@ -418,6 +457,7 @@ export async function submitReturn({ ctx, body, ip }: SubmitReturnInput): Promis
     fraudScore:          result.claim.fraudScore,
     source:              ctx.source,
     policyRejected:      result.claim.policyRejected,
+    dataConsent:         consentGiven,
     ip,
   })
 

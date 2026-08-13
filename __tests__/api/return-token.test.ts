@@ -96,12 +96,15 @@ beforeEach(() => {
   })
 })
 
-async function callPost(body: unknown) {
+// Cette route est un canal client comme le portail : elle exige le même
+// consentement, injecté par défaut ici. Un test le retire explicitement pour
+// vérifier qu'elle n'ouvre pas une porte dérobée au contournement.
+async function callPost(body: Record<string, unknown>) {
   const { POST } = await import('@/app/api/return/[token]/route')
   const req = new NextRequest('http://localhost:3000/api/return/ret_abc', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(body),
+    body:    JSON.stringify({ data_consent: true, ...body }),
   })
   return POST(req, { params: Promise.resolve({ token: 'ret_abc' }) })
 }
@@ -396,5 +399,14 @@ describe('POST /api/return/[token]', () => {
     expect(mockSessionUpdate).toHaveBeenCalledWith(expect.objectContaining({
       where: { token: 'ret_abc' },
     }))
+  })
+
+  // Une route dépréciée reste une route : exempter celle-ci du consentement
+  // suffirait à le contourner, jeton de session en main.
+  it('exige le consentement comme le canal v1', async () => {
+    const res = await callPost({ answers: CLIENT_ANSWERS, data_consent: undefined })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).code).toBe('CONSENT_REQUIRED')
   })
 })

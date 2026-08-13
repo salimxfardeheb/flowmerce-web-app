@@ -5,6 +5,7 @@ import {
   buildReturnForm,
   merchantFieldIds,
   slugify,
+  CONSENT_FIELD_ID,
   RETURN_FORM_VERSION,
   RETURN_FORM_MIN_COMPATIBLE_VERSION,
 } from '@/lib/services/return-form-builder'
@@ -84,8 +85,13 @@ describe('contrat de version', () => {
   // contrôlent encore `version` au lieu de `min_compatible_version`. Ce test
   // n'autorise le bump que s'il est délibéré — et il ne l'est que sur une
   // rupture réelle du contrat.
-  it('reste en v1 — aucune rupture du contrat à ce jour', () => {
-    expect(RETURN_FORM_VERSION).toBe(1)
+  //
+  // v2 : la section `consent` porte un champ exigé à la soumission. Le rendu
+  // reste compatible v1 (une case à cocher se rend partout, d'où un
+  // `min_compatible_version` inchangé), mais une intégration qui code ses
+  // champs en dur verra ses envois refusés jusqu'à ce qu'elle le transmette.
+  it('est en v2 — la section consent est exigée à la soumission', () => {
+    expect(RETURN_FORM_VERSION).toBe(2)
   })
 
   it('le contrat de compatibilité est au premier niveau, pas dans meta', () => {
@@ -106,7 +112,7 @@ describe('buildReturnForm', () => {
     expect(form.title).toBe('Demande de retour')
     expect(form.description).toBeTruthy()
     expect(form.sections.map(s => s.id)).toEqual([
-      'order', 'reason', 'resolution', 'description',
+      'order', 'reason', 'resolution', 'description', 'consent',
     ])
 
     for (const section of form.sections) {
@@ -243,7 +249,8 @@ describe('buildReturnForm', () => {
     ])
     expect(rendus.some(f => f.source === 'merchant')).toBe(false)
 
-    // Ce qui reste à saisir : son identité, son produit, et son problème.
+    // Ce qui reste à saisir : son identité, son produit, son problème, et son
+    // accord sur l'usage de ses données.
     expect(rendus.map(f => f.id)).toEqual([
       'order_id',
       'customer_name',
@@ -254,10 +261,56 @@ describe('buildReturnForm', () => {
       'reason',
       'desired_resolution',
       'description',
+      'data_consent',
     ])
 
     // `allFields` reste la vue complète, pour la validation à la soumission.
     expect(allFields(form)).toHaveLength(rendus.length + form.merchant_fields.length)
+  })
+
+  // Le consentement voyage dans la définition du formulaire, et non dans le
+  // seul portail hébergé : c'est ce qui le fait apparaître chez une boutique
+  // qui rend `sections` génériquement, sans une ligne de code de sa part.
+  describe('section consent', () => {
+    it('expose une case à cocher requise, décochée par défaut', () => {
+      const form = buildReturnForm(vendor, null)
+      const section = form.sections.find(s => s.id === 'consent')
+
+      expect(section).toBeDefined()
+      expect(section!.description).toBeTruthy()
+      expect(section!.fields).toHaveLength(1)
+
+      const consent = section!.fields[0]
+      expect(consent.id).toBe(CONSENT_FIELD_ID)
+      expect(consent.type).toBe('checkbox')
+      expect(consent.required).toBe(true)
+      // Une case pré-cochée n'est pas un consentement.
+      expect(consent.defaultValue).toBe(false)
+      // Le texte accepté est porté par le champ, pas laissé au rendu.
+      expect(consent.placeholder).toBeTruthy()
+    })
+
+    it('vient du client, jamais de la boutique', () => {
+      const form = buildReturnForm(vendor, null)
+      const consent = form.sections
+        .flatMap(s => s.fields)
+        .find(f => f.id === CONSENT_FIELD_ID)!
+
+      // `source: 'merchant'` le dispenserait d'être requis (cf. isRequired) et
+      // laisserait la boutique le cocher à la place de son client.
+      expect(consent.source).toBe('customer')
+      expect(merchantFieldIds(form)).not.toContain(CONSENT_FIELD_ID)
+    })
+
+    // Les trois finalités annoncées au client sont celles que le code applique.
+    it('énonce les trois finalités du traitement', () => {
+      const form = buildReturnForm(vendor, null)
+      const description = form.sections.find(s => s.id === 'consent')!.description!
+
+      expect(description).toMatch(/décision/i)
+      expect(description).toMatch(/entraîner/i)
+      expect(description).toMatch(/boutiques partenaires/i)
+    })
   })
 
   // Un champ boutique n'est jamais requis du client : la boutique peut ne pas

@@ -186,7 +186,8 @@ curl -X POST https://flowmerce.app/api/v1/returns \\
       "payment_method":     "Cash on Delivery",
       "reason":             "Produit défectueux",
       "desired_resolution": "REFUND",
-      "description":        "Défaut visible sur la semelle à la réception."
+      "description":        "Défaut visible sur la semelle à la réception.",
+      "data_consent":       true
     }
   }'`,
 
@@ -214,6 +215,7 @@ const res = await fetch("https://flowmerce.app/api/v1/returns", {
       reason:             "Produit défectueux",   // option du formulaire
       desired_resolution: "REFUND",               // EXCHANGE | REFUND | REPAIR
       description:        "Produit reçu défectueux.",
+      data_consent:       true,                   // case cochée par le client
     },
   }),
 })
@@ -247,6 +249,7 @@ response = requests.post(
             "reason":             "Produit défectueux",
             "desired_resolution": "REFUND",
             "description":        "Produit reçu défectueux.",
+            "data_consent":       True,
         },
     },
 )
@@ -273,6 +276,7 @@ $response = \\Illuminate\\Support\\Facades\\Http::withHeaders([
         'reason'             => 'Produit défectueux',
         'desired_resolution' => 'REFUND',
         'description'        => 'Produit reçu défectueux.',
+        'data_consent'       => true,
     ],
 ]);
 
@@ -580,7 +584,7 @@ x-api-key: flk_votre_cle_api`}
                 <CodeBlock
                   lang="JSON"
                   code={`{
-  "version": 1,
+  "version": 2,
   "min_compatible_version": 1,
   "sections":        [ /* à AFFICHER au client */ ],
   "merchant_fields": [ /* à FOURNIR depuis vos données de commande */ ]
@@ -604,6 +608,7 @@ if (MY_ENGINE_VERSION < form.min_compatible_version) {
 }
 
 // ❌ bloque sur un ajout inoffensif
+// (c'est ce contrôle qui casse au passage en v2, pas le formulaire)
 if (![1].includes(form.version)) {
   throw new Error("version non supportée")
 }`}
@@ -705,8 +710,45 @@ if (![1].includes(form.version)) {
                         <FieldRow name="product_name"       type="string" required desc="Nom du produit concerné" />
                         <FieldRow name="reason"             type="enum"   required desc="Motif de retour — une des options du formulaire (ex: Produit défectueux)" />
                         <FieldRow name="desired_resolution" type="enum"   required desc="EXCHANGE | REFUND | REPAIR (choix du client, filtré par votre policy)" />
+                        <FieldRow name="data_consent"       type="boolean" required desc="true — accord explicite du client sur l'usage de ses données (section « consent » du formulaire). Voir ci-dessous." />
                       </tbody>
                     </table>
+                  </div>
+                </div>
+
+                {/* Consentement — rupture de contrat, elle mérite son propre bloc */}
+                <div className="p-6 space-y-4">
+                  <h4 className="text-sm font-semibold text-ink">
+                    Consentement du client{' '}
+                    <span className="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-800">
+                      formulaire v2
+                    </span>
+                  </h4>
+                  <p className="text-sm text-body">
+                    <code className="font-mono text-xs bg-page px-1 py-0.5 rounded">GET /api/v1/return-form</code>{' '}
+                    renvoie désormais une section{' '}
+                    <code className="font-mono text-xs bg-page px-1 py-0.5 rounded">consent</code>, dont le
+                    champ obligatoire{' '}
+                    <code className="font-mono text-xs bg-page px-1 py-0.5 rounded">data_consent</code>{' '}
+                    porte le texte à afficher et la case à cocher. Si vous rendez le formulaire à partir
+                    de sa définition, comme recommandé, elle apparaît sans un mot de code de votre part.
+                  </p>
+                  <p className="text-sm text-body">
+                    Le client accepte que les informations de sa demande servent à trancher sa
+                    réclamation, à entraîner le modèle qui produit ces analyses, et à être rapprochées
+                    de ses retours précédents chez les boutiques partenaires. L&apos;horodatage de son
+                    accord est conservé avec la réclamation.
+                  </p>
+                  <div className="rounded-control border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="text-sm text-amber-800">
+                      <strong className="font-semibold">Changement bloquant.</strong> Une soumission sans{' '}
+                      <code className="font-mono text-xs bg-white/60 px-1 py-0.5 rounded">data_consent: true</code>{' '}
+                      est refusée avec un{' '}
+                      <code className="font-mono text-xs bg-white/60 px-1 py-0.5 rounded">400</code> et le code{' '}
+                      <code className="font-mono text-xs bg-white/60 px-1 py-0.5 rounded">CONSENT_REQUIRED</code>.
+                      Cochez-le après acceptation réelle du client : le pré-cocher, ou l&apos;envoyer en
+                      dur, n&apos;est pas un consentement.
+                    </p>
                   </div>
                 </div>
 
@@ -834,6 +876,7 @@ if (![1].includes(form.version)) {
                     </thead>
                     <tbody>
                       <ErrorRow status={400} code="VALIDATION"   when="Champ requis manquant, email invalide, HTML détecté, raison/résolution non reconnue" action="Corriger le payload côté votre backend" />
+                      <ErrorRow status={400} code="CONSENT_REQUIRED" when="answers.data_consent absent ou différent de true" action="Afficher la section « consent » du formulaire et transmettre la case cochée par le client" />
                       <ErrorRow status={401} code="AUTH"         when="Clé API invalide, désactivée, ou vendor non APPROVED" action="Vérifier la clé dans /dashboard/api-keys" />
                       <ErrorRow status={409} code="DUPLICATE"    when="Un claim existe déjà pour (vendorId, order_id)" action='Afficher "un retour existe déjà" au client' />
                       <ErrorRow status={422} code="DELAY_EXCEEDED" when="Délai de retour dépassé (selon return policy vendor)" action="Afficher la raison au client (champ `extra.policy_days`)" />

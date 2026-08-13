@@ -205,6 +205,19 @@ model Claim {
   // Refusée d'office sans passer par le ML et masquée au vendeur : il n'a
   // rien à trancher. Reste visible côté admin et exportable vers le dataset.
   policyRejected Boolean    @default(false)
+
+  // ── Consentement du client final (RGPD / loi 18-07) ───────────────────────
+  // Horodatage de l'acceptation explicite du traitement des données de la
+  // demande : décision sur la réclamation, entraînement du modèle et
+  // rapprochement avec les retours précédents. Exigé sur les deux canaux de
+  // soumission — portail hébergé et formulaire embarqué chez la boutique.
+  //
+  // Nullable pour une seule raison : les réclamations créées avant la mise en
+  // place n'ont pas de trace, et rien ne justifie de leur en inventer une. Sur
+  // une réclamation postérieure, une valeur nulle est un signal — la soumission
+  // n'aurait pas dû passer.
+  dataConsentAt DateTime?
+
   vendor        Vendor      @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([vendorId, orderId])

@@ -427,15 +427,16 @@ Flowmerce est la **source de vérité unique** pour les retours : le formulaire 
                                      → Flowmerce valide et répond claim_id + statut
 ```
 
-- **`GET /api/v1/return-form`** — identifie le vendeur par sa clé API (Bearer **ou** `x-api-key`), construit le formulaire via `buildReturnForm(vendor, returnPolicy)` (`lib/services/return-form-builder.ts`) : sections `order` / `reason` / `resolution` / `description`, options de motifs et de résolutions **filtrées** par la politique (`acceptedReturnReasons`, `acceptedTypes`), règles de validation pilotées par le JSON, et `meta.policy` résumé (délai, catégories non remboursables, échange seul…). Le JSON n'expose **jamais** les données sensibles de la politique.
+- **`GET /api/v1/return-form`** — identifie le vendeur par sa clé API (Bearer **ou** `x-api-key`), construit le formulaire via `buildReturnForm(vendor, returnPolicy)` (`lib/services/return-form-builder.ts`) : sections `order` / `reason` / `resolution` / `description` / `consent`, options de motifs et de résolutions **filtrées** par la politique (`acceptedReturnReasons`, `acceptedTypes`), règles de validation pilotées par le JSON, et `meta.policy` résumé (délai, catégories non remboursables, échange seul…). Le JSON n'expose **jamais** les données sensibles de la politique.
 - **`POST /api/v1/returns`** — reçoit un body générique `{ orderId, productId, answers: { fieldId: valeur } }`. Chaque réponse est **revalidée côté serveur contre la définition du formulaire** (champs requis, types, longueurs, HTML, options valides), puis mappée vers `checkReturnPolicy` → `ingestClaim` (score de fraude, déduplication sur `vendorId + orderId`, appel ML, auto-approve `AI_AUTO`). Aucune règle de politique n'est dupliquée dans la route.
+- **Consentement** — les deux canaux exigent l'accord explicite du client final sur l'usage de ses données (décision, entraînement du modèle, rapprochement inter-boutiques). Il est accepté depuis `answers.data_consent` (formulaire embarqué, champ de la section `consent`) **ou** depuis `data_consent` à la racine du body (portail hébergé, qui affiche son propre bloc explicatif). Son absence vaut `400 CONSENT_REQUIRED` ; la validation du formulaire ne suffit pas à l'exiger, `isPresent(false)` étant vrai, d'où le contrôle strict dans `submitReturn`. L'instant de l'acceptation est persisté dans `Claim.dataConsentAt`.
 
 ### Versionnage et compatibilité
 
 Le JSON du formulaire porte deux entiers au premier niveau :
 
 ```json
-{ "version": 1, "min_compatible_version": 1, "sections": [...], "merchant_fields": [...] }
+{ "version": 2, "min_compatible_version": 1, "sections": [...], "merchant_fields": [...] }
 ```
 
 | Champ | Sens |
@@ -457,7 +458,9 @@ if (![1].includes(form.version)) throw new Error('version non supportée')
 
 Les évolutions **additives** ne changent pas `version` : nouvelle propriété sur un champ, nouveau champ optionnel, contrainte relâchée, nouvelle option dans un `select`. C'est le cas le plus fréquent — les motifs et résolutions varient déjà d'un vendeur à l'autre selon sa `ReturnPolicy`.
 
-> **Historique.** Le contrat n'a jamais rompu : il est en `v1` depuis l'origine. L'ajout de `field.source` et le passage de `shipping_method` en optionnel avaient brièvement fait passer `version` à `2` ; ces deux évolutions étant additives, l'incrément n'était pas justifié et a été annulé.
+> **Historique.** Le contrat est resté en `v1` de l'origine jusqu'à l'ajout de la section `consent`. L'ajout de `field.source` et le passage de `shipping_method` en optionnel avaient brièvement fait passer `version` à `2` ; ces deux évolutions étant additives, l'incrément n'était pas justifié et a été annulé.
+>
+> **`v2` — section `consent`.** Le formulaire porte désormais une case à cocher obligatoire `data_consent`, par laquelle le client final accepte l'usage de ses données. L'ajout est additif au **rendu** (un moteur `v1` sait afficher une case à cocher, d'où un `min_compatible_version` inchangé) mais pas à la **soumission** : `POST /api/v1/returns` refuse un envoi sans `data_consent: true` avec un `400 CONSENT_REQUIRED`. Une intégration qui boucle sur `sections` n'a rien à faire ; une intégration qui code ses champs en dur doit transmettre le champ.
 
 #### Champs boutique — `merchant_fields`
 

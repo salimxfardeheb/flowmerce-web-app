@@ -45,9 +45,22 @@ import {
 // L'ajout de `field.source` et le passage de `shipping_method` en optionnel
 // avaient brièvement fait passer la constante à 2 ; ces deux évolutions étant
 // additives, elles ne justifiaient pas d'incrément et il a été annulé.
+//
+// v2 — section `consent`. L'ajout est additif au *rendu* : un moteur v1 sait
+// afficher une case à cocher, et `min_compatible_version` reste donc à 1. Il ne
+// l'est pas à la *soumission* : ce champ est exigé, et une intégration qui code
+// ses champs en dur au lieu de boucler sur `sections` verra ses envois refusés
+// tant qu'elle ne le transmet pas. C'est précisément ce qu'un incrément de
+// `version` signale à l'intégrateur.
 // ─────────────────────────────────────────────────────────────
-export const RETURN_FORM_VERSION = 1
+export const RETURN_FORM_VERSION = 2
 export const RETURN_FORM_MIN_COMPATIBLE_VERSION = 1
+
+// Consentement du client final au traitement de ses données. Exporté parce que
+// trois modules le désignent : la soumission qui l'exige, la page hébergée qui
+// le retire de son rendu générique — elle affiche son propre bloc, plus
+// explicite — et les tests. Aucun d'eux ne doit le coder en dur.
+export const CONSENT_FIELD_ID = 'data_consent'
 
 // Qui renseigne la valeur d'un champ :
 //   'customer' → saisi par le client final dans le formulaire ;
@@ -278,6 +291,37 @@ export function buildReturnForm(vendor: VendorInput, policy: PolicyInput): Retur
             required: false,
             placeholder: 'Décrivez votre problème en détail pour accélérer le traitement…',
             validation: { maxLength: 2000 },
+          }),
+        ],
+      },
+      // Le consentement fait partie de la définition du formulaire, et non du
+      // seul portail hébergé : c'est ainsi que le formulaire embarqué chez la
+      // boutique l'obtient, sans une ligne de code de son côté, et que les
+      // trois finalités énoncées restent les mêmes sur les deux canaux.
+      //
+      // Les finalités listées sont celles que le code applique réellement, y
+      // compris le rapprochement inter-boutiques : le dossier anti-fraude est
+      // apparié par e-mail et téléphone toutes boutiques confondues
+      // (findOrCreateFraudRecord). Le taire rendrait la notice fausse.
+      {
+        id:    'consent',
+        title: 'Utilisation de vos données',
+        description:
+          'Les informations de cette demande servent à analyser votre réclamation et à proposer '
+          + 'une décision, à entraîner le modèle qui produit ces analyses, et à rapprocher votre '
+          + 'demande de vos retours précédents chez les boutiques partenaires — via votre e-mail '
+          + 'et votre téléphone. Elles ne sont ni revendues, ni utilisées à des fins publicitaires.',
+        fields: [
+          field({
+            id: CONSENT_FIELD_ID,
+            type: 'checkbox',
+            label: 'Consentement au traitement des données',
+            required: true,
+            placeholder:
+              'J’accepte que Flowmerce utilise les informations de cette demande pour analyser ma '
+              + 'réclamation et entraîner son modèle d’analyse.',
+            // Décoché : une case pré-cochée n'est pas un consentement.
+            defaultValue: false,
           }),
         ],
       },
