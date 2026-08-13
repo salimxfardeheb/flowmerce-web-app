@@ -3,38 +3,105 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Eye, EyeOff, Loader2, Plus, X } from "lucide-react";
 import {
-  AlertCircle,
-  ArrowRight,
-  Check,
-  Eye,
-  EyeOff,
-  Plus,
-  X,
-} from "lucide-react";
+  AuthShell,
+  AUTH_BTN_GHOST,
+  AUTH_BTN_PRIMARY,
+  AUTH_INPUT,
+  AUTH_LABEL,
+  AUTH_LINK,
+} from "@/components/auth/AuthShell";
 
 const SUGGESTED_CATEGORIES = [
-  { value: "Electronics",  label: "Electronique"   },
-  { value: "Clothing",     label: "Vetements"      },
-  { value: "Shoes",        label: "Chaussures"     },
-  { value: "Beauty",       label: "Beaute"         },
-  { value: "Appliances",   label: "Electromenager" },
-  { value: "Books",        label: "Livres"         },
-  { value: "Toys",         label: "Jouets"         },
-  { value: "Sports",       label: "Sport"          },
-  { value: "Home",         label: "Maison"         },
-  { value: "Food",         label: "Alimentation"   },
+  { value: "Electronics", label: "Électronique" },
+  { value: "Clothing", label: "Vêtements" },
+  { value: "Shoes", label: "Chaussures" },
+  { value: "Beauty", label: "Beauté" },
+  { value: "Appliances", label: "Électroménager" },
+  { value: "Books", label: "Livres" },
+  { value: "Toys", label: "Jouets" },
+  { value: "Sports", label: "Sport" },
+  { value: "Home", label: "Maison" },
+  { value: "Food", label: "Alimentation" },
 ];
 
 type Step = 1 | 2 | 3;
 
 const STEPS = [
-  { num: 1 as Step, label: "Compte",      desc: "Vos identifiants de connexion"         },
-  { num: 2 as Step, label: "Entreprise",  desc: "Les informations de votre societe"     },
-  { num: 3 as Step, label: "Categories",  desc: "Les produits que vous commercialisez"  },
+  { num: 1 as Step, label: "Compte", desc: "Vos identifiants de connexion." },
+  { num: 2 as Step, label: "Entreprise", desc: "Les informations de votre société." },
+  { num: 3 as Step, label: "Catégories", desc: "Les produits que vous commercialisez." },
 ];
 
-const INPUT = "w-full border border-gray-200 rounded-lg px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-400";
+function RegisterAside({ step }: { step: Step }) {
+  return (
+    <>
+      <nav aria-label="Progression de l’inscription">
+        <ol className="flex flex-col gap-5 list-none p-0 m-0">
+          {STEPS.map((s) => {
+            const done = step > s.num;
+            const active = step === s.num;
+            return (
+              <li key={s.num} className="flex items-start gap-3">
+                <span
+                  aria-hidden
+                  className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full transition-colors ${
+                    done
+                      ? "bg-green-400 text-deep"
+                      : active
+                        ? "bg-white text-deep"
+                        : "bg-white/15 text-white/60"
+                  }`}
+                >
+                  {done ? (
+                    <Check size={11} strokeWidth={3} />
+                  ) : (
+                    <span className="text-[11px] font-bold leading-none">{s.num}</span>
+                  )}
+                </span>
+                <span>
+                  <span
+                    className={`block text-[14px] font-semibold leading-none ${
+                      active ? "text-white" : done ? "text-white/70" : "text-white/50"
+                    }`}
+                  >
+                    {s.label}
+                    {done && <span className="sr-only"> (terminée)</span>}
+                    {active && <span className="sr-only"> (en cours)</span>}
+                  </span>
+                  {active && (
+                    <span className="mt-1 block text-[13px] leading-snug text-white/70">
+                      {s.desc}
+                    </span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+
+      <div className="mt-auto pt-8">
+        <div className="mb-4 h-px bg-white/15" />
+        <p className="mb-2 text-[13px] text-white/70">Étape {step} sur 3</p>
+        <div
+          role="progressbar"
+          aria-valuenow={step}
+          aria-valuemin={1}
+          aria-valuemax={3}
+          aria-label="Progression de l’inscription"
+          className="h-1 overflow-hidden rounded-full bg-white/15"
+        >
+          <div
+            className="h-full rounded-full bg-white/60 transition-all duration-300"
+            style={{ width: `${(step / 3) * 100}%` }}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -61,11 +128,10 @@ export default function RegisterPage() {
     setError("");
   };
 
-  const toggleCategory = (val: string) => {
+  const toggleCategory = (val: string) =>
     setSelectedCategories((prev) =>
-      prev.includes(val) ? prev.filter((c) => c !== val) : [...prev, val]
+      prev.includes(val) ? prev.filter((c) => c !== val) : [...prev, val],
     );
-  };
 
   const addCustomCategory = () => {
     const trimmed = customInput.trim();
@@ -74,19 +140,25 @@ export default function RegisterPage() {
     setCustomInput("");
   };
 
-  const removeCategory = (val: string) => {
+  const removeCategory = (val: string) =>
     setSelectedCategories((prev) => prev.filter((c) => c !== val));
-  };
 
   const canGoNext = (): boolean => {
-    if (step === 1) return form.name.trim().length >= 2 && form.email.includes("@") && form.password.length >= 8;
+    if (step === 1)
+      return form.name.trim().length >= 2 && form.email.includes("@") && form.password.length >= 8;
     if (step === 2) return form.companyName.trim().length >= 2 && form.phone.trim().length >= 8;
     if (step === 3) return selectedCategories.length >= 1;
     return false;
   };
 
-  const goNext = () => { setError(""); if (step < 3) setStep((s) => (s + 1) as Step); };
-  const goPrev = () => { setError(""); if (step > 1) setStep((s) => (s - 1) as Step); };
+  const goNext = () => {
+    setError("");
+    if (step < 3) setStep((s) => (s + 1) as Step);
+  };
+  const goPrev = () => {
+    setError("");
+    if (step > 1) setStep((s) => (s - 1) as Step);
+  };
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -99,12 +171,16 @@ export default function RegisterPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.details?.length > 0 ? data.details.map((e: any) => e.message).join(" — ") : data.error || "Une erreur est survenue");
+        setError(
+          data.details?.length > 0
+            ? data.details.map((e: { message: string }) => e.message).join(" · ")
+            : data.error || "Une erreur est survenue",
+        );
         return;
       }
       router.push("/auth/login?registered=true");
     } catch {
-      setError("Erreur de connexion au serveur");
+      setError("Erreur de connexion au serveur.");
     } finally {
       setLoading(false);
     }
@@ -113,274 +189,289 @@ export default function RegisterPage() {
   const currentStep = STEPS.find((s) => s.num === step)!;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-6">
-
-      {/* Card */}
-      <div className="w-full max-w-4xl bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col sm:flex-row">
-
-        {/* Left panel — hidden on mobile */}
-        <div className="hidden sm:flex w-64 md:w-72 bg-indigo-700 p-8 flex-col shrink-0">
-          <Link href="/" className="text-white font-bold tracking-tight text-base mb-10 block">
-            Flowmerce
+    <AuthShell
+      eyebrow={`Étape ${step} sur 3`}
+      title={currentStep.label}
+      subtitle={currentStep.desc}
+      aside={<RegisterAside step={step} />}
+      footer={
+        <>
+          Déjà un compte ?{" "}
+          <Link href="/auth/login" className={AUTH_LINK}>
+            Se connecter
           </Link>
+        </>
+      }
+    >
+      {error && (
+        <p
+          role="alert"
+          className="mb-5 flex items-start gap-2.5 rounded-control bg-red-50 px-3.5 py-3 text-[13px] text-red-700"
+        >
+          <AlertCircle size={16} className="mt-px shrink-0" aria-hidden />
+          {error}
+        </p>
+      )}
 
-          <nav className="flex flex-col gap-5">
-            {STEPS.map((s) => {
-              const done    = step > s.num;
-              const active  = step === s.num;
-              return (
-                <div key={s.num} className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 transition-all ${
-                    done   ? "bg-green-400 text-white" :
-                    active ? "bg-white text-indigo-700" :
-                             "bg-indigo-600/50 text-indigo-400"
-                  }`}>
-                    {done
-                      ? <Check size={11} strokeWidth={3} />
-                      : <span className="text-xs font-bold leading-none">{s.num}</span>
-                    }
-                  </div>
-                  <div>
-                    <p className={`text-base font-medium leading-none ${active ? "text-white" : done ? "text-indigo-200" : "text-indigo-400"}`}>
-                      {s.label}
-                    </p>
-                    {active && (
-                      <p className="text-sm text-indigo-300 mt-1 leading-snug">{s.desc}</p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </nav>
+      {step === 1 && (
+        <div className="flex flex-col gap-5">
+          <div>
+            <label htmlFor="name" className={AUTH_LABEL}>
+              Nom complet
+            </label>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              required
+              autoComplete="name"
+              value={form.name}
+              onChange={handleChange}
+              className={AUTH_INPUT}
+            />
+          </div>
+          <div>
+            <label htmlFor="email" className={AUTH_LABEL}>
+              Email
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={form.email}
+              onChange={handleChange}
+              className={AUTH_INPUT}
+            />
+          </div>
+          <div>
+            <label htmlFor="password" className={AUTH_LABEL}>
+              Mot de passe
+            </label>
+            <div className="relative">
+              <input
+                id="password"
+                name="password"
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={8}
+                autoComplete="new-password"
+                aria-describedby="password-hint"
+                value={form.password}
+                onChange={handleChange}
+                className={`${AUTH_INPUT} pr-11`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                aria-pressed={showPassword}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-control p-1 text-faint transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              >
+                {showPassword ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+              </button>
+            </div>
+            <p
+              id="password-hint"
+              className={`mt-1.5 text-xs ${
+                form.password.length > 0 && form.password.length < 8 ? "text-red-700" : "text-faint"
+              }`}
+            >
+              8 caractères minimum.
+            </p>
+          </div>
+        </div>
+      )}
 
-          <div className="mt-auto">
-            <div className="h-px bg-indigo-600 mb-4" />
-            <p className="text-sm text-indigo-300 mb-2">Etape {step} sur 3</p>
-            <div className="h-1 bg-indigo-600 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-white/50 rounded-full transition-all duration-300"
-                style={{ width: `${(step / 3) * 100}%` }}
+      {step === 2 && (
+        <div className="flex flex-col gap-5">
+          <div>
+            <label htmlFor="companyName" className={AUTH_LABEL}>
+              Nom de l’entreprise
+            </label>
+            <input
+              id="companyName"
+              name="companyName"
+              type="text"
+              required
+              autoComplete="organization"
+              value={form.companyName}
+              onChange={handleChange}
+              className={AUTH_INPUT}
+            />
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label htmlFor="phone" className={AUTH_LABEL}>
+                Téléphone
+              </label>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                required
+                autoComplete="tel"
+                value={form.phone}
+                onChange={handleChange}
+                className={AUTH_INPUT}
+              />
+            </div>
+            <div>
+              <label htmlFor="website" className={AUTH_LABEL}>
+                Site web <span className="font-normal text-faint">(facultatif)</span>
+              </label>
+              <input
+                id="website"
+                name="website"
+                type="url"
+                autoComplete="url"
+                placeholder="https://"
+                value={form.website}
+                onChange={handleChange}
+                className={AUTH_INPUT}
               />
             </div>
           </div>
-        </div>
-
-        {/* Right panel */}
-        <div className="flex-1 p-6 sm:p-10 md:p-12 flex flex-col">
-
-          {/* Step header */}
-          <div className="mb-6">
-            <p className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-1">
-              Etape {step} sur 3
-            </p>
-            <h1 className="text-xl font-semibold text-gray-900">{currentStep.label}</h1>
-            <p className="text-base text-gray-500 mt-0.5">{currentStep.desc}</p>
+          <div>
+            <label htmlFor="address" className={AUTH_LABEL}>
+              Adresse
+            </label>
+            <input
+              id="address"
+              name="address"
+              type="text"
+              required
+              autoComplete="street-address"
+              value={form.address}
+              onChange={handleChange}
+              className={AUTH_INPUT}
+            />
           </div>
+        </div>
+      )}
 
-          {error && (
-            <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 px-3.5 py-3 rounded-lg mb-5 text-sm">
-              <AlertCircle size={14} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Etape 1 */}
-          {step === 1 && (
-            <div className="flex flex-col gap-4 flex-1">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nom complet <span className="text-red-400">*</span>
-                </label>
-                <input name="name" type="text" required value={form.name} onChange={handleChange}
-                  className={INPUT} placeholder="Mohammed ben Mohammed" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email <span className="text-red-400">*</span>
-                </label>
-                <input name="email" type="email" required value={form.email} onChange={handleChange}
-                  className={INPUT} placeholder="Mohammed@exemple.com" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Mot de passe <span className="text-red-400">*</span>
-                </label>
-                <div className="relative">
-                  <input name="password" type={showPassword ? "text" : "password"} required minLength={8} value={form.password} onChange={handleChange}
-                    className={`${INPUT} pr-10`} placeholder="Minimum 8 caracteres" />
+      {step === 3 && (
+        <div className="flex flex-col gap-5">
+          <fieldset className="m-0 border-0 p-0">
+            <legend className={AUTH_LABEL}>Vos catégories de produits</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {SUGGESTED_CATEGORIES.map((cat) => {
+                const active = selectedCategories.includes(cat.value);
+                return (
                   <button
+                    key={cat.value}
                     type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                    tabIndex={-1}
+                    onClick={() => toggleCategory(cat.value)}
+                    aria-pressed={active}
+                    className={`relative rounded-control border px-2 py-3 text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+                      active
+                        ? "border-brand bg-brand-soft text-brand-ink"
+                        : "border-line text-body hover:border-brand/40"
+                    }`}
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {cat.label}
                   </button>
-                </div>
-                {form.password.length > 0 && form.password.length < 8 && (
-                  <p className="text-xs text-red-500 mt-1.5">Au moins 8 caracteres requis</p>
-                )}
-              </div>
+                );
+              })}
             </div>
-          )}
+          </fieldset>
 
-          {/* Etape 2 */}
-          {step === 2 && (
-            <div className="flex flex-col gap-4 flex-1">
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nom de l&apos;entreprise <span className="text-red-400">*</span>
-                  </label>
-                  <input name="companyName" type="text" required value={form.companyName} onChange={handleChange}
-                    className={INPUT} placeholder="Ma Boutique" />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Telephone <span className="text-red-400">*</span>
-                  </label>
-                  <input name="phone" type="tel" required value={form.phone} onChange={handleChange}
-                    className={INPUT} placeholder="06 00 00 00 00" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Site web</label>
-                  <input name="website" type="url" value={form.website} onChange={handleChange}
-                    className={INPUT} placeholder="https://..." />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Adresse <span className="text-red-400">*</span>
-                </label>
-                <input name="address" type="text" required value={form.address} onChange={handleChange}
-                  className={INPUT} placeholder="123 rue de Mohammed, 31001 Oran" />
-              </div>
-            </div>
-          )}
-
-          {/* Etape 3 */}
-          {step === 3 && (
-            <div className="flex flex-col gap-4 flex-1">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {SUGGESTED_CATEGORIES.map((cat) => {
-                  const active = selectedCategories.includes(cat.value);
-                  return (
-                    <button
-                      key={cat.value}
-                      type="button"
-                      onClick={() => toggleCategory(cat.value)}
-                      className={`relative flex items-center justify-center px-2 py-3 rounded-lg border text-sm font-medium transition-all ${
-                        active
-                          ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                          : "border-gray-200 text-gray-600 hover:border-indigo-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      {cat.label}
-                      {active && (
-                        <span className="absolute top-1 right-1 w-3 h-3 bg-indigo-600 rounded-full flex items-center justify-center">
-                          <Check size={8} className="text-white" strokeWidth={3} />
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={customInput}
-                  onChange={(e) => setCustomInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomCategory(); } }}
-                  className={INPUT}
-                  placeholder="Categorie personnalisee..."
-                />
-                <button
-                  type="button"
-                  onClick={addCustomCategory}
-                  disabled={!customInput.trim()}
-                  className="inline-flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-                >
-                  <Plus size={14} />
-                </button>
-              </div>
-
-              {selectedCategories.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedCategories.map((cat) => {
-                    const suggested = SUGGESTED_CATEGORIES.find((s) => s.value === cat);
-                    return (
-                      <span key={cat} className="inline-flex items-center gap-1 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-md">
-                        {suggested?.label ?? cat}
-                        <button type="button" onClick={() => removeCategory(cat)} className="text-indigo-400 hover:text-indigo-700 transition-colors ml-0.5">
-                          <X size={11} />
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-
-              {selectedCategories.length === 0 && (
-                <p className="text-xs text-gray-400">Selectionnez au moins une categorie pour continuer.</p>
-              )}
-            </div>
-          )}
-
-          {/* Navigation */}
-          <div className="flex gap-2.5 mt-8 pt-5 border-t border-gray-100">
-            {step > 1 && (
+          <div>
+            <label htmlFor="custom-category" className={AUTH_LABEL}>
+              Autre catégorie
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="custom-category"
+                type="text"
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomCategory();
+                  }
+                }}
+                className={AUTH_INPUT}
+                placeholder="Bijoux, papeterie…"
+              />
               <button
                 type="button"
-                onClick={goPrev}
-                className="px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                onClick={addCustomCategory}
+                disabled={!customInput.trim()}
+                aria-label="Ajouter cette catégorie"
+                className={`${AUTH_BTN_PRIMARY} shrink-0 px-3.5 py-2.5`}
               >
-                Retour
+                <Plus size={16} aria-hidden />
               </button>
-            )}
-
-            {step < 3 ? (
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={!canGoNext()}
-                className="ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Continuer
-                <ArrowRight size={14} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={loading || !canGoNext()}
-                className="ml-auto inline-flex items-center gap-1.5 px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                {loading ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Creation...
-                  </>
-                ) : (
-                  <>
-                    <Check size={14} strokeWidth={2.5} />
-                    Creer mon compte
-                  </>
-                )}
-              </button>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
 
-      <p className="text-sm sm:text-base text-gray-500 mt-4 sm:mt-5 text-center">
-        Deja un compte ?{" "}
-        <Link href="/auth/login" className="text-indigo-600 font-medium hover:text-indigo-800 transition-colors">
-          Se connecter
-        </Link>
-      </p>
-    </div>
+          {selectedCategories.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5 list-none p-0">
+              {selectedCategories.map((cat) => {
+                const suggested = SUGGESTED_CATEGORIES.find((s) => s.value === cat);
+                return (
+                  <li
+                    key={cat}
+                    className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-xs font-semibold text-brand-ink"
+                  >
+                    {suggested?.label ?? cat}
+                    <button
+                      type="button"
+                      onClick={() => removeCategory(cat)}
+                      aria-label={`Retirer ${suggested?.label ?? cat}`}
+                      className="ml-0.5 rounded-full text-brand-ink/60 transition-colors hover:text-brand-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                    >
+                      <X size={12} aria-hidden />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-xs text-faint">
+              Sélectionnez au moins une catégorie pour continuer.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="mt-8 flex gap-2.5 border-t border-line pt-5">
+        {step > 1 && (
+          <button type="button" onClick={goPrev} className={AUTH_BTN_GHOST}>
+            <ArrowLeft size={15} aria-hidden />
+            Retour
+          </button>
+        )}
+
+        {step < 3 ? (
+          <button
+            type="button"
+            onClick={goNext}
+            disabled={!canGoNext()}
+            className={`${AUTH_BTN_PRIMARY} ml-auto`}
+          >
+            Continuer
+            <ArrowRight size={15} aria-hidden />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={loading || !canGoNext()}
+            className={`${AUTH_BTN_PRIMARY} ml-auto`}
+          >
+            {loading ? (
+              <Loader2 size={15} className="animate-spin" aria-hidden />
+            ) : (
+              <Check size={15} strokeWidth={2.5} aria-hidden />
+            )}
+            {loading ? "Création en cours" : "Créer mon compte"}
+          </button>
+        )}
+      </div>
+    </AuthShell>
   );
 }

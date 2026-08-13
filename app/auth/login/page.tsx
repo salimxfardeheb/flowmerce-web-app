@@ -2,11 +2,59 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { loginAction } from "./actions";
 import Link from "next/link";
-import { AlertCircle, CheckCircle2, Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
+import { loginAction } from "./actions";
+import {
+  AuthShell,
+  AUTH_BTN_PRIMARY,
+  AUTH_INPUT,
+  AUTH_LABEL,
+  AUTH_LINK,
+} from "@/components/auth/AuthShell";
 
-const INPUT = "w-full border border-gray-200 rounded-lg px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-400";
+const BENEFITS = [
+  "Décisions proposées par l’IA",
+  "Réseau anti-fraude inter-boutiques",
+  "Politique de retour personnalisable",
+];
+
+function LoginAside() {
+  return (
+    <>
+      <div>
+        <p className="text-lg font-bold leading-tight text-white">Espace vendeur</p>
+        <p className="mt-2 text-[14px] leading-relaxed text-white/70">
+          Vos réclamations, votre politique de retour et vos décisions, au même endroit.
+        </p>
+      </div>
+
+      <ul className="mt-8 flex flex-col gap-3 list-none p-0">
+        {BENEFITS.map((b) => (
+          <li key={b} className="flex items-start gap-2.5">
+            <span
+              aria-hidden
+              className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-white/20"
+            >
+              <Check size={10} strokeWidth={3} className="text-white" />
+            </span>
+            <span className="text-[13px] leading-snug text-white/80">{b}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-auto pt-8">
+        <div className="mb-4 h-px bg-white/15" />
+        <p className="text-[13px] text-white/70">
+          Pas encore vendeur ?{" "}
+          <Link href="/auth/register" className="font-semibold text-white hover:underline">
+            Créer un compte
+          </Link>
+        </p>
+      </div>
+    </>
+  );
+}
 
 function LoginForm() {
   const router = useRouter();
@@ -23,7 +71,7 @@ function LoginForm() {
     setError("");
 
     const fd = new FormData();
-    fd.set("email",    form.email);
+    fd.set("email", form.email);
     fd.set("password", form.password);
     const result = await loginAction(fd);
 
@@ -39,141 +87,92 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-6">
-
-      {/* Card */}
-      <div className="w-full max-w-4xl bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col sm:flex-row">
-
-        {/* Left panel — hidden on mobile */}
-        <div className="hidden sm:flex w-64 md:w-72 bg-indigo-700 p-8 flex-col shrink-0">
-          <Link href="/" className="text-white font-bold tracking-tight text-base mb-10 block">
-            Flowmerce
+    <AuthShell
+      eyebrow="Connexion"
+      title="Bienvenue"
+      subtitle="Accédez à votre espace vendeur."
+      aside={<LoginAside />}
+      footer={
+        <>
+          Pas encore de compte ?{" "}
+          <Link href="/auth/register" className={AUTH_LINK}>
+            S’inscrire
           </Link>
+        </>
+      }
+    >
+      {registered && (
+        <p
+          role="status"
+          className="mb-6 flex items-start gap-2.5 rounded-control bg-green-50 px-3.5 py-3 text-[13px] text-green-800"
+        >
+          <CheckCircle2 size={16} className="mt-px shrink-0" aria-hidden />
+          Compte créé. Votre inscription est en cours de vérification.
+        </p>
+      )}
 
-          <div className="flex flex-col gap-5 flex-1">
-            <div>
-              <p className="text-white font-semibold text-lg leading-tight">Espace vendeur</p>
-              <p className="text-indigo-300 text-base mt-2 leading-relaxed">
-                Gerez vos reclamations, configurez votre politique de retours et pilotez votre activite.
-              </p>
-            </div>
+      {error && (
+        <p
+          role="alert"
+          className="mb-6 flex items-start gap-2.5 rounded-control bg-red-50 px-3.5 py-3 text-[13px] text-red-700"
+        >
+          <AlertCircle size={16} className="mt-px shrink-0" aria-hidden />
+          {error}
+        </p>
+      )}
 
-            <div className="flex flex-col gap-3 mt-2">
-              {[
-                "Decisions automatiques par IA",
-                "Detection de fraude en temps reel",
-                "Politique de retours personnalisable",
-              ].map((item) => (
-                <div key={item} className="flex items-start gap-2.5">
-                  <div className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center shrink-0 mt-0.5">
-                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <p className="text-indigo-200 text-sm leading-snug">{item}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-auto">
-            <div className="h-px bg-indigo-600 mb-4" />
-            <p className="text-sm text-indigo-300">
-              Pas encore vendeur ?{" "}
-              <Link href="/auth/register" className="text-white font-medium hover:underline">
-                Creer un compte
-              </Link>
-            </p>
-          </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+        <div>
+          <label htmlFor="email" className={AUTH_LABEL}>
+            Email
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            disabled={loading}
+            value={form.email}
+            onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+            className={AUTH_INPUT}
+          />
         </div>
 
-        {/* Right panel */}
-        <div className="flex-1 p-6 sm:p-10 md:p-12 flex flex-col justify-center">
-
-          <div className="mb-8">
-            <p className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-1">
-              Connexion
-            </p>
-            <h1 className="text-xl font-semibold text-gray-900">Bienvenue</h1>
-            <p className="text-base text-gray-500 mt-0.5">Accedez a votre espace vendeur</p>
-          </div>
-
-          {registered && (
-            <div className="flex items-start gap-2.5 bg-green-50 border border-green-200 text-green-700 px-3.5 py-3 rounded-lg mb-6 text-base">
-              <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
-              <span>Compte cree. Votre inscription est en cours de verification.</span>
-            </div>
-          )}
-
-          {error && (
-            <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 px-3.5 py-3 rounded-lg mb-6 text-base">
-              <AlertCircle size={16} className="shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-              <div className="relative">
-                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg pl-10 pr-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-400"
-                  placeholder="Mohammed@exemple.com"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Mot de passe</label>
-              <div className="relative">
-                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={form.password}
-                  onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg pl-10 pr-10 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-400"
-                  placeholder="Votre mot de passe"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
+        <div>
+          <label htmlFor="password" className={AUTH_LABEL}>
+            Mot de passe
+          </label>
+          <div className="relative">
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              autoComplete="current-password"
               disabled={loading}
-              className="w-full bg-indigo-600 text-white py-3 rounded-lg text-base font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 mt-1"
+              value={form.password}
+              onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+              className={`${AUTH_INPUT} pr-11`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+              aria-pressed={showPassword}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-control p-1 text-faint transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Connexion...
-                </span>
-              ) : "Se connecter"}
+              {showPassword ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
             </button>
-          </form>
+          </div>
         </div>
-      </div>
 
-      <p className="text-sm sm:text-base text-gray-500 mt-4 sm:mt-5 text-center">
-        Pas encore de compte ?{" "}
-        <Link href="/auth/register" className="text-indigo-600 font-medium hover:text-indigo-800 transition-colors">
-          S&apos;inscrire
-        </Link>
-      </p>
-    </div>
+        <button type="submit" disabled={loading} className={`${AUTH_BTN_PRIMARY} mt-1 w-full`}>
+          {loading && <Loader2 size={16} className="animate-spin" aria-hidden />}
+          {loading ? "Connexion en cours" : "Se connecter"}
+        </button>
+      </form>
+    </AuthShell>
   );
 }
 

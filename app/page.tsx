@@ -731,7 +731,7 @@ export default function HomePage() {
       {/* ── FAQ ── */}
       {/* Accordéon natif `<details>` : aucun JS, ouvrable au clavier,
           et le contenu reste indexable même replié. */}
-      <section id="faq" className="px-4 sm:px-6 pb-16 sm:pb-24">
+      <section id="faq" className="px-4 sm:px-6 pt-12 sm:pt-16 pb-16 sm:pb-24">
         <div className="max-w-3xl mx-auto">
           <SectionHeading
             title="Questions fréquentes"
