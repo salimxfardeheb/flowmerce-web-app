@@ -6,6 +6,7 @@
 
 import type { Metadata } from 'next'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { WebAnalytics } from '@/components/layout/WebAnalytics'
 import './globals.css'
 
 const jakarta = Plus_Jakarta_Sans({
@@ -31,6 +32,11 @@ export default function RootLayout({
     <html lang="fr" className={jakarta.variable} suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
         {children}
+        {/* Dans le layout racine pour couvrir aussi le portail de retour et
+            les pages publiques, qui n'ont pas d'autre layout commun. Les URL
+            porteuses d'un jeton ou d'un identifiant y sont expurgées — voir le
+            composant. */}
+        <WebAnalytics />
       </body>
     </html>
   )
