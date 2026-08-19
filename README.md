@@ -16,6 +16,8 @@ Plateforme SaaS B2B de gestion des retours et détection de fraude pour e-commer
 - **Panel admin** — Approbation des vendeurs, revue des documents, vue par client, export du dataset ML
 - **Notifications email** — Alertes automatiques (soumission, approbation, rejet)
 - **Garde-fou remboursement** — Les demandes de remboursement ne sont jamais auto-approuvées : elles restent soumises à une validation vendeur explicite
+- **Formulaire de contact public** — Page `/contact` et endpoint `POST /api/contact` (piège à bots + limite de 3 messages/heure par IP), relayés par email vers `GMAIL_USER`
+- **Analytics sans donnée personnelle** — Vercel Web Analytics avec redaction des URL : jetons de portail et identifiants de réclamation/vendeur sont remplacés par la forme de la route avant envoi
 
 ---
 
@@ -35,7 +37,8 @@ Plateforme SaaS B2B de gestion des retours et détection de fraude pour e-commer
 | ML backend | API HTTP externe (Render) |
 | Tests | Vitest 4 (+ couverture V8) |
 | Mobile | Capacitor 8 (Android) |
-| Déploiement | Vercel (cron inclus) |
+| Analytics | Vercel Web Analytics (`@vercel/analytics`, URL redigées) |
+| Déploiement | Vercel (région `fra1`, cron inclus) |
 
 ---
 
@@ -105,6 +108,7 @@ Toutes les variables ci-dessous sont **obligatoires** sauf mention contraire —
 ```bash
 npm run dev           # Serveur de développement (localhost:3000)
 npm run build         # Build de production (lance `prisma generate` au préalable)
+npm run vercel-build  # Build Vercel (applique les migrations Prisma avant le build)
 npm run build:mobile  # Build en mode mobile (MOBILE_BUILD=true, pour Capacitor)
 npm run start         # Démarre le serveur de production
 npm run lint          # Analyse ESLint
@@ -136,6 +140,7 @@ flowmerce-web-app/
 │   │   ├── claims/               # Vue globale des réclamations + export ML
 │   │   └── clients/[vendorId]/   # Vue analytique par vendeur
 │   ├── docs/                     # Documentation d'intégration (page publique)
+│   ├── contact/                  # Page de contact publique
 │   ├── return/[token]/           # Portail client white-label
 │   └── api/                      # Routes API REST
 │       ├── v1/
@@ -153,20 +158,25 @@ flowmerce-web-app/
 │       ├── fraud/                # Rapports de refus
 │       ├── predict/              # Appel direct ML
 │       ├── cron/                 # Jobs planifiés (retry ML)
+│       ├── contact/              # POST — formulaire de contact public (honeypot + rate limit)
 │       └── health/               # Health check
 ├── components/                   # Composants React réutilisables
+│   └── layout/WebAnalytics.tsx   # Vercel Analytics + redaction des URL sensibles
 ├── lib/
 │   ├── services/
 │   │   ├── return-submission.ts  # Canal unique de soumission (cœur métier)
 │   │   ├── return-credentials.ts # Clé API ou jeton de session → contexte
 │   │   ├── claim-ingestion.ts    # Service unifié de création de réclamation
+│   │   ├── claim-decision.ts     # Application de la décision ML (soumission + retry cron)
 │   │   ├── return-form-builder.ts# Vendor + ReturnPolicy → formulaire JSON générique
 │   │   ├── return-form-validation.ts # Réponses validées contre la définition
 │   │   ├── ml.ts                 # Intégration modèle ML
 │   │   ├── notification.ts       # Notifications email
 │   │   └── return-policy.ts      # Logique politique de retour
 │   ├── constants.ts              # Source de vérité unique des chaînes métier
+│   ├── contact.ts                # Coordonnées publiques (landing, page contact, footer)
 │   ├── env.ts                    # Validation Zod de l'environnement (boot)
+│   ├── ml/feature-contract.json  # Copie du contrat de features servi par l'API ML
 │   ├── fraud-score.ts            # Calcul du score de fraude
 │   ├── rate-limit.ts             # Rate limiting persistant (table dédiée)
 │   ├── storage.ts                # Supabase Storage (upload / URL signée)
@@ -583,6 +593,52 @@ X-Return-Token: ret_<token>
 ```
 
 Les clés API sont générées depuis le dashboard vendeur (`/dashboard/api-keys`). Chaque clé trace sa dernière utilisation (`lastUsedAt`) et peut être révoquée individuellement.
+
+---
+
+### Formulaire de contact public
+
+`POST /api/contact` — endpoint non authentifié, appelé par la page `/contact` et par la landing.
+
+| Aspect | Comportement |
+|---|---|
+| Validation | Zod (`name` ≥ 2, `email` valide, `message` ≥ 20 et ≤ 4000 car.) → **422** sinon |
+| Piège à bots | Champ `website` : s'il est rempli, la réponse est **200** mais rien n'est envoyé |
+| Limite de débit | 3 messages par heure et par IP, via la même table de rate limiting que le formulaire de retour |
+| Envoi | Nodemailer vers `GMAIL_USER`, `replyTo` = adresse du visiteur |
+| Persistance | Aucune — pas de modèle en base, donc pas de migration |
+
+La limite de débit est vérifiée **après** la validation et le piège : seules les
+soumissions réellement envoyables consomment le quota, une faute de frappe ne
+bloque donc pas un visiteur légitime pendant une heure.
+
+Les coordonnées affichées (WhatsApp, email, réseaux) proviennent de `lib/contact.ts` — source unique.
+
+---
+
+### Analytics et en-têtes de sécurité
+
+**Vercel Web Analytics** (`components/layout/WebAnalytics.tsx`) est monté dans le layout racine.
+Aucun cookie ni identifiant persistant n'est posé, donc rien à ajouter au bandeau de consentement,
+et le script n'est chargé que sur un déploiement Vercel. Un `beforeSend` réécrit l'URL avant envoi :
+
+| URL réelle | URL transmise |
+|---|---|
+| `/return/<token>` | `/return/[token]` |
+| `/dashboard/claims/<id>` | `/dashboard/claims/[claimId]` |
+| `/admin/clients/<id>` | `/admin/clients/[vendorId]` |
+
+Une URL illisible est remplacée par `/` plutôt que transmise telle quelle.
+
+**En-têtes** appliqués à toutes les routes (`next.config.ts`) : `X-Frame-Options`,
+`X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` et
+`Strict-Transport-Security` (2 ans, sans `includeSubDomains` ni `preload` tant
+qu'aucun sous-domaine ne sert en clair).
+
+> `trailingSlash` n'est activé **que** pour le build Capacitor (`MOBILE_BUILD=true`) :
+> actif sur le web, il transformait `POST /api/v1/returns` en redirection 308.
+
+Vue d'ensemble de la sécurité des trois dépôts : [`../SECURITE.md`](../SECURITE.md).
 
 ---
 
